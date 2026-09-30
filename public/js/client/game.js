@@ -5,7 +5,7 @@ import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun } from '..
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
-import { dirFromAngles, clamp, lerp, lerpAngle, DEG, r2, r3 } from '../shared/util.js';
+import { dirFromAngles, anglesFromDir, angleDiff, clamp, lerp, lerpAngle, DEG, r2, r3 } from '../shared/util.js';
 import { buildMapMeshes, setupEnvironment } from './world.js';
 import { PlayerModel, makeWeapon } from './models.js';
 import { ViewModel } from './viewmodel.js';
@@ -13,7 +13,8 @@ import { Effects } from './effects.js';
 import { Hud, weaponName } from './hud.js';
 import { Input } from './input.js';
 import { audio } from './audio.js';
-import { settings } from './settings.js';
+import { settings, useTouch } from './settings.js';
+import { TouchControls } from './touch.js';
 
 const BASE_FOV = 73.74;
 const $ = (id) => document.getElementById(id);
@@ -42,9 +43,12 @@ export class Game {
     this.env = setupEnvironment(this.scene, this.map, settings.shadows);
     this.mapMesh = buildMapMeshes(this.map);
     this.scene.add(this.mapMesh);
-    this.fx = new Effects(this.scene);
+    this.isTouch = useTouch();
+    this.fx = new Effects(this.scene, { low: this.isTouch });
     this.vm = new ViewModel();
-    this.input = new Input(renderer.domElement);
+    this.input = new Input(renderer.domElement, this.isTouch);
+    this.assist = null;
+    this.aimEnemy = false;
 
     this.me = { id: this.myId, team: 'SPEC', alive: false, hp: 100, armor: 0, helmet: false, money: 0, kit: false, inv: { 1: null, 2: null, 4: [], 5: false }, slot: 3, nade: null };
     this.sim = newMoveState();
@@ -97,6 +101,7 @@ export class Game {
     if (this.bomb && this.bomb.st === 'planted') this.placeBombMesh();
 
     this.hud = new Hud(this);
+    this.touch = this.isTouch ? new TouchControls(this) : null;
     this.hud.show();
     this.hud.clearTransient();
     this.initUI();
@@ -150,7 +155,8 @@ export class Game {
       window.__openSettings && window.__openSettings(() => { this.settingsOpen = false; this.hud.refreshCrosshair(); audio.setVolume(settings.volume); this.resize(); this.showPause(); });
     });
     on($('btn-quit'), 'click', () => this.exit());
-    on($('buymenu'), 'mousedown', (e) => { if (e.target.id === 'buymenu') this.closeBuy(); });
+    on($('scoreboard'), 'pointerdown', () => { if (this.isTouch) this.hud.closeScoreboard(); });
+    on($('buymenu'), 'pointerdown', (e) => { if (e.target.id === 'buymenu') this.closeBuy(); });
     for (const b of document.querySelectorAll('[data-close="buymenu"]')) on(b, 'click', () => this.closeBuy());
     const ci = $('chat-input');
     on(ci, 'keydown', (e) => {
@@ -162,7 +168,7 @@ export class Game {
       } else if (e.key === 'Escape') this.closeChat();
     });
     on(this.renderer.domElement, 'mousedown', () => {
-      if (!this.input.locked && !this.anyOverlay()) this.input.lock();
+      if (!this.isTouch && !this.input.locked && !this.anyOverlay()) this.input.lock();
     });
   }
 
@@ -323,18 +329,42 @@ export class Game {
 
   hintText() {
     const me = this.me;
-    if (!this.input.locked && !this.anyOverlay() && !this.hud.buyOpen) return '点击画面开始操作（锁定鼠标）';
+    const T = this.isTouch;
+    if (!T && !this.input.locked && !this.anyOverlay() && !this.hud.buyOpen) return '点击画面开始操作（锁定鼠标）';
     if (!me.alive || this.paused) return '';
     const b = this.bomb;
-    if (me.team === 'CT' && b && b.st === 'planted' && !this.w.defusing && Math.hypot(this.sim.x - b.x, this.sim.z - b.z) < 2.0) return '按住 E 拆除炸弹';
+    if (me.team === 'CT' && b && b.st === 'planted' && !this.w.defusing && Math.hypot(this.sim.x - b.x, this.sim.z - b.z) < 2.0) return T ? '按住「拆弹」按钮拆除炸弹' : '按住 E 拆除炸弹';
     if (this.round.ph === 'live' && me.inv[5] && !this.w.planting) {
-      if (this.inSite()) return me.slot === 5 ? '按住左键安放炸弹' : '在包点内：按 5 拿出 C4，按住左键安放';
+      if (this.inSite()) {
+        if (me.slot === 5) return T ? '按住「安放」按钮安放炸弹' : '按住左键安放炸弹';
+        return T ? '在包点内：点下方「C4」拿出炸弹，再按住「安放」' : '在包点内：按 5 拿出 C4，按住左键安放';
+      }
     }
+    const d = this.nearDrop();
+    if (d) return T ? `点「捡起」拿 ${weaponName(d.w)}` : `按 E 捡起 ${weaponName(d.w)}`;
+    return '';
+  }
+
+  nearDrop() {
     for (const d of this.drops.values()) {
       if (d.w === 'c4') continue;
-      if (Math.hypot(d.pr.x - this.sim.x, d.pr.z - this.sim.z) < 1.9 && Math.abs(d.pr.y - this.sim.y) < 2) return `按 E 捡起 ${weaponName(d.w)}`;
+      if (Math.hypot(d.pr.x - this.sim.x, d.pr.z - this.sim.z) < 1.9 && Math.abs(d.pr.y - this.sim.y) < 2) return d;
     }
-    return '';
+    return null;
+  }
+
+  // 触屏「拆弹/捡起」按钮是否显示
+  useContext() {
+    const me = this.me, b = this.bomb;
+    if (!me.alive) return '';
+    if (me.team === 'CT' && b && b.st === 'planted' && Math.hypot(this.sim.x - b.x, this.sim.z - b.z) < 2.0) return '拆弹';
+    return this.nearDrop() ? '捡起' : '';
+  }
+
+  openPauseMenu() {
+    this.suppressPause = true;
+    this.input.unlock();
+    this.showPause();
   }
 
   // ---------------- 玩家信息 ----------------
@@ -674,7 +704,7 @@ export class Game {
   }
 
   addNade(id, type, o, v, local) {
-    const mesh = makeWeapon(type);
+    const mesh = makeWeapon(type, true);
     mesh.scale.setScalar(1.4);
     mesh.position.set(o[0], o[1], o[2]);
     this.scene.add(mesh);
@@ -742,7 +772,7 @@ export class Game {
 
   placeBombMesh() {
     const b = this.bomb;
-    const m = makeWeapon('c4');
+    const m = makeWeapon('c4', true);
     m.scale.setScalar(1.6);
     m.position.set(b.x, b.y + 0.06, b.z);
     m.rotation.y = Math.random() * Math.PI;
@@ -776,7 +806,7 @@ export class Game {
   addDrop(d, rest) {
     const [id, w, x, y, z, vx, vy, vz] = d;
     if (this.drops.has(id)) return;
-    const mesh = makeWeapon(w);
+    const mesh = makeWeapon(w, true);
     if (w !== 'c4') mesh.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2);
     const pr = makeProjectile([x, y, z], [vx, vy, vz], 0.25);
     if (rest) pr.rest = true;
@@ -828,18 +858,38 @@ export class Game {
     if (inp.hit('KeyE')) this.net.send({ t: 'use' });
   }
 
-  handleLook() {
+  handleLook(dt) {
     const inp = this.input;
-    this.mdx = inp.dx;
-    this.mdy = inp.dy;
+    this.mdx = inp.dx + inp.tdx * 3;
+    this.mdy = inp.dy + inp.tdy * 3;
     if (!inp.locked || this.paused) return;
-    let sens = settings.sens * 0.022 * DEG;
+    let zoom = 1;
     const w = this.curWeapon();
     if (this.me.alive && this.w.scope > 0 && w.scope) {
-      sens *= (Math.tan((w.scope[this.w.scope - 1] * DEG) / 2) / Math.tan((BASE_FOV * DEG) / 2)) * settings.zoomSens;
+      zoom = (Math.tan((w.scope[this.w.scope - 1] * DEG) / 2) / Math.tan((BASE_FOV * DEG) / 2)) * settings.zoomSens;
     }
+    const sens = settings.sens * 0.022 * DEG * zoom;
     this.yaw -= inp.dx * sens;
     this.pitch = clamp(this.pitch - inp.dy * sens, -89 * DEG, 89 * DEG);
+    if (inp.touch) {
+      let dx = inp.tdx, dy = inp.tdy;
+      const a = this.assist;
+      if (a) {
+        const slow = a.off < a.size * 1.8 ? 0.45 : 0.72;
+        dx *= slow;
+        dy *= slow;
+      }
+      const k = 0.2 * settings.touchSens * DEG * zoom;
+      this.yaw += -dx * k + inp.gyroYaw * zoom;
+      this.pitch = clamp(this.pitch - dy * k + inp.gyroPitch * zoom, -89 * DEG, 89 * DEG);
+      // 辅助瞄准：转动视角或移动时，轻微吸附到敌人身上
+      const active = dx !== 0 || dy !== 0 || inp.moveX !== 0 || inp.moveY !== 0 || inp.gyroYaw !== 0;
+      if (a && active && this.me.alive) {
+        const pull = Math.min(1, dt * 6) * 0.35;
+        this.yaw += angleDiff(this.yaw, a.ay) * pull;
+        this.pitch += (a.ap - this.pitch) * pull;
+      }
+    }
     if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
     else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
   }
@@ -911,6 +961,11 @@ export class Game {
     cmd.jump = k('Space');
     cmd.crouch = k('ControlLeft') || k('ControlRight') || k('KeyC') || this.w.defusing;
     cmd.walk = k('ShiftLeft') || k('ShiftRight');
+    if (inp.touch && !cmd.fwd && !cmd.side && (inp.moveX || inp.moveY)) {
+      cmd.fwd = inp.moveY;
+      cmd.side = inp.moveX;
+      if (Math.hypot(inp.moveX, inp.moveY) < 0.6) cmd.walk = true;
+    }
     cmd.yaw = this.yaw;
     cmd.speed = moveSpeed(w, this.w.scope > 0) * (this.now < this.tagUntil ? 0.55 : 1);
     cmd.frozen = this.frozen();
@@ -971,8 +1026,8 @@ export class Game {
     const sp = (inp.down('ShiftLeft') ? 25 : 12) * dt;
     const f = dirFromAngles(this.yaw, this.pitch);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
-    const fw = (inp.down('KeyW') ? 1 : 0) - (inp.down('KeyS') ? 1 : 0);
-    const sd = (inp.down('KeyD') ? 1 : 0) - (inp.down('KeyA') ? 1 : 0);
+    const fw = (inp.down('KeyW') ? 1 : 0) - (inp.down('KeyS') ? 1 : 0) + inp.moveY;
+    const sd = (inp.down('KeyD') ? 1 : 0) - (inp.down('KeyA') ? 1 : 0) + inp.moveX;
     const up = (inp.down('Space') ? 1 : 0) - (inp.down('ControlLeft') || inp.down('KeyC') ? 1 : 0);
     fc.x += (f[0] * fw + rx * sd) * sp;
     fc.y += (f[1] * fw + up) * sp;
@@ -1044,7 +1099,8 @@ export class Game {
     if (isGun(w)) {
       const it = me.inv[me.slot];
       if (inp.mDown[0]) W.pendingClick = now;
-      const wantFire = inp.mouse[0] && (w.auto || now - W.pendingClick < 0.12);
+      const auto = this.isTouch && settings.autoFire && this.aimEnemy && (w.type !== 'sniper' || W.scope > 0);
+      const wantFire = (inp.mouse[0] && (w.auto || now - W.pendingClick < 0.12)) || auto;
       if (wantFire && canAct && ready && !W.reloadEnd && now >= W.nextFire) {
         if (it.clip > 0) {
           W.pendingClick = -1;
@@ -1258,15 +1314,47 @@ export class Game {
     if (this.frameN % 3 === 0) this.updateTargetName();
   }
 
+  // 触屏辅助瞄准：找准星附近、看得见的敌人
+  updateAssist() {
+    this.assist = null;
+    if (!settings.aimAssist || !this.me.alive) return;
+    const w = this.curWeapon();
+    if (!isGun(w) && w.type !== 'knife') return;
+    const e = this.eyePos();
+    let best = null, bestScore = Infinity;
+    for (const p of this.players.values()) {
+      if (p.id === this.myId || !p.rp || !(p.rp.f & F.ALIVE) || !this.isEnemyId(p.id)) continue;
+      const crouch = p.rp.f & F.CROUCH;
+      const tx = p.rp.x, ty = p.rp.y + (crouch ? 0.95 : 1.3), tz = p.rp.z;
+      const dx = tx - e.x, dy = ty - e.y, dz = tz - e.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > 70 || d < 0.5) continue;
+      const [ay, ap] = anglesFromDir(dx, dy, dz);
+      const off = Math.hypot(angleDiff(this.yaw, ay), ap - this.pitch);
+      const size = Math.atan2(0.45, d);
+      const cone = size * 3 + 0.035;
+      if (off > cone) continue;
+      const score = off / cone;
+      if (score < bestScore) { bestScore = score; best = { ay, ap, off, size, x: tx, y: ty, z: tz }; }
+    }
+    if (best && (!this.world.clear(e.x, e.y, e.z, best.x, best.y, best.z) || this.fx.smokeDensityAt({ x: (e.x + best.x) / 2, y: (e.y + best.y) / 2, z: (e.z + best.z) / 2 }) > 0.4)) best = null;
+    this.assist = best;
+  }
+
   updateTargetName() {
     this.targetName = '';
+    this.aimEnemy = false;
     if (!this.me.alive) return;
     const c = this.camera.position;
     const d = dirFromAngles(this.yaw, this.pitch);
     const res = traceShot(this.world, c.x, c.y, c.z, d[0], d[1], d[2], 60, this.targets(), this.myId);
     if (res.kind === 2) {
       const p = this.players.get(res.id);
-      if (p) this.targetName = p.name + (this.isEnemyId(p.id) ? '' : ' (队友)');
+      if (p) {
+        const enemy = this.isEnemyId(p.id);
+        this.targetName = p.name + (enemy ? '' : ' (队友)');
+        this.aimEnemy = enemy && !(p.rp && p.rp.f & F.PROTECT);
+      }
     }
   }
 
@@ -1402,7 +1490,8 @@ export class Game {
         try { this.onMsg(m); } catch (e) { console.error('处理消息出错', m.t, e); }
       }
       this.handleKeys();
-      this.handleLook();
+      if (this.isTouch && this.frameN % 2 === 0) this.updateAssist();
+      this.handleLook(dt);
       this.updateLocal(dt);
       this.updateWeapon(dt);
       this.sendState();
@@ -1418,6 +1507,7 @@ export class Game {
         });
       }
       this.hud.update(dt);
+      if (this.touch) this.touch.update();
       this.render();
     } catch (e) {
       console.error('帧更新出错', e);
@@ -1429,6 +1519,7 @@ export class Game {
     if (!this.running) return;
     this.running = false;
     cancelAnimationFrame(this.raf);
+    if (this.touch) { this.touch.destroy(); this.touch = null; }
     this.input.detach();
     window.removeEventListener('resize', this.onResizeBound);
     window.removeEventListener('beforeunload', this.beforeUnload);

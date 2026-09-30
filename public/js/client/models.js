@@ -34,6 +34,52 @@ function sphGeo(r) {
   return g;
 }
 
+// ---------- 合并网格（减少绘制调用，手机上很重要） ----------
+const mergeCache = new Map();
+let vcolMat = null;
+function vertexColorMat() {
+  if (!vcolMat) vcolMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  return vcolMat;
+}
+function mergeMeshes(meshes, key) {
+  if (key && mergeCache.has(key)) return mergeCache.get(key);
+  const pos = [], nor = [], col = [];
+  const c = new THREE.Color();
+  for (const m of meshes) {
+    m.updateMatrix();
+    const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    g.applyMatrix4(m.matrix);
+    c.copy(m.material.color);
+    const P = g.attributes.position.array, N = g.attributes.normal.array;
+    for (let i = 0; i < P.length; i++) { pos.push(P[i]); nor.push(N[i]); }
+    for (let i = 0; i < P.length / 3; i++) col.push(c.r, c.g, c.b);
+    g.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  if (key) mergeCache.set(key, geo);
+  return geo;
+}
+// 把一个组里的直接子网格合并成一个（保留子组层级，便于做动画）
+export function collapse(group, key) {
+  const meshes = group.children.filter((o) => o.isMesh);
+  if (meshes.length > 1) {
+    const geo = mergeMeshes(meshes, key);
+    for (const m of meshes) group.remove(m);
+    const mm = new THREE.Mesh(geo, vertexColorMat());
+    mm.castShadow = true;
+    group.add(mm);
+  }
+  let i = 0;
+  for (const ch of group.children) {
+    if (!ch.isMesh && !ch.isSprite) collapse(ch, key ? key + '/' + i : null);
+    i++;
+  }
+}
+
 function box(w, h, d, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
   const m = new THREE.Mesh(boxGeo(w, h, d), mat(color));
   m.position.set(x, y, z);
@@ -207,7 +253,7 @@ function c4(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0, 0);
 }
 
-export function makeWeapon(id) {
+export function makeWeapon(id, merged = false) {
   const g = new THREE.Group();
   switch (id) {
     case 'ak47': rifleAK(g); break;
@@ -229,6 +275,7 @@ export function makeWeapon(id) {
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.id = id;
+  if (merged) collapse(g, 'w:' + id);
   return g;
 }
 
@@ -296,12 +343,13 @@ export class PlayerModel {
     this.gunHolder = new THREE.Group();
     this.gunHolder.position.set(0.06, -0.09, -0.45);
     this.arms.add(this.gunHolder);
-    this.c4 = makeWeapon('c4');
+    this.c4 = makeWeapon('c4', true);
     this.c4.position.set(0, 0.42, 0.19);
     this.c4.rotation.set(Math.PI / 2, 0, 0);
     this.c4.visible = false;
     this.upper.add(this.c4);
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+    collapse(this.root, 'p:' + team);
     this.tag = null;
     if (name) this.setName(name, team);
     this.wid = null;
@@ -314,8 +362,8 @@ export class PlayerModel {
   setName(name, team) {
     if (this.tag) { this.root.remove(this.tag); this.tag.material.map.dispose(); this.tag.material.dispose(); }
     const tex = textSprite(name, team === 'CT' ? '#9cc7ff' : '#ffd08a');
-    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-    this.tag.scale.set(1.6, 0.4, 1);
+    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
+    this.tag.scale.set(0.2, 0.05, 1);
     this.tag.position.y = 2.15;
     this.tag.renderOrder = 20;
     this.tag.visible = false;
@@ -326,7 +374,7 @@ export class PlayerModel {
     if (this.wid === wid) return;
     this.wid = wid;
     while (this.gunHolder.children.length) this.gunHolder.remove(this.gunHolder.children[0]);
-    if (wid) this.gunHolder.add(makeWeapon(wid));
+    if (wid) this.gunHolder.add(makeWeapon(wid, true));
   }
 
   // st: {speed, crouch, pitch, alive, bomb}

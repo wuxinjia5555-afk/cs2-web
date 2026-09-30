@@ -1,6 +1,6 @@
 // 入口：主菜单、单机/联机大厅、设置，负责创建 Game
 import * as THREE from 'three';
-import { settings, saveSettings, resetSettings, applyCrosshair } from './client/settings.js';
+import { settings, saveSettings, resetSettings, applyCrosshair, useTouch } from './client/settings.js';
 import { audio } from './client/audio.js';
 import { WsNet, LocalNet, defaultServerUrl } from './client/net.js';
 import { Game } from './client/game.js';
@@ -15,7 +15,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 // ---------------- 渲染器 ----------------
 const canvas = $('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const TOUCH = useTouch();
+if (TOUCH) document.body.classList.add('touch');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !TOUCH, powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2) * settings.res);
@@ -93,14 +95,38 @@ function playerName() {
 }
 
 function goFullscreen() {
+  askGyro();
   if (!settings.fullscreen || document.fullscreenElement) return;
   const el = document.documentElement;
-  if (el.requestFullscreen) {
-    el.requestFullscreen({ navigationUI: 'hide' }).then(() => {
-      if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(() => {});
-    }).catch(() => {});
-  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) return;
+  try {
+    const p = req.call(el, { navigationUI: 'hide' });
+    const after = () => {
+      if (!TOUCH && navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(() => {});
+      if (TOUCH && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    };
+    if (p && p.then) p.then(after).catch(() => {});
+    else after();
+  } catch {}
 }
+
+// iOS 需要在点击时申请陀螺仪权限
+function askGyro() {
+  if (!TOUCH || !settings.gyro) return;
+  const DME = window.DeviceMotionEvent;
+  if (DME && typeof DME.requestPermission === 'function') DME.requestPermission().catch(() => {});
+}
+
+// 竖屏提示（游戏中）
+function checkOrientation() {
+  const portrait = innerHeight > innerWidth * 1.05;
+  $('rotate').classList.toggle('hidden', !(TOUCH && game && portrait));
+}
+addEventListener('resize', checkOrientation);
+addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => { if (TOUCH) e.preventDefault(); });
 
 function resize() {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2) * settings.res);
@@ -146,6 +172,7 @@ function startGame(net, init) {
   hideMenus();
   loading(true, `正在加载地图：${getMap(init.map).name}…`);
   setTimeout(() => {
+    setTimeout(checkOrientation, 50);
     try {
       const pending = starting ? starting.pending : [];
       starting = null;
@@ -153,6 +180,7 @@ function startGame(net, init) {
         renderer, net, init, pending,
         onExit: () => {
           game = window.__game = null;
+          checkOrientation();
           resize();
           if (net.isLocal) { showMenu('menu-main'); }
           else {
@@ -324,6 +352,21 @@ function bindSettings() {
   chk('s-voice', 'voice', settings);
   chk('s-full', 'fullscreen', settings);
   chk('s-fps', 'showFps', settings);
+  const relayout = () => { if (game && game.touch) game.touch.applyLayout(); };
+  rng('s-tsens', 'touchSens', settings, (v) => v.toFixed(2));
+  rng('s-bscale', 'btnScale', settings, (v) => Math.round(v * 100) + '%', relayout);
+  rng('s-bop', 'btnOpacity', settings, (v) => Math.round(v * 100) + '%', relayout);
+  rng('s-gsens', 'gyroSens', settings, (v) => v.toFixed(1));
+  chk('s-assist', 'aimAssist', settings);
+  chk('s-autofire', 'autoFire', settings);
+  chk('s-leftfire', 'leftFire', settings, relayout);
+  chk('s-gyro', 'gyro', settings, () => {
+    askGyro();
+    if (game && game.touch) { if (settings.gyro) game.touch.enableGyro(); else game.touch.disableGyro(); }
+  });
+  const tm = $('s-touchmode');
+  tm.value = settings.touchMode;
+  tm.onchange = () => { settings.touchMode = tm.value; saveSettings(); toast('操作方式将在刷新页面后生效'); };
   prev();
 }
 
@@ -362,7 +405,12 @@ setTimeout(() => {
     toast('3D 场景初始化失败：' + e.message, 8000);
   }
   loading(false);
-  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) toast('这是键鼠射击游戏，请用电脑打开（手机无法操作）', 8000);
+  if (TOUCH) {
+    let seen = false;
+    try { seen = localStorage.getItem('defuse.mobiletip') === '1'; localStorage.setItem('defuse.mobiletip', '1'); } catch {}
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!seen) toast(ios ? '提示：横屏游玩；在 Safari 里点「分享 → 添加到主屏幕」可以全屏玩' : '提示：请横屏游玩，进入游戏会自动全屏', 7000);
+  }
   const room = new URLSearchParams(location.search).get('room');
   if (room) {
     if (!settings.name) playerName();

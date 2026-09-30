@@ -2,7 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DEFUSE">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>DEFUSE 爆破行动 · 网页版战术射击</title>
 <meta name="description" content="网页版 CS2 风格多人 3D 战术射击：爆破模式、死斗、经济系统、机器人、联机房间">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23e8b43c' stroke-width='5'/%3E%3Cpath d='M32 4v18M32 42v18M4 32h18M42 32h18' stroke='%23e8b43c' stroke-width='5'/%3E%3C/svg%3E">
@@ -210,6 +218,18 @@
         <label class="check"><input type="checkbox" id="s-full"> 进入游戏自动全屏（防止 Ctrl+W 误关页面）</label>
         <label class="check"><input type="checkbox" id="s-fps"> 显示帧率/延迟</label>
       </div>
+      <h3>触屏 / 手机</h3>
+      <div class="grid2">
+        <label class="field"><span>操作方式</span><select id="s-touchmode"><option value="auto">自动识别</option><option value="on">触屏按钮</option><option value="off">键盘鼠标</option></select></label>
+        <label class="field"><span>滑屏灵敏度 <b id="v-tsens"></b></span><input type="range" id="s-tsens" min="0.3" max="3" step="0.05"></label>
+        <label class="field"><span>按钮大小 <b id="v-bscale"></b></span><input type="range" id="s-bscale" min="0.7" max="1.4" step="0.05"></label>
+        <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
+        <label class="field"><span>陀螺仪灵敏度 <b id="v-gsens"></b></span><input type="range" id="s-gsens" min="0.2" max="3" step="0.1"></label>
+        <label class="check"><input type="checkbox" id="s-assist"> 辅助瞄准（准星靠近敌人时减速+轻微吸附）</label>
+        <label class="check"><input type="checkbox" id="s-autofire"> 自动开火（准星对准敌人自动射击）</label>
+        <label class="check"><input type="checkbox" id="s-leftfire"> 左侧开火键</label>
+        <label class="check"><input type="checkbox" id="s-gyro"> 陀螺仪瞄准（转动手机转视角，实验功能）</label>
+      </div>
       <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
       <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
     </div>
@@ -231,6 +251,7 @@
         <div><kbd>Esc</kbd> 菜单</div><div><kbd>F2</kbd> 房主开始比赛</div>
       </div>
       <div class="help-text">
+        <p><b>手机触屏：</b>横屏游玩。左半屏任意位置按住拖动 = 移动摇杆（推一点是静步），右半屏滑动 = 转视角；红色「开火」键按住可以同时拖动瞄准。右下角有跳、蹲（点一下切换）、换弹、开镜；靠近炸弹或地上的枪会出现蓝色「拆弹 / 捡起」键；底部一排是切枪栏；右上角是购买、战绩、聊天、菜单。设置里可以开「辅助瞄准」「自动开火」「陀螺仪」。</p>
         <p><b>爆破模式：</b>T 需要把 C4 带到 A 或 B 包点，切到 C4（按 5）后按住左键 3.2 秒安放；炸弹 40 秒后爆炸。CT 靠近炸弹按住 E 拆除（10 秒，有拆弹器 5 秒）。消灭全部敌人也能赢得回合。先赢过半回合的一方获胜，半场交换阵营。</p>
         <p><b>经济：</b>开局 $800，胜利 $3250（炸弹爆炸/拆除 $3500），连败补偿 $1400 起每次 +$500。击杀奖励：步枪 $300、冲锋枪 $600、霰弹枪 $900、AWP $100、刀 $1500。</p>
         <p><b>枪法：</b>移动、跳跃时开枪非常不准，开枪前松开方向键（或按反方向急停）。步枪连射会按固定弹道上跳，向下拉鼠标压枪。爆头伤害 ×4。</p>
@@ -240,6 +261,7 @@
   </div>
 
   <div id="loading" class="hidden"><div class="spinner"></div><div id="loading-text">加载中…</div></div>
+  <div id="rotate" class="hidden"><div class="phone"></div><div>请把手机横过来游玩</div><small>竖屏时游戏会暂停显示</small></div>
   <div id="toast"></div>
 </div>
 <noscript>需要开启 JavaScript 才能游玩。</noscript>

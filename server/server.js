@@ -22,6 +22,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 function serveFile(req, res, file) {
@@ -234,8 +235,13 @@ server.listen(PORT, () => {
   const hasThree = fs.existsSync(path.join(THREE_DIR, 'three.module.js'));
   console.log(`DEFUSE 服务器已启动: http://localhost:${PORT}  (three.js 本地托管: ${hasThree ? '是' : '否，将使用 CDN'})`);
   const lan = [];
-  for (const list of Object.values(os.networkInterfaces())) {
-    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) lan.push(`http://${a.address}:${PORT}`);
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+    if (/vmware|virtualbox|vethernet|loopback|docker|wsl|tailscale|zerotier/i.test(name)) continue;
+    for (const a of list || []) {
+      if (a.family !== 'IPv4' || a.internal) continue;
+      if (!/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) continue;
+      lan.push(`http://${a.address}:${PORT}`);
+    }
   }
   if (lan.length) console.log('同一局域网（同一个 Wi-Fi）的朋友可以打开：' + lan.join('  '));
 });

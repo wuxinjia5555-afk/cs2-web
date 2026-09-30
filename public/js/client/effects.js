@@ -86,8 +86,9 @@ class Particles {
 }
 
 export class Effects {
-  constructor(scene) {
+  constructor(scene, opts = {}) {
     this.scene = scene;
+    this.low = !!opts.low;
     this.parts = new Particles(scene);
     // 曳光弹
     this.maxTr = 64;
@@ -127,7 +128,7 @@ export class Effects {
     this.fires = [];
     this.booms = [];
     this.lights = [];
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < (this.low ? 0 : 3); k++) {
       const l = new THREE.PointLight(0xffffff, 0, 10, 1.5);
       l.userData.busy = false;
       scene.add(l);
@@ -197,7 +198,8 @@ export class Effects {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     const sprites = [];
-    for (let k = 0; k < 40; k++) {
+    const n = this.low ? 26 : 40;
+    for (let k = 0; k < n; k++) {
       const m = new THREE.SpriteMaterial({ map: this.cloudTex, color: new THREE.Color().setHSL(0.1, 0.03, 0.52 + Math.random() * 0.12), transparent: true, depthWrite: false, opacity: 0 });
       const s = new THREE.Sprite(m);
       const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 2.7, h = Math.random() * 3.0;
@@ -236,7 +238,7 @@ export class Effects {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     const sprites = [];
-    for (let k = 0; k < 26; k++) {
+    for (let k = 0; k < (this.low ? 16 : 26); k++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flameTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, color: 0xffffff }));
       const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 2.5;
       s.position.set(Math.cos(a) * r, 0.35, Math.sin(a) * r);

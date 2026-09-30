@@ -1,7 +1,14 @@
 // 键鼠输入（指针锁定 + 原始鼠标输入）
 export class Input {
-  constructor(canvas) {
+  constructor(canvas, touch = false) {
     this.canvas = canvas;
+    this.touch = !!touch;
+    this.moveX = 0;
+    this.moveY = 0;
+    this.tdx = 0;
+    this.tdy = 0;
+    this.gyroYaw = 0;
+    this.gyroPitch = 0;
     this.keys = new Set();
     this.pressed = new Set();
     this.released = new Set();
@@ -69,7 +76,7 @@ export class Input {
   }
 
   _md(e) {
-    if (!this.active || !this.locked) return;
+    if (this.touch || !this.active || !this.locked) return;
     if (e.button > 2) return;
     this.mouse[e.button] = true;
     this.mDown[e.button] = true;
@@ -77,20 +84,20 @@ export class Input {
   }
 
   _mu(e) {
-    if (e.button > 2) return;
+    if (this.touch || e.button > 2) return;
     if (this.mouse[e.button]) this.mUp[e.button] = true;
     this.mouse[e.button] = false;
   }
 
   _mm(e) {
-    if (!this.locked) return;
+    if (this.touch || !this.locked) return;
     if (Math.abs(e.movementX) > 800 || Math.abs(e.movementY) > 800) return;
     this.dx += e.movementX;
     this.dy += e.movementY;
   }
 
   _wh(e) {
-    if (!this.locked) return;
+    if (this.touch || !this.locked) return;
     this.wheel += Math.sign(e.deltaY);
     e.preventDefault();
   }
@@ -110,6 +117,10 @@ export class Input {
   }
 
   lock() {
+    if (this.touch) {
+      if (!this.locked) { this.locked = true; if (this.onLockChange) this.onLockChange(true); }
+      return;
+    }
     if (this.locked) return;
     try {
       const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
@@ -120,7 +131,38 @@ export class Input {
   }
 
   unlock() {
+    if (this.touch) {
+      if (this.locked) { this.locked = false; this.releaseAll(); if (this.onLockChange) this.onLockChange(false); }
+      return;
+    }
     if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  // 触屏虚拟按键 / 鼠标键
+  vKey(code, down) {
+    if (down) {
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
+    } else {
+      if (this.keys.has(code)) this.released.add(code);
+      this.keys.delete(code);
+    }
+  }
+  vMouse(b, down) {
+    if (down) {
+      if (!this.mouse[b]) this.mDown[b] = true;
+      this.mouse[b] = true;
+    } else {
+      if (this.mouse[b]) this.mUp[b] = true;
+      this.mouse[b] = false;
+    }
+  }
+  releaseAll() {
+    for (const k of this.keys) this.released.add(k);
+    this.keys.clear();
+    for (let i = 0; i < 3; i++) { if (this.mouse[i]) this.mUp[i] = true; this.mouse[i] = false; }
+    this.moveX = 0;
+    this.moveY = 0;
   }
 
   down(c) { return this.keys.has(c); }
@@ -133,6 +175,10 @@ export class Input {
     this.mUp.fill(false);
     this.dx = 0;
     this.dy = 0;
+    this.tdx = 0;
+    this.tdy = 0;
+    this.gyroYaw = 0;
+    this.gyroPitch = 0;
     this.wheel = 0;
   }
 }

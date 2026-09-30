@@ -147,8 +147,9 @@ export class Hud {
     this.set('target-name', g.targetName || '');
     // 观战
     this.toggle('spec-info', !!specP || (spectating && me.team === 'SPEC'));
-    if (specP) $('spec-info').innerHTML = `正在观战：<b class="${specP.team === 'CT' ? 'ct-c' : 't-c'}">${esc(specP.name)}</b> ♥ ${specP.hp}<small>左键/右键 切换观战对象</small>`;
-    else if (spectating && me.team === 'SPEC') $('spec-info').innerHTML = '自由观战（WASD 移动，空格/Ctrl 升降）<small>按 M 选择阵营加入游戏</small>';
+    const T = g.isTouch;
+    if (specP) $('spec-info').innerHTML = `正在观战：<b class="${specP.team === 'CT' ? 'ct-c' : 't-c'}">${esc(specP.name)}</b> ♥ ${specP.hp}<small>${T ? '点下方 ◀ ▶ 切换观战对象' : '左键/右键 切换观战对象'}</small>`;
+    else if (spectating && me.team === 'SPEC') $('spec-info').innerHTML = T ? '自由观战（左侧摇杆移动，右侧滑动转视角）<small>点 ☰ 菜单选择阵营加入游戏</small>' : '自由观战（WASD 移动，空格/Ctrl 升降）<small>按 M 选择阵营加入游戏</small>';
     if (g.frameN % 2 === 0) this.drawRadar();
     if (this.sbOpen && now > this.sbT) { this.sbT = now + 0.5; this.renderScoreboard(); }
     if (this.buyOpen) this.updateBuyMenu();
@@ -191,13 +192,13 @@ export class Hud {
       }
       // 阶段提示
       let banner = '';
-      if (r.ph === 'freeze') banner = '购买阶段 · 按 B 打开购买菜单';
+      if (r.ph === 'freeze') banner = g.isTouch ? '购买阶段 · 点右上角「购买」' : '购买阶段 · 按 B 打开购买菜单';
       else if (r.ph === 'live' && svNow < r.be && g.canBuy()) banner = `购买时间剩余 ${Math.ceil((r.be - svNow) / 1000)} 秒`;
       this.set('phase-banner', banner);
       this.toggle('phase-banner', !!banner);
       let warm = '';
       if (r.ph === 'warmup') {
-        warm = g.isHost() ? '热身阶段 · 你是房主：按 F2 或在 Esc 菜单中「开始比赛」' : '热身阶段 · 等待房主开始比赛';
+        warm = g.isHost() ? (g.isTouch ? '热身阶段 · 你是房主：点 ☰ 菜单「开始比赛」' : '热身阶段 · 你是房主：按 F2 或在 Esc 菜单中「开始比赛」') : '热身阶段 · 等待房主开始比赛';
         if (r.pe > 0) warm += `（${Math.ceil(left)} 秒后自动开始）`;
       } else if (r.ph === 'idle') warm = '请选择阵营开始游戏';
       this.set('warmup-info', warm);
