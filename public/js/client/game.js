@@ -353,7 +353,10 @@ export class Game {
   }
 
   removePlayerModel(p) {
-    if (p.model) { this.scene.remove(p.model.root); p.model = null; }
+    if (!p.model) return;
+    this.scene.remove(p.model.root);
+    if (p.model.tag) { p.model.tag.material.map.dispose(); p.model.tag.material.dispose(); }
+    p.model = null;
   }
 
   // ---------------- 消息 ----------------
@@ -1434,6 +1437,8 @@ export class Game {
     this.closeChat();
     this.net.onmessage = null;
     this.net.onclose = null;
+    for (const p of this.players.values()) this.removePlayerModel(p);
+    this.fx.clearRound();
     this.scene.traverse((o) => {
       if (o.isMesh && o.parent === this.mapMesh) { o.geometry.dispose(); }
     });
