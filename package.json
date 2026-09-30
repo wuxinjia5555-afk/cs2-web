@@ -1,0 +1,17 @@
+{
+  "name": "defuse-web",
+  "version": "1.0.0",
+  "description": "网页版 CS2 风格多人战术射击游戏（Three.js + WebSocket，零依赖服务端）",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js",
+    "sim": "node tools/sim.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "three": "0.169.0"
+  }
+}

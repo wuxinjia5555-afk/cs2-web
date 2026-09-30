@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEFUSE 爆破行动 · 网页版战术射击</title>
+<meta name="description" content="网页版 CS2 风格多人 3D 战术射击：爆破模式、死斗、经济系统、机器人、联机房间">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23e8b43c' stroke-width='5'/%3E%3Cpath d='M32 4v18M32 42v18M4 32h18M42 32h18' stroke='%23e8b43c' stroke-width='5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+<script>
+  // three.js 来源：优先使用本服务器托管的副本，找不到再用 CDN
+  (function () {
+    var local = '/lib/three/three.module.js';
+    var cdn = 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
+    var ok = false;
+    try { var x = new XMLHttpRequest(); x.open('HEAD', local, false); x.send(); ok = x.status === 200; } catch (e) {}
+    var s = document.createElement('script');
+    s.type = 'importmap';
+    s.textContent = JSON.stringify({ imports: { three: ok ? local : cdn } });
+    document.currentScript.after(s);
+  })();
+</script>
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<!-- ================= 游戏内 HUD ================= -->
+<div id="hud" class="hidden">
+  <div id="radar-wrap"><canvas id="radar" width="200" height="200"></canvas><div id="radar-site"></div></div>
+  <div id="money-box"><span id="buyzone" class="hidden" title="购买区">🛒</span><span id="money">$800</span></div>
+  <div id="money-pop"></div>
+
+  <div id="topbar">
+    <div class="alive-row" id="alive-t"></div>
+    <div class="score t" id="score-t">0</div>
+    <div class="timer-box"><div id="timer">1:55</div><div id="round-label">第 1 回合</div></div>
+    <div class="score ct" id="score-ct">0</div>
+    <div class="alive-row" id="alive-ct"></div>
+  </div>
+  <div id="phase-banner" class="hidden"></div>
+
+  <div id="killfeed"></div>
+  <div id="chatlog"></div>
+  <div id="chat-input-wrap" class="hidden"><span id="chat-mode">全部</span><input id="chat-input" maxlength="120" autocomplete="off"></div>
+
+  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div>
+  <div id="hitmarker"></div>
+  <div id="center-msg"></div>
+  <div id="hint"></div>
+  <div id="progress" class="hidden"><div id="progress-label"></div><div class="bar"><div id="progress-fill"></div></div></div>
+  <div id="target-name"></div>
+
+  <div id="bottom-left">
+    <div class="stat"><span class="ico">✚</span><span id="hp">100</span></div>
+    <div class="stat"><span class="ico" id="armor-ico">⛨</span><span id="armor">0</span></div>
+    <div id="icons"><span id="ico-bomb" class="hidden">💣</span><span id="ico-kit" class="hidden">🔧</span></div>
+  </div>
+  <div id="bottom-right">
+    <div id="weapon-list"></div>
+    <div id="ammo-box"><span id="weapon-name">Glock-18</span><span id="ammo"><b id="clip">20</b><small id="reserve">/ 120</small></span></div>
+  </div>
+
+  <div id="spec-info" class="hidden"></div>
+  <div id="death-info" class="hidden"></div>
+  <div id="round-end" class="hidden"><div id="round-end-title"></div><div id="round-end-sub"></div></div>
+  <div id="warmup-info" class="hidden"></div>
+  <div id="fps"></div>
+
+  <div id="dmg-dirs"></div>
+  <div id="fx-flash"></div>
+  <div id="fx-smoke"></div>
+  <div id="fx-hurt"></div>
+  <div id="scope" class="hidden"><div class="lens"></div><div class="h"></div><div class="v"></div></div>
+</div>
+
+<!-- 买枪菜单 -->
+<div id="buymenu" class="overlay hidden">
+  <div class="panel wide">
+    <div class="panel-head"><h2>购买装备</h2><span id="buy-money">$0</span><span id="buy-time"></span><button class="btn small" data-close="buymenu">关闭 (B)</button></div>
+    <div id="buy-grid"></div>
+    <div class="buy-tip">点击购买 · 数字键 1-5 选择分类后按数字购买 · 购买区与购买时间限制同 CS2</div>
+  </div>
+</div>
+
+<!-- 记分板 -->
+<div id="scoreboard" class="overlay hidden">
+  <div class="panel wide">
+    <div class="panel-head"><h2 id="sb-title">记分板</h2><span id="sb-info"></span></div>
+    <div id="sb-body"></div>
+  </div>
+</div>
+
+<!-- 选择阵营 -->
+<div id="teamselect" class="overlay hidden">
+  <div class="panel">
+    <h2>选择阵营</h2>
+    <div class="team-cards">
+      <button class="team-card t" data-team="T"><b>T 匪徒</b><span>安放炸弹 · 消灭警察</span><em id="ts-t">0 人</em></button>
+      <button class="team-card ct" data-team="CT"><b>CT 警察</b><span>拆除炸弹 · 守住包点</span><em id="ts-ct">0 人</em></button>
+    </div>
+    <div class="row center">
+      <button class="btn" data-team="AUTO">自动分配</button>
+      <button class="btn ghost" data-team="SPEC">观战</button>
+    </div>
+  </div>
+</div>
+
+<!-- 暂停菜单 -->
+<div id="pause" class="overlay hidden">
+  <div class="panel narrow">
+    <h2>游戏菜单</h2>
+    <div id="pause-room"></div>
+    <button class="btn wide-btn" id="btn-resume">继续游戏</button>
+    <button class="btn wide-btn host-only hidden" id="btn-startmatch">开始比赛（结束热身）</button>
+    <button class="btn wide-btn" id="btn-team">选择阵营</button>
+    <button class="btn wide-btn" id="btn-copylink">复制邀请链接</button>
+    <button class="btn wide-btn" id="btn-settings-ig">设置</button>
+    <button class="btn wide-btn danger" id="btn-quit">退出到主菜单</button>
+  </div>
+</div>
+
+<!-- 比赛结束 -->
+<div id="matchend" class="overlay hidden">
+  <div class="panel wide">
+    <h2 id="me-title">比赛结束</h2>
+    <div id="me-score"></div>
+    <div id="me-body"></div>
+    <div class="me-tip">新比赛即将开始…</div>
+  </div>
+</div>
+
+<!-- ================= 主菜单 ================= -->
+<div id="menus">
+  <div id="menu-main" class="menu">
+    <div class="logo"><span>DEFUSE</span><small>爆破行动 · 网页版 CS2 风格战术射击</small></div>
+    <div class="menu-box">
+      <label class="field"><span>昵称</span><input id="name-input" maxlength="16" placeholder="输入你的昵称"></label>
+      <button class="btn big" id="btn-offline">🎯 单机练习（人机对战）</button>
+      <button class="btn big" id="btn-online">🌐 联机对战</button>
+      <div class="row">
+        <button class="btn" id="btn-settings">⚙ 设置</button>
+        <button class="btn" id="btn-help">⌨ 操作说明</button>
+      </div>
+    </div>
+    <div class="foot">地图、模型、音效均为原创程序生成 · 玩法规则参考 CS2</div>
+  </div>
+
+  <div id="menu-offline" class="menu hidden">
+    <div class="menu-box wide">
+      <h2>单机练习</h2>
+      <div class="map-cards" id="off-maps"></div>
+      <div class="grid2">
+        <label class="field"><span>模式</span><select id="off-mode"><option value="bomb">爆破模式</option><option value="dm">死斗</option></select></label>
+        <label class="field"><span>机器人难度</span><select id="off-diff"><option value="0">简单</option><option value="1" selected>普通</option><option value="2">困难</option></select></label>
+        <label class="field"><span>每队人数</span><select id="off-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
+        <label class="field"><span>回合数</span><select id="off-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
+      </div>
+      <div class="row">
+        <button class="btn ghost" data-back>返回</button>
+        <button class="btn big accent" id="btn-start-offline">开始游戏</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu-online" class="menu hidden">
+    <div class="menu-box wide">
+      <h2>联机对战 <small id="net-status">未连接</small></h2>
+      <div class="row">
+        <input id="join-code" maxlength="4" placeholder="房间码">
+        <button class="btn" id="btn-join">加入</button>
+        <button class="btn" id="btn-refresh">刷新</button>
+        <span class="spacer"></span>
+        <button class="btn accent" id="btn-show-create">＋ 创建房间</button>
+      </div>
+      <div id="room-list"><div class="empty">正在连接服务器…</div></div>
+      <div id="create-form" class="hidden">
+        <h3>创建房间</h3>
+        <div class="map-cards" id="on-maps"></div>
+        <div class="grid2">
+          <label class="field"><span>房间名</span><input id="on-name" maxlength="24" placeholder="我的房间"></label>
+          <label class="field"><span>模式</span><select id="on-mode"><option value="bomb">爆破模式</option><option value="dm">死斗</option></select></label>
+          <label class="field"><span>机器人补位</span><select id="on-bots"><option value="1">开启</option><option value="0">关闭</option></select></label>
+          <label class="field"><span>机器人难度</span><select id="on-diff"><option value="0">简单</option><option value="1" selected>普通</option><option value="2">困难</option></select></label>
+          <label class="field"><span>每队人数</span><select id="on-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
+          <label class="field"><span>回合数</span><select id="on-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
+        </div>
+        <div class="row"><button class="btn ghost" id="btn-hide-create">取消</button><button class="btn accent big" id="btn-create">创建并进入</button></div>
+      </div>
+      <div class="row"><button class="btn ghost" data-back>返回</button></div>
+    </div>
+  </div>
+
+  <div id="menu-settings" class="menu hidden">
+    <div class="menu-box wide">
+      <h2>设置</h2>
+      <div class="grid2">
+        <label class="field"><span>鼠标灵敏度 <b id="v-sens"></b></span><input type="range" id="s-sens" min="0.2" max="8" step="0.05"></label>
+        <label class="field"><span>开镜灵敏度倍率 <b id="v-zoom"></b></span><input type="range" id="s-zoom" min="0.3" max="2" step="0.05"></label>
+        <label class="field"><span>音量 <b id="v-vol"></b></span><input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
+        <label class="field"><span>画面分辨率 <b id="v-res"></b></span><input type="range" id="s-res" min="0.5" max="1.5" step="0.1"></label>
+        <label class="field"><span>准星颜色</span><input type="color" id="s-xcolor"></label>
+        <label class="field"><span>准星长度 <b id="v-xlen"></b></span><input type="range" id="s-xlen" min="1" max="14" step="1"></label>
+        <label class="field"><span>准星间隙 <b id="v-xgap"></b></span><input type="range" id="s-xgap" min="0" max="12" step="1"></label>
+        <label class="field"><span>准星粗细 <b id="v-xthick"></b></span><input type="range" id="s-xthick" min="1" max="5" step="1"></label>
+        <label class="check"><input type="checkbox" id="s-xdot"> 准星中心点</label>
+        <label class="check"><input type="checkbox" id="s-xdyn"> 动态准星（随精度扩散）</label>
+        <label class="check"><input type="checkbox" id="s-shadows"> 实时阴影</label>
+        <label class="check"><input type="checkbox" id="s-voice"> 语音播报（下包/胜负）</label>
+        <label class="check"><input type="checkbox" id="s-full"> 进入游戏自动全屏（防止 Ctrl+W 误关页面）</label>
+        <label class="check"><input type="checkbox" id="s-fps"> 显示帧率/延迟</label>
+      </div>
+      <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
+      <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
+    </div>
+  </div>
+
+  <div id="menu-help" class="menu hidden">
+    <div class="menu-box wide">
+      <h2>操作说明</h2>
+      <div class="keys">
+        <div><kbd>W A S D</kbd> 移动</div><div><kbd>鼠标</kbd> 瞄准</div>
+        <div><kbd>左键</kbd> 开火 / 投掷</div><div><kbd>右键</kbd> 开镜 / 重刀 / 轻抛</div>
+        <div><kbd>空格</kbd> 跳跃</div><div><kbd>Ctrl</kbd> / <kbd>C</kbd> 下蹲</div>
+        <div><kbd>Shift</kbd> 静步（无脚步声）</div><div><kbd>R</kbd> 换弹</div>
+        <div><kbd>1-5</kbd> 主武器/手枪/刀/投掷物/C4</div><div><kbd>Q</kbd> 切换上一把武器</div>
+        <div><kbd>滚轮</kbd> 切换武器</div><div><kbd>G</kbd> 丢弃武器</div>
+        <div><kbd>E</kbd> 拆弹（按住）/ 捡武器</div><div><kbd>B</kbd> 买枪菜单</div>
+        <div><kbd>Tab</kbd> 记分板</div><div><kbd>Y</kbd> / <kbd>U</kbd> 全体 / 队伍聊天</div>
+        <div><kbd>M</kbd> 选择阵营</div><div><kbd>F</kbd> 检视武器</div>
+        <div><kbd>Esc</kbd> 菜单</div><div><kbd>F2</kbd> 房主开始比赛</div>
+      </div>
+      <div class="help-text">
+        <p><b>爆破模式：</b>T 需要把 C4 带到 A 或 B 包点，切到 C4（按 5）后按住左键 3.2 秒安放；炸弹 40 秒后爆炸。CT 靠近炸弹按住 E 拆除（10 秒，有拆弹器 5 秒）。消灭全部敌人也能赢得回合。先赢过半回合的一方获胜，半场交换阵营。</p>
+        <p><b>经济：</b>开局 $800，胜利 $3250（炸弹爆炸/拆除 $3500），连败补偿 $1400 起每次 +$500。击杀奖励：步枪 $300、冲锋枪 $600、霰弹枪 $900、AWP $100、刀 $1500。</p>
+        <p><b>枪法：</b>移动、跳跃时开枪非常不准，开枪前松开方向键（或按反方向急停）。步枪连射会按固定弹道上跳，向下拉鼠标压枪。爆头伤害 ×4。</p>
+      </div>
+      <div class="row"><button class="btn ghost" data-back>返回</button></div>
+    </div>
+  </div>
+
+  <div id="loading" class="hidden"><div class="spinner"></div><div id="loading-text">加载中…</div></div>
+  <div id="toast"></div>
+</div>
+<noscript>需要开启 JavaScript 才能游玩。</noscript>
+<script>
+  setTimeout(function () {
+    if (window.__gameReady) return;
+    var l = document.getElementById('loading');
+    l.classList.remove('hidden');
+    document.getElementById('loading-text').innerHTML = '游戏脚本加载失败（可能是 three.js 下载失败或浏览器版本太旧）。<br>请刷新重试，建议使用最新版 Chrome / Edge。';
+  }, 15000);
+</script>
+</body>
+</html>
