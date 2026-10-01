@@ -75,6 +75,8 @@ export function buildMapMeshes(map) {
   const group = new THREE.Group();
   const buckets = new Map();
   const barrels = [];
+  // 只画不挡人的装饰（梯子）
+  for (const bx of map.decos || []) addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale: TEX_SCALE[bx.mat] || 2 });
   for (const bx of map.boxes) {
     const scale = TEX_SCALE[bx.mat] || 2;
     switch (bx.kind) {

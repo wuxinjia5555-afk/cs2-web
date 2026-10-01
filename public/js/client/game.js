@@ -1284,6 +1284,7 @@ export class Game {
     if (this.touchMoveWas && !touchMove && inp.touch && settings.quickStop !== false) this.quickStopT = this.now + 0.12;
     this.touchMoveWas = touchMove;
     cmd.yaw = this.yaw;
+    cmd.pitch = this.pitch;
     cmd.speed = moveSpeed(w, this.w.scope > 0) * (this.now < this.tagUntil ? 0.55 : 1);
     cmd.frozen = this.frozen();
     this.acc += dt;

@@ -16,6 +16,7 @@ export const P = {
   standEye: 1.63,
   crouchEye: 1.17,
   stepH: 0.45,
+  ladderSpeed: 2.4, // 爬梯子速度（米/秒）
   accel: 5.5,
   airAccel: 12,
   friction: 5.2,

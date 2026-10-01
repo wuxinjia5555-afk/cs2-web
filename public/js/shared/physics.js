@@ -161,6 +161,19 @@ function moveAxis(world, s, axis, amount, h) {
   return false;
 }
 
+// 玩家是否碰到梯子（梯子是一个贴着墙的长方体范围，nx/nz 是梯子朝外的方向）
+function ladderAt(world, s, h) {
+  const L = world.ladders;
+  if (!L || !L.length) return null;
+  const r = P.radius + 0.05;
+  for (const l of L) {
+    if (s.x + r < l.min[0] || s.x - r > l.max[0] || s.z + r < l.min[2] || s.z - r > l.max[2]) continue;
+    if (s.y > l.max[1] || s.y + h < l.min[1]) continue;
+    return l;
+  }
+  return null;
+}
+
 function applyFriction(s, dt) {
   const speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
   if (speed < 1e-4) { s.vx = 0; s.vz = 0; return; }
@@ -218,6 +231,34 @@ export function stepPlayer(s, cmd, dt, world) {
   if (wl > 1e-6) {
     wx /= wl; wz /= wl;
     wishspeed = cmd.speed * (s.crouched ? P.crouchMul : cmd.walk ? P.walkMul : 1);
+  }
+
+  // 梯子：朝着梯子走就是爬（看上面往上爬、看下面往下爬），不按方向就挂在梯子上；跳跃跳离梯子
+  if (s.ladderCD > 0) s.ladderCD -= dt;
+  const lad = cmd.frozen || s.ladderCD > 0 ? null : ladderAt(world, s, h);
+  if (lad) {
+    const mag = Math.min(1, wl);
+    const a = mag > 1e-6 ? -(wx * lad.nx + wz * lad.nz) : 0; // >0：朝着梯子
+    const climb = a * mag * ((cmd.pitch || 0) > -0.35 ? 1 : -1);
+    // 站在梯子脚下又不是往上爬：照常走路（这样能离开梯子）
+    if (!(s.onGround && climb <= 0.05)) {
+      if (cmd.jump && !s.jumpHeld) {
+        s.jumpHeld = true;
+        s.ladderCD = 0.35;
+        s.vx = lad.nx * 3.2; s.vz = lad.nz * 3.2; s.vy = 2.4;
+      } else {
+        if (!cmd.jump) s.jumpHeld = false;
+        const lx = (wx + lad.nx * a) * mag, lz = (wz + lad.nz * a) * mag; // 沿着梯子横着挪
+        s.vx = lx * 1.5 - lad.nx * 0.6; // 轻轻贴着梯子，爬到顶会被带上平台
+        s.vz = lz * 1.5 - lad.nz * 0.6;
+        s.vy = climb * P.ladderSpeed;
+      }
+      s.onGround = false;
+      if (moveAxis(world, s, 0, s.vx * dt, h)) s.vx = 0;
+      if (moveAxis(world, s, 2, s.vz * dt, h)) s.vz = 0;
+      if (moveAxis(world, s, 1, s.vy * dt, h)) { if (s.vy < 0) s.onGround = true; s.vy = 0; }
+      return;
+    }
   }
 
   if (s.onGround) {

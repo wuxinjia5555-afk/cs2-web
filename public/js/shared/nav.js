@@ -61,7 +61,7 @@ export class Nav {
     return -1;
   }
 
-  findPath(start, goal, maxIter = 8000) {
+  findPath(start, goal, maxIter = Math.max(8000, (this.W * this.H) >> 1)) {
     if (start < 0 || goal < 0 || !this.walk[goal]) return null;
     if (start === goal) return [goal];
     const W = this.W, H = this.H;

@@ -3,6 +3,7 @@ import { World } from './physics.js';
 import { Nav } from './nav.js';
 import { LEVEL_H } from './constants.js';
 import { DUST2_ROWS, decodeRows } from './dust2.js';
+import { MIRAGE_ROWS } from './mirage.js';
 
 export const CELL = { WALL: 0, FLOOR: 1, CRATE: 2, CRATE2: 3, LOW: 4, BARREL: 5 };
 const OBJ_CHAR = { x: CELL.CRATE, X: CELL.CRATE2, h: CELL.LOW, o: CELL.BARREL };
@@ -21,6 +22,7 @@ class Builder {
     this.sites = {}; this.spawns = { T: null, CT: null }; this.buy = { T: [], CT: [] };
     this.dummies = [];
     this.blocked = new Set();
+    this.bridges = []; this.ladders = [];
   }
   rect(c0, r0, c1, r1, fn) {
     for (let r = Math.max(0, r0); r <= Math.min(this.H - 1, r1); r++)
@@ -74,6 +76,40 @@ class Builder {
       }
     });
   }
+  // 按字符图建图（高度不封顶，0~25 级）：# 墙；a-z 地面高度级；A-Z 箱子（字母为顶部高度级）
+  heights(rows, boxMat = 'crate') {
+    rows.forEach((row, r) => {
+      for (let c = 0; c < row.length && c < this.W; c++) {
+        const ch = row[c], i = r * this.W + c;
+        if (ch === '#') continue;
+        if (ch >= 'a' && ch <= 'z') { this.type[i] = CELL.FLOOR; this.level[i] = ch.charCodeAt(0) - 97; continue; }
+        this.type[i] = CELL.WALL;
+        this.wh[i] = Math.max(1.0, (ch.charCodeAt(0) - 65) * LEVEL_H);
+        this.wmat[i] = boxMat;
+      }
+    });
+  }
+  // 去掉单格的细脊 / 小坑（雷达图描边留下的杂点）：比左右或上下两边都高（低）2 级以上的格子，拉平到四周的平均高度
+  despeckle(passes = 2) {
+    const { W, H } = this;
+    const fl = (i) => this.type[i] === CELL.FLOOR;
+    for (let p = 0; p < passes; p++) {
+      for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+        const i = r * W + c;
+        if (!fl(i)) continue;
+        const lv = this.level[i], L = i - 1, R = i + 1, U = i - W, D = i + W;
+        const ridge = (a, b) => fl(a) && fl(b) && (lv - Math.max(this.level[a], this.level[b]) >= 2 || Math.min(this.level[a], this.level[b]) - lv >= 2);
+        if (!ridge(L, R) && !ridge(U, D)) continue;
+        let sum = 0, n = 0;
+        for (const j of [L, R, U, D]) if (fl(j)) { sum += this.level[j]; n++; }
+        this.level[i] = Math.round(sum / n);
+      }
+    }
+  }
+  // 楼板（桥）：下面是通道，上面能走人；寻路按楼板上面那层算。holes：楼板上留的洞（梯子口）[[c0, r0, c1, r1]]
+  bridge(c0, r0, c1, r1, level, mat, holes = []) { this.bridges.push({ c0, r0, c1, r1, level, mat, holes }); }
+  // 梯子：格子范围 + 高度级范围，nx/nz 是梯子朝外（人站的那边）的方向
+  ladder(c0, r0, c1, r1, lv0, lv1, nx, nz) { this.ladders.push({ c0, r0, c1, r1, lv0, lv1, nx, nz }); }
   // 清理误识别的箱子：1 格宽的细线、零星的单格都还原成地面（高度取周围地面的中位数）
   cleanBoxes(boxMat = 'crate') {
     const { W, H } = this, seen = new Uint8Array(W * H);
@@ -216,8 +252,40 @@ export function buildMap(id) {
     boxes.push({ min: [d.c0 * S, y, d.r0 * S], max: [(d.c1 + 1) * S, wallH, (d.r1 + 1) * S], mat: def.wallMat, kind: 'wall' });
   }
   for (const e of B.extra) boxes.push(e);
+  // 楼板（桥）：按格子合并成几块板，洞口不盖；寻路时这些格子按楼板上面的高度算
+  const navLevel = B.level.slice();
+  for (const br of B.bridges) {
+    const inHole = (c, r) => br.holes.some(([a0, b0, a1, b1]) => c >= a0 && c <= a1 && r >= b0 && r <= b1);
+    const cover = (i) => {
+      const c = i % W, r = (i / W) | 0;
+      return c >= br.c0 && c <= br.c1 && r >= br.r0 && r <= br.r1 && !inHole(c, r) ? 1 : null;
+    };
+    const top = br.level * LEVEL_H;
+    greedy(W, H, cover, (c0, r0, c1, r1) => {
+      boxes.push({ min: [c0 * S, top - 0.35, r0 * S], max: [(c1 + 1) * S, top, (r1 + 1) * S], mat: br.mat || def.floorMat, kind: 'roof' });
+    });
+    B.rect(br.c0, br.r0, br.c1, br.r1, (i, c, r) => { if (!inHole(c, r)) navLevel[i] = br.level; });
+  }
+  // 梯子：碰撞范围给物理用；外观（两根竖杆 + 横档）单独画，不挡人
+  const ladders = [], decos = [];
+  for (const l of B.ladders) {
+    const x0 = l.c0 * S, x1 = (l.c1 + 1) * S, z0 = l.r0 * S, z1 = (l.r1 + 1) * S, y0 = l.lv0 * LEVEL_H, y1 = l.lv1 * LEVEL_H;
+    ladders.push({ min: [x0, y0, z0], max: [x1, y1 + 0.3, z1], nx: l.nx, nz: l.nz });
+    // 贴墙的那一面
+    const wallX = l.nx < 0 ? x1 : l.nx > 0 ? x0 : null, wallZ = l.nz < 0 ? z1 : l.nz > 0 ? z0 : null;
+    const along = wallX != null ? 'z' : 'x';
+    const a0 = along === 'z' ? z0 : x0, a1 = along === 'z' ? z1 : x1, mid = (a0 + a1) / 2, half = Math.min(0.28, (a1 - a0) / 2 - 0.05);
+    const put = (p0, p1, yy0, yy1, d0, d1) => {
+      if (along === 'z') { const wx = wallX + l.nx * d0, wx2 = wallX + l.nx * d1; decos.push({ min: [Math.min(wx, wx2), yy0, p0], max: [Math.max(wx, wx2), yy1, p1], mat: 'metal' }); }
+      else { const wz = wallZ + l.nz * d0, wz2 = wallZ + l.nz * d1; decos.push({ min: [p0, yy0, Math.min(wz, wz2)], max: [p1, yy1, Math.max(wz, wz2)], mat: 'metal' }); }
+    };
+    put(mid - half - 0.03, mid - half + 0.03, y0, y1 + 0.9, 0.02, 0.1);
+    put(mid + half - 0.03, mid + half + 0.03, y0, y1 + 0.9, 0.02, 0.1);
+    for (let y = y0 + 0.3; y < y1 + 0.6; y += 0.32) put(mid - half, mid + half, y, y + 0.04, 0.03, 0.09);
+  }
 
   const world = new World(boxes);
+  world.ladders = ladders;
 
   const cellPos = (c, r) => {
     const i = r * W + c;
@@ -259,13 +327,26 @@ export function buildMap(id) {
 
   const walk = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) walk[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) ? 1 : 0;
+  // 小格子地图（半米一格）：挨着墙 / 箱子的格子不给机器人走，留出人的身位（不然会往人过不去的窄缝里钻）
+  if (S < 0.8) {
+    const solid = (i) => B.type[i] !== CELL.FLOOR;
+    const keep = new Uint8Array(W * H);
+    for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+      const i = r * W + c;
+      if (!walk[i]) continue;
+      let ok = 1;
+      for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (solid(i + dr * W + dc)) { ok = 0; break; }
+      keep[i] = ok;
+    }
+    walk.set(keep);
+  }
   // 屋顶下的格子也可走；门梁不影响
-  const nav = new Nav(W, H, S, walk, B.level);
+  const nav = new Nav(W, H, S, walk, navLevel);
 
   return {
     id, name: def.name, theme: def.theme, def, W, H, S, wallH,
     type: B.type, level: B.level, wh: B.wh,
-    boxes, world, nav, spawns, sites, buy, dmSpawns, dummies,
+    boxes, world, nav, spawns, sites, buy, dmSpawns, dummies, ladders, decos,
     bounds: { x0: 0, z0: 0, x1: W * S, z1: H * S },
   };
 }
@@ -308,6 +389,31 @@ export const MAPS = {
       b.spawnNear('CT', 68, 25, 10, Math.PI);
       b.buyzone('T', 28, 94, 56, 108);
       b.buyzone('CT', 58, 16, 82, 32);
+    },
+  },
+  mirage: {
+    name: '荒漠迷城', desc: 'Mirage 布局：A 坡道 / Palace / A 点、中路 / 窗口 / 连接、B 公寓、B 小道、地下通道和梯子间', theme: 'desert',
+    w: 256, h: 256, cell: 0.508, wallH: 14,
+    floorMat: 'sand', wallMat: 'plaster', crateMat: 'crate', lowMat: 'sandbag', roofMat: 'roof',
+    build(b) {
+      b.heights(decodeRows(MIRAGE_ROWS));
+      b.cleanBoxes();
+      b.despeckle();
+      // 地下通道：后巷那头的台阶下到底 → 往南从 B 小道下面穿过（上面盖楼板）→ 梯子间 → 台阶上到中路窗口下面
+      b.floor(106, 60, 113, 99, 1, 'concrete');
+      b.ramp(106, 100, 113, 111, 'y', 1, 5, 'concrete');
+      b.bridge(106, 68, 113, 99, 8, 'concrete', [[110, 87, 113, 92]]);
+      // 梯子间：梯子挂在通道东墙上，从通道爬到 B 小道那一层
+      b.ladder(113, 88, 113, 91, 1, 9, -1, 0);
+      b.floorMat(126, 184, 147, 206, 'site_d');   // A 点
+      b.floorMat(47, 59, 71, 85, 'site_d');       // B 点
+      b.floorMat(100, 104, 160, 126, 'road');     // 中路
+      b.site('A', 126, 184, 147, 206);
+      b.site('B', 47, 59, 71, 85);
+      b.spawnNear('T', 225, 92, 10, Math.PI / 2);
+      b.spawnNear('CT', 79, 178, 10, -Math.PI / 2);
+      b.buyzone('T', 212, 76, 238, 110);
+      b.buyzone('CT', 66, 158, 92, 198);
     },
   },
   // 靶场（训练场）：不出现在普通地图列表里
