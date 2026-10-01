@@ -512,6 +512,7 @@ function bindSettings() {
   chk('s-gyroinvx', 'gyroInvX', settings);
   chk('s-gyroinvy', 'gyroInvY', settings);
   chk('s-gyroswap', 'gyroSwap', settings);
+  chk('s-firedrag', 'fireDragLook', settings);
   renderBinds();
   updateGyroStatus();
   chk('s-assist', 'aimAssist', settings);

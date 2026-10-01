@@ -287,7 +287,7 @@ export class TouchControls {
       this.inp.moveY = my;
     } else if (p.kind === 'btn' && p.act === 'nade' && this.wheelOpen) {
       this.wheelMove(e.clientX, e.clientY);
-    } else if (p.kind === 'look' || (p.kind === 'btn' && p.act === 'fire')) {
+    } else if (p.kind === 'look' || (p.kind === 'btn' && p.act === 'fire' && settings.fireDragLook !== false)) {
       this.inp.tdx += dx;
       this.inp.tdy += dy;
     }

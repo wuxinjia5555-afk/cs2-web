@@ -54,6 +54,7 @@ export const DEFAULTS = {
   gyroInvX: false,
   gyroInvY: false,
   gyroSwap: false,
+  fireDragLook: true,
   // 自定义按钮布局：{ 按钮: { x, y（占屏幕宽高的比例，按钮中心）, s（大小倍数） } }
   touchLayout: {},
   binds: defaultBinds(),
