@@ -550,10 +550,10 @@ function bindSettings() {
   rng('s-tsy', 'touchSensY', settings, (v) => '×' + v.toFixed(2));
   rng('s-gsx', 'gyroSensX', settings, (v) => '×' + v.toFixed(2));
   rng('s-gsy', 'gyroSensY', settings, (v) => '×' + v.toFixed(2));
-  for (const [id, key] of [['s-crouchmode', 'crouchMode'], ['s-scopemode', 'scopeMode']]) {
+  for (const [id, key] of [['s-crouchmode', 'crouchMode'], ['s-scopemode', 'scopeMode'], ['s-joymode', 'joyMode']]) {
     const el = $(id);
-    el.value = settings[key];
-    el.onchange = () => { settings[key] = el.value; saveSettings(); };
+    el.value = settings[key] || el.options[0].value;
+    el.onchange = () => { settings[key] = el.value; saveSettings(); relayout(); };
   }
   chk('s-gyroscope', 'gyroScope', settings);
   chk('s-gyroinvx', 'gyroInvX', settings);

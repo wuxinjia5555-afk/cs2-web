@@ -38,7 +38,7 @@ const HTML = `
 // 可以自定义位置和大小的按钮
 const CUSTOM = [['fire', '.t-fire', '开火'], ['firel', '.t-fire-l', '左开火'], ['jump', '.t-jump', '跳'], ['crouch', '.t-crouch', '蹲'],
   ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏'],
-  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['drop', '.t-dropbtn', '丢弃'], ['radar', '.t-radar-proxy', '小地图'],
+  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['drop', '.t-dropbtn', '丢弃'], ['joy', '.t-joy', '移动摇杆'], ['radar', '.t-radar-proxy', '小地图'],
   ['top', '.t-top', '右上角按钮']];
 const NADE_SHORT = { he: '手雷', flash: '闪光', smoke: '烟雾', molotov: '燃烧', incgrenade: '燃烧' };
 
@@ -101,6 +101,10 @@ export class TouchControls {
     this.el.style.setProperty('--to', String(settings.btnOpacity));
     this.q('.t-fire-l').classList.toggle('off', !settings.leftFire);
     this.joyR = b * 0.95;
+    // 固定摇杆：一直显示在布局里的位置（可以拖、可以调大小）
+    this.joyFixed = settings.joyMode === 'fixed';
+    this.joy.classList.toggle('fixed', this.joyFixed);
+    if (this.joyFixed) { this.joy.style.left = ''; this.joy.style.top = ''; this.setKnob(0, 0); }
     this.applyCustom(this.editing ? this.draft : settings.touchLayout);
   }
 
@@ -272,7 +276,18 @@ export class TouchControls {
       p.btn = btn;
       btn.classList.add('on');
       this.press(p.act, true);
-    } else if (e.clientX < innerWidth * 0.42 && e.clientY > innerHeight * 0.22 && ![...this.ptrs.values()].some((q) => q.kind === 'joy')) {
+    } else if (this.joyFixed && !this.joyBusy()) {
+      // 固定摇杆：按在摇杆附近才算，摇杆底座不动
+      const r = this.joy.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      if (Math.hypot(e.clientX - cx, e.clientY - cy) < (r.width / 2) * 1.5) {
+        p.kind = 'joy';
+        p.bx = cx;
+        p.by = cy;
+        p.r = r.width / 2;
+        this.joy.classList.add('on');
+        this.joyMove(p, e.clientX, e.clientY);
+      }
+    } else if (!this.joyFixed && e.clientX < innerWidth * 0.42 && e.clientY > innerHeight * 0.22 && !this.joyBusy()) {
       p.kind = 'joy';
       p.bx = e.clientX;
       p.by = e.clientY;
@@ -292,7 +307,9 @@ export class TouchControls {
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
     p.x = e.clientX;
     p.y = e.clientY;
-    if (p.kind === 'joy') {
+    if (p.kind === 'joy' && this.joyFixed) {
+      this.joyMove(p, e.clientX, e.clientY);
+    } else if (p.kind === 'joy') {
       let vx = e.clientX - p.bx, vy = e.clientY - p.by;
       const r = this.joyR, l = Math.hypot(vx, vy);
       if (l > r * 1.6) {
@@ -326,12 +343,28 @@ export class TouchControls {
     this.ptrs.delete(e.pointerId);
     if (p.kind === 'joy') {
       this.joy.classList.remove('on');
+      this.setKnob(0, 0);
       this.inp.moveX = 0;
       this.inp.moveY = 0;
     } else if (p.kind === 'btn') {
       p.btn.classList.remove('on');
       this.press(p.act, false);
     }
+  }
+
+  joyBusy() { return [...this.ptrs.values()].some((q) => q.kind === 'joy'); }
+
+  // 固定摇杆：底座不跟手，摇杆头最多推到底座边缘（大小跟着布局里的缩放）
+  joyMove(p, x, y) {
+    let vx = x - p.bx, vy = y - p.by;
+    const r = p.r * 0.95, l = Math.hypot(vx, vy);
+    if (l > r) { vx *= r / l; vy *= r / l; }
+    const ts = parseFloat(getComputedStyle(this.joy).getPropertyValue('--ts')) || 1;
+    this.setKnob(vx / ts, vy / ts);
+    let mx = vx / r, my = -vy / r;
+    if (Math.hypot(mx, my) < 0.14) { mx = 0; my = 0; }
+    this.inp.moveX = mx;
+    this.inp.moveY = my;
   }
 
   setKnob(x, y) {

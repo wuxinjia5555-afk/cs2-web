@@ -30,6 +30,7 @@ export const DEFAULTS = {
   soundViz: true,
   hitmarker: true, // 打中时准星旁边的四条线
   quickStop: true, // 手机：松开摇杆立刻急停
+  joyMode: 'float', // 手机移动摇杆：float 浮动（按哪里就在哪里）/ fixed 固定（位置大小在自定义按键布局里调）
   res: 1.0,
   shadows: true,
   voice: true,

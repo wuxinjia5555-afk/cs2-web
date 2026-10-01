@@ -289,6 +289,10 @@ html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent
 .t-joy { position: absolute; width: calc(var(--tb) * 1.9); height: calc(var(--tb) * 1.9); margin: calc(var(--tb) * -.95) 0 0 calc(var(--tb) * -.95);
   border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .07); display: none; pointer-events: none; }
 .t-joy.on { display: block; }
+/* 固定摇杆：一直显示（默认在左下角，可以在自定义按键布局里拖动、调大小） */
+.t-joy.fixed { display: block; left: calc(var(--tb) * 1.9 + env(safe-area-inset-left)); top: calc(100% - var(--tb) * 1.9 - env(safe-area-inset-bottom)); pointer-events: auto; }
+.t-joy.fixed.on { border-color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .12); }
+#touch-ui:not(.editing).dead .t-joy.fixed { display: none; }
 .t-knob { position: absolute; left: 50%; top: 50%; width: calc(var(--tb) * .8); height: calc(var(--tb) * .8); border-radius: 50%;
   background: rgba(255, 255, 255, .45); transform: translate(-50%, -50%); }
 .t-weapons { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(5px + env(safe-area-inset-bottom)); display: flex; gap: 5px; }
@@ -487,7 +491,7 @@ body.touch #kill-icons { display: none; }
 #touch-ui.editing .t-btn, #touch-ui.editing .t-buy, #touch-ui.editing .t-weapons { display: flex !important; outline: 2px dashed rgba(255, 255, 255, .75); outline-offset: 4px; }
 #touch-ui.editing .off { opacity: .45; }
 #touch-ui.editing .tl-sel { outline: 3px solid #ffd23f !important; }
-#touch-ui.editing .t-spec, #touch-ui.editing .t-joy { display: none !important; }
+#touch-ui.editing .t-spec, #touch-ui.editing .t-joy:not(.fixed) { display: none !important; }
 #touch-ui.editing .t-top { outline: 2px dashed rgba(255, 255, 255, .75); outline-offset: 3px; }
 #touch-ui.editing .t-top .off { display: inline-flex !important; }
 .tl-panel { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 2; width: min(420px, 92vw);
