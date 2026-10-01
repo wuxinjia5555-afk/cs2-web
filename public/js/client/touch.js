@@ -28,6 +28,18 @@ const HTML = `
 <div class="t-spec"><button class="t-sm" data-act="specPrev">◀ 上一个</button><button class="t-sm" data-act="specNext">下一个 ▶</button></div>
 `;
 
+let gyroTipShown = '';
+function gyroTip(text) {
+  if (gyroTipShown === text) return;
+  gyroTipShown = text;
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(gyroTip.t);
+  gyroTip.t = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
 export class TouchControls {
   constructor(game) {
     this.g = game;
@@ -235,17 +247,42 @@ export class TouchControls {
   // ---------------- 陀螺仪 ----------------
   enableGyro() {
     if (this.gyroOn) return;
-    const start = () => { this.gyroOn = true; window.addEventListener('devicemotion', this.h.motion); };
     const DME = window.DeviceMotionEvent;
-    if (DME && typeof DME.requestPermission === 'function') {
-      DME.requestPermission().then((r) => { if (r === 'granted') start(); }).catch(() => {});
-    } else if (DME) start();
+    if (!window.isSecureContext) {
+      gyroTip('陀螺仪需要用 https 地址打开：在电脑上点主菜单「手机扫码」重新扫码进入');
+      return;
+    }
+    if (!DME) { gyroTip('这个浏览器不支持陀螺仪'); return; }
+    const start = () => {
+      if (this.gyroOn) return;
+      this.gyroOn = true;
+      this.motionSeen = false;
+      window.addEventListener('devicemotion', this.h.motion);
+      setTimeout(() => { if (this.gyroOn && !this.motionSeen) gyroTip('没有收到陀螺仪数据：这台手机或浏览器可能不支持'); }, 2500);
+    };
+    if (typeof DME.requestPermission === 'function') {
+      // iPhone：必须在点击屏幕时申请权限
+      const ask = () => {
+        DME.requestPermission().then((r) => {
+          if (r === 'granted') start();
+          else gyroTip('没有获得陀螺仪权限：可在 Safari 设置里允许“运动与方向访问”');
+        }).catch(() => {
+          if (!this.gyroAskBound) {
+            this.gyroAskBound = true;
+            const once = () => { this.gyroAskBound = false; this.el.removeEventListener('touchend', once); if (settings.gyro && !this.gyroOn) ask(); };
+            this.el.addEventListener('touchend', once);
+          }
+        });
+      };
+      ask();
+    } else start();
   }
   disableGyro() {
     this.gyroOn = false;
     window.removeEventListener('devicemotion', this.h.motion);
   }
   onMotion(e) {
+    this.motionSeen = true;
     const rr = e.rotationRate;
     const now = performance.now();
     const dt = this.lastMotion ? Math.min(0.1, (now - this.lastMotion) / 1000) : 0;

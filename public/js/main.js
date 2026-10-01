@@ -482,7 +482,8 @@ async function playUrl() {
   try {
     const r = await fetch('/api/info', { cache: 'no-store' });
     const j = await r.json();
-    if (j.lan && j.lan.length) return { url: j.lan[0] + '/', local: true, all: j.lan };
+    if (j.lanHttps && j.lanHttps.length) return { url: j.lanHttps[0] + '/', local: true, https: true, plain: j.lan && j.lan[0] ? j.lan[0] + '/' : null };
+    if (j.lan && j.lan.length) return { url: j.lan[0] + '/', local: true };
   } catch {}
   return { url: null, local: true };
 }
@@ -502,6 +503,7 @@ async function showQR(roomCode) {
     $('qr-url').textContent = url;
     $('qr-tip').innerHTML = info.local
       ? '手机和这台电脑连<b>同一个 Wi-Fi</b>，用手机相机或浏览器扫一扫即可打开。<br>请横屏游玩；进入后点「联机对战」可以和电脑上的玩家一起玩。'
+        + (info.https ? `<br><b>第一次打开会提示“不安全 / 非私人连接”</b>：点「显示详细信息 → 访问此网站」（安卓点「高级 → 继续前往」）。用 https 打开手机陀螺仪才能用。${info.plain ? `<br>不想看到提示也可以用：${info.plain}${roomCode ? `?room=${roomCode}` : ''}（不能用陀螺仪）` : ''}` : '')
       : '用手机相机或浏览器扫一扫即可打开（横屏游玩）。';
     $('qr-copy').onclick = () => navigator.clipboard?.writeText(url).then(() => toast('已复制：' + url), () => toast(url));
   }

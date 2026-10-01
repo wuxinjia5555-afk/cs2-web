@@ -1,6 +1,8 @@
 // 游戏服务器：静态网页 + WebSocket 联机 + 房间大厅（零第三方依赖，three.js 由 npm 安装后本地托管）
 import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +17,9 @@ const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const THREE_DIR = path.join(ROOT, 'node_modules', 'three', 'build');
 const PORT = Number(process.env.PORT) || 8080;
+// 手机的陀螺仪等传感器只能在 https 下使用，所以局域网里再开一个 https 端口（自签名证书）
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 8443;
+const CERT_DIR = path.join(__dirname, 'cert');
 const MAX_ROOMS = 40;
 const MAX_HUMANS = 12;
 
@@ -49,18 +54,20 @@ function json(res, obj) {
   res.end(s);
 }
 
-const server = http.createServer((req, res) => {
+const handler = (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); res.end(); return; }
   if (pathname === '/api/rooms') return json(res, { rooms: roomList(), online: conns.size });
   if (pathname === '/healthz') { res.writeHead(200); res.end('ok'); return; }
-  if (pathname === '/api/info') return json(res, { lan: lanUrls() });
+  if (pathname === '/api/info') return json(res, { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [] });
   if (pathname.startsWith('/lib/three/')) return serveFile(req, res, path.join(THREE_DIR, path.basename(pathname)));
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(PUBLIC, pathname));
   if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) { res.writeHead(403); res.end(); return; }
   serveFile(req, res, file);
-});
+};
+const server = http.createServer(handler);
+let httpsServer = null;
 
 // ---------------- 房间 ----------------
 const rooms = new Map();
@@ -215,7 +222,7 @@ function handleMsg(conn, m) {
   }
 }
 
-server.on('upgrade', (req, socket, head) => {
+function onUpgrade(req, socket, head) {
   let pathname = '';
   try { pathname = new URL(req.url, 'http://x').pathname; } catch {}
   if (pathname !== '/ws') { socket.destroy(); return; }
@@ -246,7 +253,8 @@ server.on('upgrade', (req, socket, head) => {
       else leaveRoom(conn);
     });
   });
-});
+}
+server.on('upgrade', onUpgrade);
 
 // ---------------- 主循环 ----------------
 let last = Date.now();
@@ -278,7 +286,7 @@ setInterval(() => {
   }
 }, 15000);
 
-function lanUrls() {
+function lanIps() {
   const lan = [];
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
     if (/vmware|virtualbox|vethernet|loopback|docker|wsl|tailscale|zerotier/i.test(name)) continue;
@@ -286,15 +294,50 @@ function lanUrls() {
       if (a.family !== 'IPv4' || a.internal) continue;
       if (!/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) continue;
       const rank = (/wlan|wi-?fi|wireless|无线/i.test(name) ? 2 : 0) + (a.address.startsWith('192.168.') ? 1 : 0);
-      lan.push({ url: `http://${a.address}:${PORT}`, rank });
+      lan.push({ ip: a.address, rank });
     }
   }
-  return lan.sort((x, y) => y.rank - x.rank).map((x) => x.url);
+  return lan.sort((x, y) => y.rank - x.rank).map((x) => x.ip);
+}
+const lanUrls = (proto, port) => lanIps().map((ip) => `${proto}://${ip}:${port}`);
+
+// https 证书：没有、或者局域网 IP 变了，就用 openssl 自动生成一张自签名证书
+function loadCert() {
+  if (process.env.HTTPS === '0') return null;
+  const keyF = path.join(CERT_DIR, 'key.pem'), certF = path.join(CERT_DIR, 'cert.pem'), ipsF = path.join(CERT_DIR, 'ips.txt');
+  const want = ['127.0.0.1', ...lanIps()].join(',');
+  let have = '';
+  try { have = fs.readFileSync(ipsF, 'utf8').trim(); } catch {}
+  if (!fs.existsSync(keyF) || !fs.existsSync(certF) || have !== want) {
+    try {
+      fs.mkdirSync(CERT_DIR, { recursive: true });
+      const san = ['DNS:localhost', ...want.split(',').map((ip) => 'IP:' + ip)].join(',');
+      const r = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyF, '-out', certF, '-days', '825', '-sha256',
+        '-subj', '/CN=DEFUSE LAN', '-addext', 'subjectAltName=' + san, '-addext', 'extendedKeyUsage=serverAuth',
+        '-addext', 'keyUsage=digitalSignature,keyEncipherment', '-addext', 'basicConstraints=CA:FALSE'],
+      { env: { ...process.env, MSYS_NO_PATHCONV: '1' }, stdio: 'ignore', timeout: 30000 });
+      if (r.status === 0) fs.writeFileSync(ipsF, want);
+    } catch {}
+  }
+  try { return { key: fs.readFileSync(keyF), cert: fs.readFileSync(certF) }; } catch { return null; }
+}
+
+const tls = loadCert();
+if (tls) {
+  httpsServer = https.createServer(tls, handler);
+  httpsServer.on('upgrade', onUpgrade);
+  httpsServer.on('error', (e) => { console.log('https 端口启动失败：' + e.message); httpsServer = null; });
 }
 
 server.listen(PORT, () => {
   const hasThree = fs.existsSync(path.join(THREE_DIR, 'three.module.js'));
   console.log(`DEFUSE 服务器已启动: http://localhost:${PORT}  (three.js 本地托管: ${hasThree ? '是' : '否，将使用 CDN'})`);
-  const lan = lanUrls();
+  const lan = lanUrls('http', PORT);
   if (lan.length) console.log('手机 / 同一 Wi-Fi 的朋友打开：' + lan.join('  ') + '  （主菜单「手机扫码」可直接扫码）');
+  if (httpsServer) {
+    httpsServer.listen(HTTPS_PORT, () => {
+      const l2 = lanUrls('https', HTTPS_PORT);
+      if (l2.length) console.log('手机要用陀螺仪请打开：' + l2.join('  ') + '  （第一次会提示证书不安全，选择继续访问即可）');
+    });
+  } else console.log('（没有生成 https 证书：手机陀螺仪不可用。装好 openssl 后重启服务器即可）');
 });
