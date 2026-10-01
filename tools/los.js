@@ -7,7 +7,9 @@ const RUN = 250 * 0.0254; // 拿刀奔跑速度 m/s
 const args = process.argv.slice(2);
 const li = args.indexOf('--limit');
 const LIMIT = li >= 0 ? +args[li + 1] : 12;
-const ids = args.filter((a, i) => !a.startsWith('--') && (li < 0 || i !== li + 1));
+const si = args.indexOf('--step');
+const STEP = si >= 0 ? +args[si + 1] : 1; // 隔几格取一个点（大地图用，算得快）
+const ids = args.filter((a, i) => !a.startsWith('--') && (li < 0 || i !== li + 1) && (si < 0 || i !== si + 1));
 // --fine：每个格子再取 4 个角附近的点（更严格，也更慢）
 const OFF = args.includes('--fine') ? [[0, 0], [-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]] : [[0, 0]];
 
@@ -77,6 +79,7 @@ export function analyze(id, quiet = false) {
   const tT = reachTimes(map, 'T'), tC = reachTimes(map, 'CT');
   const A = [], B = [];
   for (let i = 0; i < tT.length; i++) {
+    if ((i % W) % STEP || (((i / W) | 0) % STEP)) continue;
     if (tT[i] <= LIMIT) A.push(i);
     if (tC[i] <= LIMIT) B.push(i);
   }
@@ -95,7 +98,7 @@ export function analyze(id, quiet = false) {
   // 2) 最早几秒能看到对方出生区（对方站着不动）
   const peek = (mine, tm, enemy) => {
     const zone = [];
-    for (let i = 0; i < tm.length; i++) if (map.type[i] === CELL.FLOOR && inZone(map, enemy, i)) zone.push(i);
+    for (let i = 0; i < tm.length; i++) if (map.type[i] === CELL.FLOOR && inZone(map, enemy, i) && !((i % W) % STEP) && !(((i / W) | 0) % STEP)) zone.push(i);
     const cand = mine.slice().sort((x, y) => tm[x] - tm[y]);
     for (const a of cand) for (const b of zone) if (visible(map, a, b)) return [tm[a], a, b];
     return null;

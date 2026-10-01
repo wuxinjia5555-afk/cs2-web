@@ -2,6 +2,7 @@
 import { World } from './physics.js';
 import { Nav } from './nav.js';
 import { LEVEL_H } from './constants.js';
+import { DUST2_ROWS, decodeRows } from './dust2.js';
 
 export const CELL = { WALL: 0, FLOOR: 1, CRATE: 2, CRATE2: 3, LOW: 4, BARREL: 5 };
 const OBJ_CHAR = { x: CELL.CRATE, X: CELL.CRATE2, h: CELL.LOW, o: CELL.BARREL };
@@ -53,6 +54,83 @@ class Builder {
   site(name, c0, r0, c1, r1) { this.sites[name] = { c0, r0, c1, r1 }; }
   spawn(team, cells, yaw) { this.spawns[team] = { cells, yaw }; }
   buyzone(team, c0, r0, c1, r1) { this.buy[team].push({ c0, r0, c1, r1 }); }
+  // 按字符图建图：# 墙；a-z 地面高度级（太高的当障碍物）；A-Z 箱子（字母为顶部高度级）
+  ascii(rows, boxMat = 'crate') {
+    rows.forEach((row, r) => {
+      for (let c = 0; c < row.length && c < this.W; c++) {
+        const ch = row[c], i = r * this.W + c;
+        if (ch === '#') continue;
+        if (ch >= 'a' && ch <= 'z') {
+          const lv = ch.charCodeAt(0) - 97;
+          if (lv >= 9) { this.type[i] = CELL.WALL; this.wh[i] = lv * LEVEL_H + 0.8; this.wmat[i] = boxMat; continue; }
+          this.type[i] = CELL.FLOOR;
+          this.level[i] = lv;
+        } else {
+          this.type[i] = CELL.WALL;
+          this.wh[i] = Math.max(1.0, (ch.charCodeAt(0) - 65) * LEVEL_H);
+          this.wmat[i] = boxMat;
+        }
+      }
+    });
+  }
+  // 清理误识别的箱子：1 格宽的细线、零星的单格都还原成地面（高度取周围地面的中位数）
+  cleanBoxes(boxMat = 'crate') {
+    const { W, H } = this, seen = new Uint8Array(W * H);
+    const isBox = (i) => this.type[i] === CELL.WALL && this.wh[i] > 0 && this.wmat[i] === boxMat;
+    for (let i0 = 0; i0 < W * H; i0++) {
+      if (seen[i0] || !isBox(i0)) continue;
+      const comp = [], st = [i0];
+      seen[i0] = 1;
+      while (st.length) {
+        const i = st.pop();
+        comp.push(i);
+        const c = i % W, r = (i / W) | 0;
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const cc = c + dc, rr = r + dr, j = rr * W + cc;
+          if (cc >= 0 && rr >= 0 && cc < W && rr < H && !seen[j] && isBox(j)) { seen[j] = 1; st.push(j); }
+        }
+      }
+      // 只保留实心部分：格子在横竖两个方向都有邻居（2x2 以上的块）；伸出来的细线、零星单格都还原成地面
+      const set = new Set(comp);
+      const solid = new Set(comp.filter((i) => {
+        const c = i % W;
+        return ((set.has(i - 1) && c > 0) || (set.has(i + 1) && c < W - 1)) && (set.has(i - W) || set.has(i + W));
+      }));
+      const remove = solid.size >= 4 ? comp.filter((i) => !solid.has(i)) : comp;
+      for (const i of remove) {
+        const lv = [];
+        const c = i % W, r = (i / W) | 0;
+        for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+          const j = (r + dr) * W + c + dc;
+          if (this.type[j] === CELL.FLOOR) lv.push(this.level[j]);
+        }
+        if (!lv.length) continue;
+        lv.sort((a, b) => a - b);
+        this.type[i] = CELL.FLOOR;
+        this.level[i] = lv[lv.length >> 1];
+        this.wh[i] = 0;
+      }
+    }
+  }
+  // 只改地面材质
+  floorMat(c0, r0, c1, r1, mat) {
+    this.rect(c0, r0, c1, r1, (i) => { if (this.type[i] === CELL.FLOOR) this.fmat[i] = mat; });
+  }
+  // 在 (c, r) 附近找 n 个分散的地面格做出生点
+  spawnNear(team, c, r, n, yaw) {
+    const cells = [], lv0 = this.level[r * this.W + c];
+    for (let rad = 0; rad <= 8 && cells.length < n; rad++) {
+      for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) {
+        if (Math.max(Math.abs(dc), Math.abs(dr)) !== rad || cells.length >= n) continue;
+        const cc = c + dc, rr = r + dr, i = rr * this.W + cc;
+        if (cc < 1 || rr < 1 || cc >= this.W - 1 || rr >= this.H - 1 || this.type[i] !== CELL.FLOOR) continue;
+        if (Math.abs(this.level[i] - lv0) > 1) continue;
+        if (cells.some(([x, y]) => Math.abs(x - cc) < 2 && Math.abs(y - rr) < 2)) continue;
+        cells.push([cc, rr]);
+      }
+    }
+    this.spawn(team, cells, yaw);
+  }
   // 靶场假人：kind = static 站着 / strafe 左右来回（w 为来回半宽，格） / crouch 蹲着
   dummy(c, r, kind = 'static', w = 0, walk = false) { this.dummies.push({ c, r, kind, w, walk }); }
   box(x0, y0, z0, x1, y1, z1, mat, kind = 'wall') { this.extra.push({ min: [x0, y0, z0], max: [x1, y1, z1], mat, kind }); }
@@ -201,6 +279,32 @@ export function inRect(rc, x, z) {
 
 // ====================== 地图定义 ======================
 export const MAPS = {
+  // 沙二：Dust II 的布局（1 格 = 1 米）
+  dust2: {
+    name: '沙二', desc: 'Dust II 布局：A 大、A 小（猫道）、中路、中门、B 洞、上下地道', theme: 'desert',
+    w: 114, h: 114, cell: 1, wallH: 8,
+    floorMat: 'sand', wallMat: 'plaster', crateMat: 'crate', lowMat: 'sandbag', roofMat: 'roof',
+    build(b) {
+      b.ascii(decodeRows(DUST2_ROWS));
+      b.cleanBoxes();
+      // 中门：两扇门基本关着，只在东侧留一条能过人的窄缝（经典的中门对狙）
+      b.wall(47, 32, 52, 32, 'wood', 3.8);
+      b.wall(54, 32, 54, 32, 'wood', 3.8);
+      b.door(47, 32, 54, 32, 3.4); // 门楣：门上方是石墙
+      b.wall(53, 30, 54, 30, 'wood', 4.0); // 朝 CT 那边斜开的门板（比门洞高）：远处看不穿门缝
+      b.floorMat(58, 16, 84, 32, 'tiles');      // CT 出生点
+      b.floorMat(45, 30, 57, 97, 'road');       // 中路
+      b.floorMat(8, 37, 31, 76, 'concrete');    // 地道
+      b.floorMat(84, 12, 100, 30, 'site_d');    // A 点
+      b.floorMat(9, 8, 28, 26, 'site_d');       // B 点
+      b.site('A', 84, 16, 99, 29);
+      b.site('B', 12, 9, 27, 24);
+      b.spawnNear('T', 41, 102, 10, 0);
+      b.spawnNear('CT', 68, 25, 10, Math.PI);
+      b.buyzone('T', 28, 94, 56, 108);
+      b.buyzone('CT', 58, 16, 82, 32);
+    },
+  },
   // 靶场（训练场）：不出现在普通地图列表里
   range: {
     name: '靶场', desc: '训练场：固定 / 移动 / 下蹲假人，10 ~ 70 米靶道', theme: 'dev', hidden: true,

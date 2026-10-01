@@ -9,7 +9,7 @@ export function setMaxAnisotropy(n) { maxAniso = n; }
 export const TEX_SCALE = {
   sand: 3, road: 4, tiles: 2, site_d: 2, concrete: 3, asphalt: 4, site_i: 4, metalfloor: 2,
   plaster: 3, brick: 2, concrete_wall: 4, metalwall: 2, container_r: 2.5, container_b: 2.5, container_g: 2.5,
-  dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2,
+  dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
 };
 
 const cache = new Map();
@@ -263,6 +263,8 @@ const PAINTERS = {
     }
   },
   metalwall(ctx, s, rnd) { corrugated(ctx, s, rnd, [122, 132, 142], 18); },
+  // 木板门（竖条木板）
+  wood(ctx, s, rnd) { tiled(ctx, s, rnd, 6, 1, [128, 86, 50], [62, 40, 22], 4, 0.16); grain(ctx, s, rnd, 0.3); },
   container_r(ctx, s, rnd) { corrugated(ctx, s, rnd, [156, 48, 36], 14); },
   container_b(ctx, s, rnd) { corrugated(ctx, s, rnd, [40, 82, 142], 14); },
   container_g(ctx, s, rnd) { corrugated(ctx, s, rnd, [52, 112, 62], 14); },
