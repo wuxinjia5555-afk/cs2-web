@@ -5,7 +5,7 @@ import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed,
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
 import { NADE, NADE_STEP, makeProjectile, stepProjectile } from './grenades.js';
-import { BotBrain, BOT_NAMES } from './bot.js';
+import { BotBrain, BOT_NAMES, DummyBrain } from './bot.js';
 import { mulberry32, r2, r3, shuffle, pick, clamp, isNum, isVec3, cleanText, dirFromAngles, DEG } from './util.js';
 
 const DT = 1 / TICK_RATE;
@@ -17,7 +17,7 @@ export class Room {
       code: opts.code || 'LOCAL',
       name: cleanText(opts.name, 24) || '房间',
       map: typeof opts.map === 'string' ? opts.map : 'sandstorm',
-      mode: opts.mode === 'dm' ? 'dm' : 'bomb',
+      mode: ['dm', 'range'].includes(opts.mode) ? opts.mode : 'bomb',
       bots: opts.bots !== false,
       botDiff: isNum(opts.botDiff) ? clamp(opts.botDiff | 0, 0, 2) : 1,
       teamSize: isNum(opts.teamSize) ? clamp(opts.teamSize | 0, 1, 5) : 5,
@@ -56,7 +56,7 @@ export class Room {
     this.roundPlanted = false;
     this.plan = { T: 'A', ct: 0 };
     this.intel = { T: new Map(), CT: new Map() };
-    if (o.mode === 'dm') this.startMatch();
+    if (o.mode === 'dm' || o.mode === 'range') this.startMatch();
     else if (o.warmup) this.startWarmup();
   }
 
@@ -127,6 +127,7 @@ export class Room {
     this.bcast({ t: 'pjoin', p: this.pubInfo(p) }, p.id);
     this.sendInit(p);
     if (this.opts.mode === 'dm') this.setTeam(p, 'AUTO');
+    else if (this.opts.mode === 'range') this.setTeam(p, 'CT');
     return p;
   }
 
@@ -162,6 +163,7 @@ export class Room {
   }
 
   rebalanceBots() {
+    if (this.opts.mode === 'range') return;
     for (const team of ['T', 'CT']) {
       const humans = this.countTeam(team, true);
       const bots = [...this.players.values()].filter((p) => p.isBot && p.team === team);
@@ -177,6 +179,7 @@ export class Room {
 
   setTeam(p, team) {
     if (!['T', 'CT', 'SPEC', 'AUTO'].includes(team)) return;
+    if (this.opts.mode === 'range' && !p.isBot && team !== 'SPEC') team = 'CT'; // 靶场：玩家都在 CT，假人在 T
     if (team === 'AUTO') {
       const hT = this.countTeam('T', true), hC = this.countTeam('CT', true);
       if (p.team === 'T') team = hT - 1 <= hC ? 'T' : 'CT';
@@ -202,7 +205,7 @@ export class Room {
     p.dirty = true;
     if (team === 'SPEC') { this.checkRoundEnd(); return; }
     if (this.phase === 'idle' && !p.isBot) { this.startMatch(); return; }
-    if (this.phase === 'warmup' || this.phase === 'dm') {
+    if (this.phase === 'warmup' || this.phase === 'dm' || this.phase === 'range') {
       p.respawnAt = this.time + 0.3;
       if (this.phase === 'warmup' && this.phaseEnd === Infinity) { this.phaseEnd = this.time + TIMES.warmupMax; this.bcastRound(); }
     } else if (this.phase === 'freeze') {
@@ -273,7 +276,13 @@ export class Room {
       p.alive = false;
       p.dirty = true;
     }
-    if (this.opts.mode === 'dm') {
+    if (this.opts.mode === 'range') {
+      this.phase = 'range';
+      this.phaseEnd = Infinity;
+      this.spawnDummies();
+      for (const p of this.players.values()) if (!p.dummy && (p.team === 'T' || p.team === 'CT')) p.respawnAt = this.time + 0.2;
+      this.bcastRound();
+    } else if (this.opts.mode === 'dm') {
       this.phase = 'dm';
       this.phaseEnd = this.time + TIMES.dmLength;
       for (const p of this.players.values()) if (p.team === 'T' || p.team === 'CT') p.respawnAt = this.time + 0.2;
@@ -283,6 +292,40 @@ export class Room {
     }
     this.bcast({ t: 'msg', k: 'match_start' });
     this.bcastScores();
+  }
+
+  // 靶场：按地图上的位置放假人
+  spawnDummies() {
+    for (const p of [...this.players.values()]) if (p.dummy) this.removePlayer(p.id);
+    (this.map.dummies || []).forEach((d, i) => {
+      const p = this.newPlayer('假人 ' + (i + 1), true);
+      p.team = 'T';
+      p.inv = { 1: this.item(i % 4 === 3 ? 'awp' : 'ak47'), 2: this.item('glock'), 4: [], 5: false };
+      p.slot = 1;
+      p.dummy = d;
+      p.bot = new DummyBrain(this, p, d);
+      p.armor = 100;
+      p.helmet = i % 2 === 0;
+      this.players.set(p.id, p);
+      this.bcast({ t: 'pjoin', p: this.pubInfo(p) });
+      this.spawnPlayer(p, d);
+    });
+  }
+
+  // 靶场：假人 3 秒没挨打就回满血；玩家子弹和钱一直是满的
+  rangeTick() {
+    const sec = this.tickN % TICK_RATE === 0;
+    for (const p of this.players.values()) {
+      if (p.dummy) {
+        if (p.alive && (p.hp < 100 || p.armor < 100) && this.time - (p.lastHurtT || 0) > 3) { p.hp = 100; p.armor = 100; p.dirty = true; }
+      } else if (sec && p.alive) {
+        for (const s of [1, 2]) {
+          const it = p.inv[s];
+          if (it && it.res < WEAPONS[it.w].res) { it.res = WEAPONS[it.w].res; p.dirty = true; }
+        }
+        if (p.money < ECON.max) { p.money = ECON.max; p.dirty = true; }
+      }
+    }
   }
 
   clearRound() {
@@ -419,6 +462,10 @@ export class Room {
         this.respawnDead();
         if (t >= this.phaseEnd) this.endMatch();
         break;
+      case 'range':
+        this.respawnDead();
+        this.rangeTick();
+        break;
       case 'freeze':
         if (t >= this.phaseEnd) {
           this.phase = 'live';
@@ -474,6 +521,7 @@ export class Room {
   respawnDead() {
     for (const p of this.players.values()) {
       if (p.alive || (p.team !== 'T' && p.team !== 'CT') || !p.respawnAt || this.time < p.respawnAt) continue;
+      if (p.dummy) { p.armor = 100; this.spawnPlayer(p, p.dummy); continue; }
       if (this.phase === 'dm') p.inv = this.dmInv(p);
       else {
         if (!p.inv[1] && !p.inv[2]) p.inv = this.defaultInv(p.team);
@@ -599,6 +647,7 @@ export class Room {
     if (!v.alive || this.phase === 'matchover') return;
     if (v.protectUntil > this.time) return;
     if (a && a !== v && !this.isEnemy(a, v) && !this.opts.ff) return;
+    v.lastHurtT = this.time;
     const w = WEAPONS[wid];
     const pen = w && w.pen != null ? w.pen : 1;
     let d = dmg * (opts.noHg ? 1 : HG_MULT[g]);
@@ -624,7 +673,8 @@ export class Room {
   }
 
   dropOnDeath(v, keepPrimary = false) {
-    const dm = this.opts.mode === 'dm' || this.phase === 'warmup';
+    if (v.dummy) return;
+    const dm = this.opts.mode === 'dm' || this.opts.mode === 'range' || this.phase === 'warmup';
     if (!dm && !keepPrimary) {
       if (v.inv[1]) this.dropItem(v, 1, false);
       else if (v.inv[2]) this.dropItem(v, 2, false);
@@ -640,7 +690,7 @@ export class Room {
     if (v.defusing) this.cancelDefuse(v);
     v.reloadEnd = 0;
     v.scoped = false;
-    const dm = this.opts.mode === 'dm' || this.phase === 'warmup';
+    const dm = this.opts.mode === 'dm' || this.opts.mode === 'range' || this.phase === 'warmup';
     this.dropOnDeath(v);
     if (!dm) { v.inv[4] = []; v.kit = false; }
     let assister = null;
@@ -664,6 +714,7 @@ export class Room {
     this.bcast({ t: 'kill', k: a ? a.id : -1, v: v.id, w: wid, hs: hs ? 1 : 0, as: assister ? assister.id : -1 });
     if (v.bot) v.bot.onDeath();
     if (this.phase === 'dm' || this.phase === 'warmup') v.respawnAt = this.time + (this.phase === 'dm' ? TIMES.dmRespawn : TIMES.warmupRespawn);
+    else if (this.phase === 'range') v.respawnAt = this.time + (v.dummy ? 1.5 : 1);
     v.dirty = true;
     if (this.phase === 'dm' && a && a !== v && a.kills >= this.opts.dmKills) this.endMatch(a.id);
     this.checkRoundEnd();
@@ -842,7 +893,7 @@ export class Room {
 
   onBuy(p, item) {
     if (!p.alive || (p.team !== 'T' && p.team !== 'CT')) return;
-    const free = this.phase === 'warmup' || this.phase === 'dm';
+    const free = this.phase === 'warmup' || this.phase === 'dm' || this.phase === 'range';
     if (!free) {
       if (!(this.phase === 'freeze' || (this.phase === 'live' && this.time < this.buyEnd))) return this.err(p, '购买时间已过');
       if (!this.inBuyZone(p)) return this.err(p, '不在购买区内');
@@ -850,7 +901,7 @@ export class Room {
     const w = WEAPONS[item], eq = EQUIP[item];
     const def = (w && w.price) ? w : eq;
     if (!def) return;
-    if (def.team && def.team !== p.team && this.opts.mode !== 'dm') return this.err(p, '本阵营无法购买');
+    if (def.team && def.team !== p.team && this.opts.mode !== 'dm' && this.opts.mode !== 'range') return this.err(p, '本阵营无法购买');
     let price = free ? 0 : def.price;
     if (item === 'vesthelm' && p.armor >= 100 && !free) price = 350;
     if (p.money < price) return this.err(p, '金钱不足');

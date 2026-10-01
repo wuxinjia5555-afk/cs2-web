@@ -49,6 +49,8 @@ export class Game {
     this.vm = new ViewModel();
     this.input = new Input(renderer.domElement, this.isTouch);
     this.input.setBinds(settings.binds);
+    // 靶场：统计开枪 / 命中 / 爆头 / 击杀
+    this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.assist = null;
     this.aimEnemy = false;
 
@@ -104,6 +106,10 @@ export class Game {
     if (this.bomb && this.bomb.st === 'planted') this.placeBombMesh();
 
     this.hud = new Hud(this);
+    if (this.rangeStats) {
+      this.hud.rangeStats(this.rangeStats);
+      setTimeout(() => this.hud.center('训练场：弹药无限，随时随地免费买枪（B）', 4), 600);
+    }
     this.touch = this.isTouch ? new TouchControls(this) : null;
     this.hud.show();
     this.hud.clearTransient();
@@ -144,7 +150,7 @@ export class Game {
     this.running = true;
     this.frameBound = (t) => this.frame(t);
     this.raf = requestAnimationFrame(this.frameBound);
-    if (this.mode !== 'dm' && this.me.team === 'SPEC') this.showTeamSelect();
+    if (this.mode === 'bomb' && this.me.team === 'SPEC') this.showTeamSelect();
     else this.input.lock();
   }
 
@@ -294,7 +300,7 @@ export class Game {
   canBuy() {
     const ph = this.round.ph;
     if (!this.me.alive || (this.me.team !== 'T' && this.me.team !== 'CT')) return false;
-    if (ph === 'warmup' || ph === 'dm') return true;
+    if (ph === 'warmup' || ph === 'dm' || ph === 'range') return true;
     if (!(ph === 'freeze' || (ph === 'live' && this.serverNow() < this.round.be))) return false;
     return this.inBuyZone();
   }
@@ -605,12 +611,19 @@ export class Game {
       case 'defused': this.hud.center('炸弹已被拆除', 3); audio.speak('炸弹已被拆除'); break;
       case 'go': audio.play('roundstart'); if (this.me.alive) this.hud.center('开始行动！', 1.5); break;
       case 'halftime': this.hud.center('半场结束 · 交换阵营', 4); break;
-      case 'match_start': this.hud.center(this.mode === 'dm' ? '死斗开始！' : '比赛开始！', 2.5); this.hud.hideMatchEnd(); break;
+      case 'match_start': this.hud.center(this.mode === 'dm' ? '死斗开始！' : this.mode === 'range' ? '训练场：随便打，弹药无限、随时免费买枪' : '比赛开始！', 3); this.hud.hideMatchEnd(); break;
     }
   }
 
   onHit(m) {
     const kill = !!m.k, head = m.g === HG.HEAD;
+    if (this.mode === 'range') {
+      this.hud.damagePop(m.d, head, kill);
+      const st = this.rangeStats;
+      st.hits++;
+      if (head) st.hs++;
+      this.hud.rangeStats(st);
+    }
     this.hud.hitmarker(head, kill);
     if (!kill) audio.play(head ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit');
     const v = this.players.get(m.v);
@@ -655,9 +668,13 @@ export class Game {
       if (this.mode === 'dm' || this.round.ph === 'warmup') this.roundKills = 0;
       this.vibrate([70, 40, 90]);
     } else if (m.k === this.myId && this.isEnemyId(m.v)) {
+      // 靶场没有回合：4 秒内连续击杀才算连杀
+      if (this.mode === 'range' && this.now - (this.lastKillT || -99) > 4) this.roundKills = 0;
+      this.lastKillT = this.now;
+      if (this.rangeStats) { this.rangeStats.kills++; this.hud.rangeStats(this.rangeStats); }
       const n = (this.roundKills = (this.roundKills || 0) + 1);
       const w = WEAPONS[m.w];
-      const paid = this.mode !== 'dm' && this.round.ph !== 'warmup';
+      const paid = this.mode === 'bomb' && this.round.ph !== 'warmup';
       const reward = paid ? ((w && w.killReward) ?? 300) : 0;
       this.hud.killConfirm({ name: v ? v.name : '', team: v ? v.team : 'T', weapon: m.w, hs: !!m.hs, streak: n, reward });
       audio.play('killconfirm', null, 1, { streak: n, hs: !!m.hs });
@@ -962,7 +979,7 @@ export class Game {
     if (inp.hit('KeyB')) { this.openBuy(); return; }
     if (inp.hit('KeyY')) { this.openChat(false); return; }
     if (inp.hit('KeyU')) { this.openChat(true); return; }
-    if (inp.hit('KeyM') && this.mode !== 'dm') { this.showTeamSelect(); return; }
+    if (inp.hit('KeyM') && this.mode === 'bomb') { this.showTeamSelect(); return; }
     if (inp.hit('F2') && this.isHost() && this.round.ph === 'warmup') this.net.send({ t: 'start' });
     if (!this.me.alive) {
       if (inp.locked && (inp.mDown[0] || inp.hit('Space') && !this.freeCamActive)) this.cycleSpec(1);
@@ -1293,6 +1310,7 @@ export class Game {
     W.lastShot = now;
     const inacc = this.currentInacc(w);
     W.fireAcc = Math.min(w.spread.cap, W.fireAcc + w.spread.fire);
+    if (this.rangeStats) { this.rangeStats.shots++; this.hud.rangeStats(this.rangeStats); }
     const eye = this.eyePos();
     const yaw = this.yaw + W.punchY, pitch = this.pitch + W.punchP;
     const targets = this.targets();
@@ -1433,7 +1451,7 @@ export class Game {
       const m = p.model;
       if (alive) {
         // 死斗里复活前，把尸体留在原地
-        if (p.seenAlive && p.deadYaw != null && m.deadT >= 0 && (this.mode === 'dm' || this.round.ph === 'warmup')) this.leaveCorpse(m);
+        if (p.seenAlive && p.deadYaw != null && m.deadT >= 0 && (this.mode !== 'bomb' || this.round.ph === 'warmup')) this.leaveCorpse(m);
         p.deadYaw = null;
         p.seenAlive = true;
       }
@@ -1520,7 +1538,7 @@ export class Game {
       const p = this.players.get(res.id);
       if (p) {
         const enemy = this.isEnemyId(p.id);
-        this.targetName = p.name + (enemy ? '' : ' (队友)');
+        this.targetName = p.name + (enemy ? '' : ' (队友)') + (this.mode === 'range' ? `  ·  ${Math.round(res.t)} 米` : '');
         this.aimEnemy = enemy && !(p.rp && p.rp.f & F.PROTECT);
       }
     }

@@ -18,6 +18,7 @@ class Builder {
     this.wh = new Float32Array(n);
     this.roofs = []; this.doors = []; this.extra = [];
     this.sites = {}; this.spawns = { T: null, CT: null }; this.buy = { T: [], CT: [] };
+    this.dummies = [];
   }
   rect(c0, r0, c1, r1, fn) {
     for (let r = Math.max(0, r0); r <= Math.min(this.H - 1, r1); r++)
@@ -52,6 +53,8 @@ class Builder {
   site(name, c0, r0, c1, r1) { this.sites[name] = { c0, r0, c1, r1 }; }
   spawn(team, cells, yaw) { this.spawns[team] = { cells, yaw }; }
   buyzone(team, c0, r0, c1, r1) { this.buy[team].push({ c0, r0, c1, r1 }); }
+  // 靶场假人：kind = static 站着 / strafe 左右来回（w 为来回半宽，格） / crouch 蹲着
+  dummy(c, r, kind = 'static', w = 0, walk = false) { this.dummies.push({ c, r, kind, w, walk }); }
   box(x0, y0, z0, x1, y1, z1, mat, kind = 'wall') { this.extra.push({ min: [x0, y0, z0], max: [x1, y1, z1], mat, kind }); }
 }
 
@@ -171,6 +174,8 @@ export function buildMap(id) {
     }
   }
 
+  const dummies = B.dummies.map((d) => ({ ...cellPos(d.c, d.r), yaw: Math.PI, kind: d.kind, crouch: d.kind === 'crouch', w: d.w * S, walk: d.walk }));
+
   const walk = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) walk[i] = B.type[i] === CELL.FLOOR ? 1 : 0;
   // 屋顶下的格子也可走；门梁不影响
@@ -179,7 +184,7 @@ export function buildMap(id) {
   return {
     id, name: def.name, theme: def.theme, def, W, H, S, wallH,
     type: B.type, level: B.level, wh: B.wh,
-    boxes, world, nav, spawns, sites, buy, dmSpawns,
+    boxes, world, nav, spawns, sites, buy, dmSpawns, dummies,
     bounds: { x0: 0, z0: 0, x1: W * S, z1: H * S },
   };
 }
@@ -196,6 +201,38 @@ export function inRect(rc, x, z) {
 
 // ====================== 地图定义 ======================
 export const MAPS = {
+  // 靶场（训练场）：不出现在普通地图列表里
+  range: {
+    name: '靶场', desc: '训练场：固定 / 移动 / 下蹲假人，10 ~ 70 米靶道', theme: 'dev', hidden: true,
+    w: 30, h: 46, cell: 2, wallH: 5,
+    floorMat: 'dev_floor', wallMat: 'dev_wall', crateMat: 'dev_crate', lowMat: 'dev_low', roofMat: 'dev_wall',
+    build(b) {
+      b.floor(1, 1, 28, 44, 0, 'dev_floor');
+      b.floor(1, 38, 28, 44, 0, 'dev_floor2');
+      // 距离线（约 10 / 20 / 30 / 40 / 50 / 70 米）
+      for (const r of [34, 29, 24, 19, 14, 4]) b.floor(1, r, 28, r, 0, 'dev_floor2');
+      // 射击台：中间和两边留出口
+      const bench = [];
+      for (let c = 3; c <= 26; c++) if (c < 13 || c > 16) bench.push([c, 37]);
+      b.objs('h', bench);
+      // 掩体
+      b.objs('x', [[9, 31], [19, 31], [6, 21], [23, 21], [14, 16]]);
+      b.objs('X', [[3, 26], [26, 26], [10, 11], [18, 11]]);
+      b.objs('h', [[12, 8], [13, 8], [15, 8], [16, 8]]);
+      // 假人
+      b.dummy(5, 33); b.dummy(11, 33, 'strafe', 2); b.dummy(18, 33); b.dummy(24, 33, 'strafe', 2);
+      b.dummy(8, 28); b.dummy(14, 28, 'strafe', 4); b.dummy(21, 28, 'crouch');
+      b.dummy(4, 23); b.dummy(12, 23, 'strafe', 3, true); b.dummy(18, 23); b.dummy(25, 23, 'crouch');
+      b.dummy(9, 18, 'crouch'); b.dummy(20, 18, 'strafe', 4);
+      b.dummy(6, 13); b.dummy(14, 13); b.dummy(22, 13, 'strafe', 3);
+      b.dummy(10, 3); b.dummy(18, 3);
+      b.spawn('CT', [[9, 41], [11, 41], [13, 41], [15, 41], [17, 41], [19, 41], [10, 43], [14, 43], [18, 43], [12, 42]], 0);
+      b.spawn('T', [[14, 1]], Math.PI);
+      b.buyzone('CT', 1, 1, 28, 44);
+      b.buyzone('T', 1, 1, 28, 44);
+    },
+  },
+
   sandstorm: {
     name: '沙城', desc: '经典双包点沙漠地图：A 大、A 小、中路、B 洞', theme: 'desert',
     w: 40, h: 40, cell: 2, wallH: 6,
@@ -361,4 +398,4 @@ export const MAPS = {
   },
 };
 
-export const MAP_LIST = Object.entries(MAPS).map(([id, m]) => ({ id, name: m.name, desc: m.desc }));
+export const MAP_LIST = Object.entries(MAPS).filter(([, m]) => !m.hidden).map(([id, m]) => ({ id, name: m.name, desc: m.desc }));

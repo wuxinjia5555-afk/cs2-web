@@ -216,7 +216,7 @@ export class Hud {
   updateTop(now) {
     const g = this.g, r = g.round;
     const scT = r.sc ? r.sc.T : 0, scCT = r.sc ? r.sc.CT : 0;
-    const dm = g.mode === 'dm';
+    const dm = g.mode !== 'bomb';
     this.set('score-t', dm ? '' : String(scT));
     this.set('score-ct', dm ? '' : String(scCT));
     this.toggle('score-t', !dm);
@@ -227,6 +227,7 @@ export class Hud {
     let label = '';
     if (r.ph === 'warmup') label = '热身';
     else if (r.ph === 'dm') label = '死斗';
+    else if (r.ph === 'range') label = '训练场';
     else if (r.ph === 'freeze') label = '购买阶段';
     else if (r.ph === 'matchover') label = '比赛结束';
     else if (r.ph === 'idle') label = '等待玩家';
@@ -234,7 +235,7 @@ export class Hud {
     this.set('round-label', label);
     let txt;
     if (planted && r.ph === 'live') txt = '💣';
-    else if (r.ph === 'warmup' && r.pe < 0) txt = '∞';
+    else if ((r.ph === 'warmup' || r.ph === 'range') && r.pe < 0) txt = '∞';
     else txt = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     this.set('timer', txt);
     this.cls('timer', 'bomb', planted && r.ph === 'live');
@@ -355,6 +356,25 @@ export class Hud {
   center(text, dur = 3) {
     this.set('center-msg', text);
     this.centerT = this.g.now + dur;
+  }
+
+  // 靶场：命中时在准星旁弹出伤害数字
+  damagePop(d, head, kill) {
+    const el = document.createElement('div');
+    el.className = 'dmg-pop' + (head ? ' hs' : '') + (kill ? ' kill' : '');
+    el.textContent = (head ? '爆头 ' : '') + Math.round(d);
+    el.style.left = `calc(50% + ${26 + Math.random() * 22}px)`;
+    el.style.top = `calc(50% - ${8 + Math.random() * 18}px)`;
+    $('hud').appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+
+  rangeStats(st) {
+    const el = $('range-stats');
+    el.classList.remove('hidden');
+    const acc = st.shots ? Math.min(100, Math.round((st.hits / st.shots) * 100)) : 0;
+    const hs = st.hits ? Math.round((st.hs / st.hits) * 100) : 0;
+    el.innerHTML = `<b>训练统计</b><span>开枪 ${st.shots}</span><span>命中率 ${acc}%</span><span>爆头率 ${hs}%</span><span>击杀 ${st.kills}</span><button id="rs-reset">清零</button>`;
   }
 
   hitmarker(hs, kill = false) {
@@ -542,7 +562,7 @@ export class Hud {
       const w = WEAPONS[id] || EQUIP[id];
       let price = w.price;
       if (id === 'vesthelm' && me.armor >= 100) price = 350;
-      const teamBad = w.team && w.team !== me.team && g.mode !== 'dm';
+      const teamBad = w.team && w.team !== me.team && g.mode === 'bomb';
       const owned = (me.inv[1] && me.inv[1].w === id) || (me.inv[2] && me.inv[2].w === id) || (id === 'kit' && me.kit) || (id === 'vest' && me.armor >= 100) || (id === 'vesthelm' && me.armor >= 100 && me.helmet);
       b.disabled = teamBad || (!free && price > me.money) || (g.mode === 'dm' && WEAPONS[id] && WEAPONS[id].slot === 4);
       b.classList.toggle('owned', !!owned);
@@ -563,8 +583,8 @@ export class Hud {
     const head = '<div class="sb-row head"><span>玩家</span><span>击杀</span><span>死亡</span><span>助攻</span><span>得分</span><span>MVP</span><span>金钱</span><span>延迟</span></div>';
     const all = [...g.players.values()];
     const sort = (a, b) => (b.sc || 0) - (a.sc || 0) || (b.k || 0) - (a.k || 0);
-    if (g.mode === 'dm') {
-      return `<div class="sb-team"><div class="sb-team-head"><span>死斗排行</span><span></span></div>${head}${rows(all.filter((p) => p.team !== 'SPEC').sort((a, b) => (b.k || 0) - (a.k || 0)), false)}</div>`;
+    if (g.mode !== 'bomb') {
+      return `<div class="sb-team"><div class="sb-team-head"><span>${g.mode === 'range' ? '训练场' : '死斗排行'}</span><span></span></div>${head}${rows(all.filter((p) => p.team !== 'SPEC').sort((a, b) => (b.k || 0) - (a.k || 0)), false)}</div>`;
     }
     const sc = g.round.sc || { T: 0, CT: 0 };
     let html = '';
@@ -579,7 +599,7 @@ export class Hud {
   renderScoreboard() {
     const g = this.g;
     $('sb-body').innerHTML = this.scoreboardHTML();
-    $('sb-title').textContent = `${g.map.name} · ${g.mode === 'dm' ? '死斗' : '爆破模式'}`;
+    $('sb-title').textContent = `${g.map.name} · ${g.mode === 'dm' ? '死斗' : g.mode === 'range' ? '训练场' : '爆破模式'}`;
     $('sb-info').textContent = g.net.isLocal ? '单机练习' : `房间 ${g.code} · ${g.roomName}`;
   }
 

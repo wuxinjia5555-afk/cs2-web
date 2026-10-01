@@ -298,6 +298,24 @@ $('btn-start-offline').addEventListener('click', () => {
   net.connect();
 });
 
+// ---------------- 靶场 ----------------
+$('btn-range').addEventListener('click', () => {
+  audio.init();
+  goFullscreen();
+  const net = new LocalNet({ map: 'range', mode: 'range', bots: false }, playerName());
+  net.onmessage = (m) => {
+    if (m.t === 'init' && !game && !starting) startGame(net, m);
+    else if (starting) starting.pending.push(m);
+  };
+  net.connect();
+});
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'rs-reset' && game && game.rangeStats) {
+    Object.assign(game.rangeStats, { shots: 0, hits: 0, hs: 0, kills: 0 });
+    game.hud.rangeStats(game.rangeStats);
+  }
+});
+
 // ---------------- 联机 ----------------
 function serverUrl() {
   const q = new URLSearchParams(location.search).get('server');

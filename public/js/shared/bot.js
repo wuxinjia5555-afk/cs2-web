@@ -419,3 +419,33 @@ export class BotBrain {
     p.pitch = clamp(p.pitch, -1.5, 1.5);
   }
 }
+
+// 靶场假人：不开枪，站着 / 蹲着 / 左右来回走，永远面向射击区
+export class DummyBrain {
+  constructor(room, p, spot) {
+    this.room = room;
+    this.p = p;
+    this.spot = spot;
+    this.cmd = { fwd: 0, side: 0, jump: false, crouch: false, walk: false, yaw: 0, speed: 6, frozen: false };
+    this.dir = 1;
+    this.nextFlip = 0;
+  }
+  onSpawn() { this.dir = this.room.rng() < 0.5 ? 1 : -1; this.nextFlip = this.room.time + 0.8 + this.room.rng() * 1.5; }
+  onDeath() {}
+  onRoundStart() {}
+  onHurt() {}
+  onBombPlanted() {}
+  update() {
+    const p = this.p, s = this.spot, c = this.cmd, t = this.room.time;
+    c.fwd = 0; c.side = 0; c.jump = false; c.walk = !!s.walk; c.crouch = !!s.crouch;
+    p.yaw = s.yaw;
+    p.pitch = 0;
+    if (s.kind !== 'strafe') return;
+    // 左右来回走：走到头就掉头，中途偶尔随机换向（像真人左右晃）
+    const off = (p.x - s.x) * Math.cos(s.yaw) - (p.z - s.z) * Math.sin(s.yaw);
+    if (off > s.w) this.dir = -1;
+    else if (off < -s.w) this.dir = 1;
+    else if (t > this.nextFlip) { this.dir = -this.dir; this.nextFlip = t + 0.6 + this.room.rng() * 1.6; }
+    c.side = this.dir;
+  }
+}
