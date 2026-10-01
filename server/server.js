@@ -404,5 +404,5 @@ server.listen(PORT, () => {
       const l2 = lanUrls('https', HTTPS_PORT);
       if (l2.length) console.log('手机要用陀螺仪请打开：' + l2.join('  ') + '  （第一次会提示证书不安全，选择继续访问即可）');
     });
-  } else console.log('（没有生成 https 证书：手机陀螺仪不可用。装好 openssl 后重启服务器即可）');
+  } else if (!process.env.RENDER) console.log('（没有生成 https 证书：手机陀螺仪不可用。装好 openssl 后重启服务器即可）');
 });

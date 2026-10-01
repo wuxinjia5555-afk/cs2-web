@@ -16,47 +16,67 @@ const MAX_FRIENDS = 100;
 const scrypt = (pw, salt) => new Promise((resolve, reject) => crypto.scrypt(pw, salt, 32, (err, key) => (err ? reject(err) : resolve(key))));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 环境变量是在网页上粘贴的：可能带引号、空格、换行，甚至把整行「KEY="值"」都粘进去了，统统去掉
-const envVal = (k) => String(process.env[k] || '').trim().replace(/^[A-Z_]+\s*=\s*/, '').replace(/^["']+|["']+$/g, '').trim();
+// 存储出错时只用这些固定的说明，绝不能把令牌之类的值带进错误信息（会写进日志、显示在 /api/info 上）
+const fail = (why) => Object.assign(new Error(why), { safe: true });
 
-// 云端出错时给一句看得懂的提示
-function cloudHint(msg) {
-  if (/noperm|read.?only/i.test(msg)) return '这是只读令牌，要用 Read-Only Token 没勾选时的那串';
-  if (/unauthorized|wrongpass|invalid.*token|401/i.test(msg)) return '令牌不对：检查 UPSTASH_REDIS_REST_TOKEN，要整串复制、不带引号';
-  if (/enotfound|getaddrinfo|invalid url|fetch failed|econn|timeout|aborted/i.test(msg)) return '连不上这个地址：检查 UPSTASH_REDIS_REST_URL';
-  return '';
+// Upstash 的地址和令牌是在网页上粘贴的：可能带引号、空格、换行，
+// 甚至把 Upstash 页面上 .env 的两行（UPSTASH_REDIS_REST_URL="…" 和 UPSTASH_REDIS_REST_TOKEN="…"）一起粘进了同一格
+const unq = (v) => String(v || '').trim().replace(/^["']+|["']+$/g, '').trim();
+function upstashEnv() {
+  const raw = [String(process.env.UPSTASH_REDIS_REST_URL || ''), String(process.env.UPSTASH_REDIS_REST_TOKEN || '')];
+  const found = {};
+  for (const text of raw) {
+    for (const line of text.split(/[\r\n]+/)) {
+      const m = line.match(/^\s*(?:export\s+)?(UPSTASH_REDIS_REST_URL|UPSTASH_REDIS_REST_TOKEN)\s*=\s*(.*)$/);
+      if (m) found[m[1]] = unq(m[2]);
+    }
+  }
+  // 没有「KEY=」的普通值：取第一行
+  const plain = (text) => (/^\s*(?:export\s+)?[A-Z_]+\s*=/.test(text) ? '' : unq(text.split(/[\r\n]+/).find((l) => l.trim()) || ''));
+  return {
+    url: found.UPSTASH_REDIS_REST_URL || plain(raw[0]),
+    token: (found.UPSTASH_REDIS_REST_TOKEN || plain(raw[1])).replace(/\s+/g, ''),
+  };
 }
 
 // 账号数据存哪：环境变量里有 Upstash 的地址和令牌就存云端（整份数据存成一个键），否则存本机文件
 function makeStore(file) {
-  const url = envVal('UPSTASH_REDIS_REST_URL'), token = envVal('UPSTASH_REDIS_REST_TOKEN');
+  const { url, token } = upstashEnv();
   if (url || token) {
     const KEY = process.env.ACCOUNTS_KEY || 'defuse:accounts';
-    // 只填了一个、或者填反了：直接说清楚（不能退回存本机文件，Render 上的文件一休眠就没了）
+    // 只填了一个、填反了、格式不对：直接说清楚（不能退回存本机文件，Render 上的文件一休眠就没了）
     let bad = '';
     if (!url || !token) bad = 'UPSTASH_REDIS_REST_URL 和 UPSTASH_REDIS_REST_TOKEN 要两个都填';
     else if (!/^https?:\/\//i.test(url)) bad = /^https?:\/\//i.test(token) ? 'UPSTASH_REDIS_REST_URL 和 UPSTASH_REDIS_REST_TOKEN 好像填反了' : 'UPSTASH_REDIS_REST_URL 应该以 https:// 开头';
+    else if (!/^[A-Za-z0-9=_-]+$/.test(token)) bad = 'UPSTASH_REDIS_REST_TOKEN 格式不对：只填那一长串字母和数字，不要带别的';
     const cmd = async (args) => {
-      if (bad) throw new Error(bad);
+      if (bad) throw fail(bad);
       let r;
       try {
         r = await fetch(url.replace(/\/$/, ''), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(args), signal: AbortSignal.timeout(15000) });
       } catch (e) {
-        const m = (e.cause && (e.cause.code || e.cause.message)) || e.message;
-        throw new Error(`${m}（${cloudHint(m) || '连不上 Upstash，检查 UPSTASH_REDIS_REST_URL'}）`);
+        const code = String((e.cause && e.cause.code) || e.name || '');
+        if (/abort|timeout/i.test(code)) throw fail('连接 Upstash 超时，过一会儿会自动重试');
+        if (/ENOTFOUND|EAI_AGAIN/.test(code)) throw fail('找不到这个地址：检查 UPSTASH_REDIS_REST_URL');
+        throw fail('连不上 Upstash：检查 UPSTASH_REDIS_REST_URL' + (/^[A-Z_]+$/.test(code) ? `（${code}）` : ''));
       }
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) {
-        const m = j.error || 'HTTP ' + r.status;
-        const h = cloudHint(m + ' ' + r.status);
-        throw new Error(h ? `${m}（${h}）` : m);
+        const m = String(j.error || '');
+        if (/noperm|read.?only/i.test(m)) throw fail('这是只读令牌：要用 Read-Only Token 没勾选时的那串');
+        if (r.status === 401 || /unauthorized|wrongpass/i.test(m)) throw fail('令牌不对：检查 UPSTASH_REDIS_REST_TOKEN');
+        throw fail(`Upstash 返回错误（HTTP ${r.status}）`);
       }
       return j.result;
     };
     return {
       cloud: true,
       where: 'Upstash 云端',
-      async load() { const s = await cmd(['GET', KEY]); return s ? JSON.parse(s) : null; },
+      async load() {
+        const s = await cmd(['GET', KEY]);
+        if (!s) return null;
+        try { return JSON.parse(s); } catch { throw fail('云端的账号数据格式坏了'); }
+      },
       async save(text) { await cmd(['SET', KEY, text]); },
     };
   }
@@ -66,7 +86,7 @@ function makeStore(file) {
     async load() {
       let s;
       try { s = fs.readFileSync(file, 'utf8'); } catch { return null; } // 还没有这个文件：新的空数据
-      return JSON.parse(s);
+      try { return JSON.parse(s); } catch { throw fail('账号数据文件格式坏了：' + file); }
     },
     async save(text) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -115,8 +135,8 @@ export async function createAccounts(file, devFile) {
         console.log(`[账号] ${Object.keys(db.users).length} 个账号，存在 ${store.where}`);
         return;
       } catch (e) {
-        loadErr = e.message;
-        console.error(`[账号] 读取账号数据失败（${store.where}）：${e.message}`);
+        loadErr = e.safe ? e.message : `读取出错（${e.name || 'Error'}）`; // 只用固定说明，不带原始错误内容
+        console.error(`[账号] 读取账号数据失败（${store.where}）：${loadErr}`);
         if (i < tries - 1) await sleep(2000);
       }
     }
@@ -138,7 +158,7 @@ export async function createAccounts(file, devFile) {
     if (!db) return;
     if (inflight) { again = true; return inflight; } // 正在存：存完再存一次最新的
     inflight = store.save(JSON.stringify(db)).catch((e) => {
-      console.error('[账号] 保存失败，5 秒后重试：', e.message);
+      console.error('[账号] 保存失败，5 秒后重试：', e.safe ? e.message : e.name || 'Error');
       if (!timer) timer = setTimeout(flush, 5000);
     });
     await inflight;
