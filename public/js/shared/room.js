@@ -1,7 +1,7 @@
 // 房间：权威游戏逻辑（回合、经济、伤害、炸弹、投掷物、掉落、机器人）
 // 服务端与"离线练习"共用同一份代码。io = { send(pid, msg), broadcast(msg, exceptPid) }
 import { P, TICK_RATE, F, ECON, TIMES, HG, HG_MULT, otherTeam } from './constants.js';
-import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, inaccuracy, spreadDir, isGun } from './weapons.js';
+import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, inaccuracy, spreadDir, isGun, recoverRecoil } from './weapons.js';
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
 import { NADE, NADE_STEP, makeProjectile, stepProjectile } from './grenades.js';
@@ -528,14 +528,7 @@ export class Room {
   }
 
   botWeaponTick(p) {
-    const w = this.curWeapon(p);
-    const iv = w.rpm ? 60 / w.rpm : 0.2;
-    if (this.time - p.lastShotT > iv * 1.4) {
-      const k = Math.exp(-(w.recoil ? w.recoil.rec : 6) * DT);
-      p.punchP *= k; p.punchY *= k;
-      p.spray = Math.max(0, p.spray - (DT / iv) * 1.6);
-    }
-    if (w.spread) p.fireAcc *= Math.exp(-DT / w.spread.recover);
+    recoverRecoil(p, this.curWeapon(p), DT, this.time - p.lastShotT);
   }
 
   targetList(except) {

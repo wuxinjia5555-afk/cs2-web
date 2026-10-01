@@ -1,5 +1,5 @@
 // 武器数据（参考 CS2 数值），后坐力图案、精度与伤害计算
-import { dirFromAngles, clamp } from './util.js';
+import { dirFromAngles, clamp, DEG } from './util.js';
 
 const U = 0.0254; // 起源引擎单位 -> 米
 
@@ -27,25 +27,25 @@ export const WEAPONS = {
     id: 'glock', name: 'Glock-18', slot: 2, type: 'pistol', team: 'T', price: 200, dmg: 30, pen: 0.47, rpm: 400,
     mag: 20, res: 120, reload: 2.2, speed: 240 * U, rm: 0.85, deploy: 0.6, killReward: 300,
     spread: sp({ base: 0.001, stand: 0.0065, crouch: 0.005, move: 0.025, air: 0.22, fire: 0.028, recover: 0.3, cap: 0.08 }),
-    recoil: { up: 1.3, side: 0.35, rec: 7 },
+    recoil: { up: 1.2, side: 0.3, rec: 10, lin: 3, wait: 0.11 },
   },
   usp: {
     id: 'usp', name: 'USP-S', slot: 2, type: 'pistol', team: 'CT', price: 200, dmg: 35, pen: 0.505, rpm: 352,
     mag: 12, res: 24, reload: 2.2, speed: 240 * U, rm: 0.91, deploy: 0.6, killReward: 300, silenced: true,
-    spread: sp({ base: 0.0008, stand: 0.0045, crouch: 0.0035, move: 0.02, air: 0.2, fire: 0.03, recover: 0.32, cap: 0.08 }),
-    recoil: { up: 1.5, side: 0.3, rec: 7 },
+    spread: sp({ base: 0.0006, stand: 0.0038, crouch: 0.003, move: 0.02, air: 0.2, fire: 0.026, recover: 0.3, cap: 0.06 }),
+    recoil: { up: 1.1, side: 0.2, rec: 10, lin: 3, wait: 0.11 },
   },
   p250: {
     id: 'p250', name: 'P250', slot: 2, type: 'pistol', price: 300, dmg: 38, pen: 0.64, rpm: 400,
     mag: 13, res: 26, reload: 2.2, speed: 240 * U, rm: 0.85, deploy: 0.6, killReward: 300,
     spread: sp({ base: 0.001, stand: 0.006, crouch: 0.0047, move: 0.024, air: 0.22, fire: 0.04, recover: 0.33, cap: 0.09 }),
-    recoil: { up: 1.8, side: 0.4, rec: 7 },
+    recoil: { up: 1.6, side: 0.35, rec: 9, lin: 3, wait: 0.12 },
   },
   deagle: {
     id: 'deagle', name: '沙漠之鹰', slot: 2, type: 'pistol', price: 700, dmg: 53, pen: 0.932, rpm: 267,
     mag: 7, res: 35, reload: 2.2, speed: 230 * U, rm: 0.81, deploy: 0.7, killReward: 300,
-    spread: sp({ base: 0.002, stand: 0.0055, crouch: 0.0045, move: 0.065, air: 0.35, fire: 0.075, recover: 0.45, cap: 0.12 }),
-    recoil: { up: 4.2, side: 0.9, rec: 5 },
+    spread: sp({ base: 0.0015, stand: 0.005, crouch: 0.004, move: 0.065, air: 0.35, fire: 0.06, recover: 0.5, cap: 0.1 }),
+    recoil: { up: 4.2, side: 0.8, rec: 10, lin: 6, wait: 0.12 },
   },
 
   mac10: {
@@ -100,8 +100,8 @@ export const WEAPONS = {
   m4a1s: {
     id: 'm4a1s', name: 'M4A1-S', slot: 1, type: 'rifle', team: 'CT', price: 2900, dmg: 38, pen: 0.7, rpm: 600,
     mag: 20, res: 80, reload: 3.1, speed: 225 * U, rm: 0.99, auto: true, deploy: 1.0, killReward: 300, silenced: true,
-    spread: sp({ stand: 0.0035, crouch: 0.0026, move: 0.11, air: 0.38, fire: 0.0062 }),
-    recoil: { up: 0.62, side: 0.8, rec: 6.5, phase: 2.1 },
+    spread: sp({ base: 0.0005, stand: 0.0032, crouch: 0.0024, move: 0.11, air: 0.38, fire: 0.0055, cap: 0.035 }),
+    recoil: { up: 0.52, side: 0.5, rec: 7, phase: 2.1 },
   },
   ssg08: {
     id: 'ssg08', name: 'SSG 08 鸟狙', slot: 1, type: 'sniper', price: 1700, dmg: 88, pen: 0.85, rpm: 48,
@@ -147,6 +147,31 @@ export const NADE_TYPES = ['he', 'flash', 'smoke', 'molotov', 'incgrenade'];
 export const MAX_NADES = 4;
 
 export const defaultPistol = (team) => (team === 'CT' ? 'usp' : 'glock');
+
+// 后坐力与精度恢复（玩家和机器人共用）。s: {punchP, punchY, spray, fireAcc}，since：距上一枪的秒数
+export function recoverRecoil(s, w, dt, since) {
+  const rc = w.recoil;
+  if (rc) {
+    const iv = w.rpm ? 60 / w.rpm : 0.1;
+    if (since > (rc.wait != null ? rc.wait : iv * 1.3)) {
+      const k = Math.exp(-rc.rec * dt);
+      s.punchP *= k;
+      s.punchY *= k;
+      // 线性回正：最后一点偏移也能很快归零（类似 CS 的 recoil_decay_lin）
+      if (rc.lin) {
+        const m = Math.hypot(s.punchP, s.punchY);
+        if (m > 0) {
+          const f = Math.max(0, m - rc.lin * DEG * dt) / m;
+          s.punchP *= f;
+          s.punchY *= f;
+        }
+      }
+      s.spray = Math.max(0, s.spray - (dt / iv) * 1.6);
+    }
+  }
+  // 开枪带来的额外扩散：和 CS 一样，recover 秒后恢复到 10%
+  if (w.spread) s.fireAcc *= Math.exp((-dt * Math.LN10) / w.spread.recover);
+}
 
 export function dmgAt(w, dist) {
   return w.dmg * Math.pow(w.rm || 1, dist / 12.7);

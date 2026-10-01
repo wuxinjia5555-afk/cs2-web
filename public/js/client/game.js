@@ -1,7 +1,7 @@
 // 客户端游戏主循环：本地预测移动、武器、命中判定、插值、观战、特效与界面联动
 import * as THREE from 'three';
 import { P, PHYS_DT, F, INTERP_DELAY, HG } from '../shared/constants.js';
-import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun } from '../shared/weapons.js';
+import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil } from '../shared/weapons.js';
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
@@ -659,7 +659,6 @@ export class Game {
       const reward = paid ? ((w && w.killReward) ?? 300) : 0;
       this.hud.killConfirm({ name: v ? v.name : '', team: v ? v.team : 'T', weapon: m.w, hs: !!m.hs, streak: n, reward });
       audio.play('killconfirm', null, 1, { streak: n, hs: !!m.hs });
-      if (n >= 2) audio.speak(['', '', '双杀', '三杀', '四杀', '五杀'][n] || `${n}连杀`);
       this.vibrate(n >= 2 ? [30, 30, 30, 30, 60] : [30, 30, 50]);
     } else if (m.as === this.myId) {
       this.hud.assistNote(v ? v.name : '');
@@ -1142,14 +1141,7 @@ export class Game {
     const me = this.me, W = this.w, now = this.now, inp = this.input;
     const w = this.curWeapon();
     // 后坐力恢复
-    const iv = w.rpm ? 60 / w.rpm : 0.1;
-    if (now - W.lastShot > iv * 1.3) {
-      const k = Math.exp(-(w.recoil ? w.recoil.rec : 7) * dt);
-      W.punchP *= k;
-      W.punchY *= k;
-      W.spray = Math.max(0, W.spray - (dt / iv) * 1.6);
-    }
-    if (w.spread) W.fireAcc *= Math.exp(-dt / w.spread.recover);
+    recoverRecoil(W, w, dt, now - W.lastShot);
     if (!me.alive) return;
     // 换弹完成
     if (W.reloadEnd && now >= W.reloadEnd) {
