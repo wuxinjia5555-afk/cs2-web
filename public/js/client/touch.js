@@ -526,7 +526,11 @@ export class TouchControls {
     if (this.gyroOn) return;
     const DME = window.DeviceMotionEvent;
     if (!window.isSecureContext) {
-      gyroTip('陀螺仪需要用 https 地址打开：在电脑上点主菜单「手机扫码」重新扫码进入');
+      // 每次打开页面只问一次要不要切到 https
+      let asked = false;
+      try { asked = sessionStorage.getItem('defuse.gyroAsk') === '1'; sessionStorage.setItem('defuse.gyroAsk', '1'); } catch {}
+      if (!asked && window.__gyroNeedsHttps) window.__gyroNeedsHttps();
+      else gyroTip('陀螺仪需要用 https 地址打开（设置里重新打开陀螺仪开关会提示切换）');
       return;
     }
     if (!DME) { gyroTip('这个浏览器不支持陀螺仪'); return; }

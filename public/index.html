@@ -50,7 +50,7 @@
 
   <div id="killfeed"></div>
   <div id="chatlog"></div>
-  <div id="chat-input-wrap" class="hidden"><span id="chat-mode">全部</span><input id="chat-input" maxlength="120" autocomplete="off"></div>
+  <div id="chat-input-wrap" class="hidden"><span id="chat-mode">全部</span><input id="chat-input" maxlength="120" autocomplete="off" enterkeyhint="send"><button id="chat-send">发送</button><button id="chat-cancel">✕</button></div>
 
   <div id="crosshair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div>
   <canvas id="soundviz"></canvas>
@@ -152,7 +152,7 @@
     <label class="field"><span>假人数量 <b id="rp-count-v"></b></span><input type="range" id="rp-count" min="0" max="18" step="1"></label>
     <label class="field"><span>假人移动</span><select id="rp-move"><option value="default">默认（有的站着、有的左右走）</option><option value="static">全部站着不动</option><option value="moving">全部左右移动</option></select></label>
     <label class="field"><span>假人护甲</span><select id="rp-armor"><option value="mixed">防弹衣（一半带头盔）</option><option value="helmet">防弹衣 + 头盔</option><option value="vest">只有防弹衣</option><option value="none">没有护甲</option></select></label>
-    <label class="field"><span>子弹</span><select id="rp-ammo"><option value="reserve">无限备弹（需要换弹）</option><option value="mag">无限子弹（不用换弹）</option><option value="off">正常（会打光）</option></select></label>
+    <label class="field"><span>子弹</span><select id="rp-ammo"><option value="mag">无限子弹（弹匣打不完，不用换弹）</option><option value="reserve">无限备弹（需要换弹）</option><option value="off">正常（会打光）</option></select></label>
     <label class="check"><input type="checkbox" id="rp-regen"> 假人 3 秒没挨打自动回满血</label>
     <label class="check"><input type="checkbox" id="rp-dmg"> 显示伤害数字</label>
     <div class="row"><button class="btn ghost" id="rp-reset">清零统计</button><button class="btn" id="rp-close">关闭（0 键）</button></div>
@@ -299,6 +299,7 @@
         <label class="check"><input type="checkbox" id="s-gyroscope"> 只在开镜时使用陀螺仪</label>
         <label class="check"><input type="checkbox" id="s-gyroinvx"> 陀螺仪左右反转</label>
         <label class="check"><input type="checkbox" id="s-gyroinvy"> 陀螺仪上下反转</label>
+        <div id="gyro-status" class="gyro-status"></div>
       </div>
       <div class="row"><button class="btn" id="btn-touch-layout">✋ 自定义按键布局（拖动按钮位置、调大小）</button></div>
       <div id="binds-sec">

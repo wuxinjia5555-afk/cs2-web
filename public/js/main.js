@@ -12,6 +12,17 @@ import { setMaxAnisotropy } from './client/textures.js';
 import { drawQR } from './client/qr.js';
 
 window.__gameReady = true;
+
+// 从 http 切到 https 时带过来的设置（两个地址的浏览器存储是分开的）
+{
+  const q = new URLSearchParams(location.search);
+  const imp = q.get('import');
+  if (imp) {
+    try { Object.assign(settings, JSON.parse(decodeURIComponent(escape(atob(imp))))); saveSettings(); } catch {}
+    q.delete('import');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : ''));
+  }
+}
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -112,6 +123,35 @@ function goFullscreen() {
     else after();
   } catch {}
 }
+
+// 陀螺仪只能在 https 下用：问一下要不要切过去，设置跟着带过去
+async function goHttps() {
+  let port = 8443;
+  try {
+    const j = await (await fetch('/api/info', { cache: 'no-store' })).json();
+    if (j.lanHttps && j.lanHttps[0]) port = +new URL(j.lanHttps[0]).port || 8443;
+  } catch {}
+  const q = new URLSearchParams(location.search);
+  q.set('import', btoa(unescape(encodeURIComponent(JSON.stringify(settings)))));
+  location.href = `https://${location.hostname}:${port}${location.pathname}?${q}`;
+}
+window.__gyroNeedsHttps = () => {
+  if (location.protocol === 'https:') { toast('这个浏览器不支持陀螺仪'); return; }
+  if (confirm('陀螺仪只能在 https 地址下使用。\n现在切换到 https 打开吗？（你的设置会一起带过去）\n\n第一次会提示“不安全 / 非私人连接”：\niPhone 点「显示详细信息 → 访问此网站」\n安卓点「高级 → 继续前往」')) goHttps();
+};
+
+function updateGyroStatus() {
+  const el = $('gyro-status');
+  if (!el) return;
+  let t;
+  if (!window.isSecureContext) t = '⚠ 当前是 http 地址，陀螺仪用不了。打开上面的「陀螺仪瞄准」会提示切换到 https。';
+  else if (!window.DeviceMotionEvent) t = '⚠ 这个浏览器不支持陀螺仪。';
+  else if (!settings.gyro) t = '陀螺仪：未开启。';
+  else if (game && game.touch && game.touch.gyroOn) t = game.touch.motionSeen ? '✓ 陀螺仪正在工作' : '陀螺仪已开启，等待数据…（iPhone 要在弹窗里允许“运动与方向”）';
+  else t = '陀螺仪已开启：进入游戏后生效（iPhone 第一次会弹出授权，点允许）。';
+  el.textContent = t;
+}
+setInterval(() => { if (!$('menu-settings').classList.contains('hidden')) updateGyroStatus(); }, 800);
 
 // iOS 需要在点击时申请陀螺仪权限
 function askGyro() {
@@ -472,11 +512,13 @@ function bindSettings() {
   chk('s-gyroinvx', 'gyroInvX', settings);
   chk('s-gyroinvy', 'gyroInvY', settings);
   renderBinds();
+  updateGyroStatus();
   chk('s-assist', 'aimAssist', settings);
   chk('s-autofire', 'autoFire', settings);
   chk('s-leftfire', 'leftFire', settings, relayout);
   chk('s-vibrate', 'vibrate', settings);
   chk('s-gyro', 'gyro', settings, () => {
+    if (settings.gyro && !window.isSecureContext) { window.__gyroNeedsHttps(); updateGyroStatus(); return; }
     askGyro();
     if (game && game.touch) { if (settings.gyro) game.touch.enableGyro(); else game.touch.disableGyro(); }
   });

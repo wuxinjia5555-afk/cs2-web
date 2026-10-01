@@ -197,6 +197,14 @@ export class Game {
         this.closeChat();
       } else if (e.key === 'Escape') this.closeChat();
     });
+    on($('chat-send'), 'click', () => {
+      const text = ci.value.trim();
+      if (text) this.net.send({ t: 'chat', text, team: this.chatTeam });
+      this.closeChat();
+    });
+    on($('chat-cancel'), 'click', () => this.closeChat());
+    // 手机上收起键盘：没写内容就当取消
+    on(ci, 'blur', () => setTimeout(() => { if (this.chatOpen && !ci.value.trim()) this.closeChat(); }, 200));
     on(this.renderer.domElement, 'mousedown', () => {
       if (!this.isTouch && !this.input.locked && !this.anyOverlay()) this.input.lock();
     });

@@ -57,7 +57,7 @@ export class Room {
     this.plan = { T: 'A', ct: 0 };
     this.intel = { T: new Map(), CT: new Map() };
     // 靶场设置：假人数量 / 移动 / 护甲、子弹、假人回血
-    this.rangeOpts = { count: 18, move: 'default', armor: 'mixed', ammo: 'reserve', regen: true };
+    this.rangeOpts = { count: 18, move: 'default', armor: 'mixed', ammo: 'mag', regen: true };
     if (o.mode === 'dm' || o.mode === 'range') this.startMatch();
     else if (o.warmup) this.startWarmup();
   }
