@@ -1,7 +1,7 @@
 // 触屏操作：左侧浮动摇杆移动、右侧滑动转视角、开火键可拖动瞄准、功能按钮、切枪栏、陀螺仪瞄准
 import { WEAPONS, isGun } from '../shared/weapons.js';
 import { DEG } from '../shared/util.js';
-import { settings } from './settings.js';
+import { settings, saveSettings } from './settings.js';
 import { audio } from './audio.js';
 
 const SLOT_SHORT = { 3: '刀', 5: 'C4' };
@@ -28,6 +28,10 @@ const HTML = `
 <div class="t-spec"><button class="t-sm" data-act="specPrev">◀ 上一个</button><button class="t-sm" data-act="specNext">下一个 ▶</button></div>
 `;
 
+// 可以自定义位置和大小的按钮
+const CUSTOM = [['fire', '.t-fire', '开火'], ['firel', '.t-fire-l', '左开火'], ['jump', '.t-jump', '跳'], ['crouch', '.t-crouch', '蹲'],
+  ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏']];
+
 let gyroTipShown = '';
 function gyroTip(text) {
   if (gyroTipShown === text) return;
@@ -41,13 +45,15 @@ function gyroTip(text) {
 }
 
 export class TouchControls {
-  constructor(game) {
+  constructor(game, opts = {}) {
     this.g = game;
     this.inp = game.input;
+    this.preview = !!opts.preview;
     const el = (this.el = document.createElement('div'));
     el.id = 'touch-ui';
     el.innerHTML = HTML;
     document.body.appendChild(el);
+    this.hadTouchClass = document.body.classList.contains('touch');
     document.body.classList.add('touch');
     this.joy = el.querySelector('.t-joy');
     this.knob = el.querySelector('.t-knob');
@@ -69,7 +75,7 @@ export class TouchControls {
     this.applyLayout();
     for (const b of document.querySelectorAll('[data-close="buymenu"]')) b.textContent = '关闭';
     this.lastMotion = 0;
-    if (settings.gyro) this.enableGyro();
+    if (settings.gyro && !this.preview) this.enableGyro();
   }
 
   applyLayout() {
@@ -78,9 +84,125 @@ export class TouchControls {
     this.el.style.setProperty('--to', String(settings.btnOpacity));
     this.q('.t-fire-l').classList.toggle('off', !settings.leftFire);
     this.joyR = b * 0.95;
+    this.applyCustom(this.editing ? this.draft : settings.touchLayout);
+  }
+
+  applyCustom(layout) {
+    for (const [key, sel] of CUSTOM) {
+      const e = this.q(sel);
+      if (!e) continue;
+      const c = layout && layout[key];
+      if (c) {
+        e.classList.add('cl');
+        e.style.left = (c.x * 100).toFixed(2) + '%';
+        e.style.top = (c.y * 100).toFixed(2) + '%';
+        e.style.setProperty('--ts', String(c.s || 1));
+      } else {
+        e.classList.remove('cl');
+        e.style.left = '';
+        e.style.top = '';
+        e.style.removeProperty('--ts');
+      }
+    }
+  }
+
+  // ---------------- 自定义按钮布局 ----------------
+  startEdit(onDone) {
+    this.reset();
+    this.editing = true;
+    this.onEditDone = onDone;
+    this.draft = JSON.parse(JSON.stringify(settings.touchLayout || {}));
+    this.origOpacity = settings.btnOpacity;
+    this.sel = null;
+    this.el.classList.remove('hidden');
+    this.el.classList.add('editing');
+    const bar = this.q('.t-weapons');
+    this.savedBar = bar.innerHTML;
+    if (!bar.children.length) bar.innerHTML = '<button class="t-slot cur">主武器</button><button class="t-slot">手枪</button><button class="t-slot">刀</button>';
+    const p = (this.panel = document.createElement('div'));
+    p.className = 'tl-panel';
+    p.innerHTML = `<div class="tl-tip">拖动按钮换位置 · 点选按钮后可调大小</div>
+      <label class="tl-row"><span id="tl-name">先点选一个按钮</span><input type="range" id="tl-size" min="0.6" max="1.8" step="0.05" value="1" disabled></label>
+      <label class="tl-row"><span>按钮透明度</span><input type="range" id="tl-op" min="0.25" max="1" step="0.05" value="${settings.btnOpacity}"></label>
+      <div class="tl-btns"><button data-tl="reset">恢复默认</button><button data-tl="cancel">取消</button><button data-tl="save" class="acc">保存</button></div>`;
+    this.el.appendChild(p);
+    p.querySelector('#tl-size').addEventListener('input', (e) => {
+      if (!this.sel) return;
+      const d = this.draft[this.sel] || (this.draft[this.sel] = this.centerOf(this.sel));
+      d.s = +e.target.value;
+      this.applyCustom(this.draft);
+    });
+    p.querySelector('#tl-op').addEventListener('input', (e) => {
+      settings.btnOpacity = +e.target.value;
+      this.el.style.setProperty('--to', String(settings.btnOpacity));
+    });
+    p.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-tl]');
+      if (!a) return;
+      const act = a.dataset.tl;
+      if (act === 'reset') { this.draft = {}; this.applyCustom(this.draft); this.select(null); return; }
+      if (act === 'save') { settings.touchLayout = this.draft; saveSettings(); }
+      else settings.btnOpacity = this.origOpacity;
+      this.stopEdit();
+    });
+  }
+
+  stopEdit() {
+    this.editing = false;
+    this.el.classList.remove('editing');
+    if (this.panel) { this.panel.remove(); this.panel = null; }
+    this.select(null);
+    this.q('.t-weapons').innerHTML = this.savedBar || '';
+    this.cache = {};
+    this.applyLayout();
+    const f = this.onEditDone;
+    this.onEditDone = null;
+    if (f) f();
+  }
+
+  centerOf(key) {
+    const sel = CUSTOM.find((c) => c[0] === key)[1];
+    const r = this.q(sel).getBoundingClientRect();
+    return { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, s: 1 };
+  }
+
+  select(key) {
+    for (const [k, sel] of CUSTOM) this.q(sel).classList.toggle('tl-sel', k === key);
+    this.sel = key;
+    if (!this.panel) return;
+    const size = this.panel.querySelector('#tl-size');
+    size.disabled = !key;
+    size.value = key && this.draft[key] ? this.draft[key].s || 1 : 1;
+    this.panel.querySelector('#tl-name').textContent = key ? `大小：${CUSTOM.find((c) => c[0] === key)[2]}` : '先点选一个按钮';
+  }
+
+  editDown(e) {
+    if (e.target.closest('.tl-panel')) return;
+    e.preventDefault();
+    const hit = CUSTOM.find(([, sel]) => e.target.closest(sel));
+    if (!hit) { this.select(null); return; }
+    this.select(hit[0]);
+    const c = this.draft[hit[0]] || this.centerOf(hit[0]);
+    this.drag = { id: e.pointerId, key: hit[0], sx: e.clientX, sy: e.clientY, x: c.x, y: c.y, s: c.s || 1 };
+    try { this.el.setPointerCapture(e.pointerId); } catch {}
+  }
+
+  editMove(e) {
+    const d = this.drag;
+    if (!d || d.id !== e.pointerId) return;
+    e.preventDefault();
+    const x = Math.max(0.03, Math.min(0.97, d.x + (e.clientX - d.sx) / innerWidth));
+    const y = Math.max(0.05, Math.min(0.95, d.y + (e.clientY - d.sy) / innerHeight));
+    this.draft[d.key] = { x, y, s: d.s };
+    this.applyCustom(this.draft);
+  }
+
+  editUp(e) {
+    if (this.drag && this.drag.id === e.pointerId) this.drag = null;
   }
 
   onDown(e) {
+    if (this.editing) return this.editDown(e);
     e.preventDefault();
     audio.init();
     const btn = e.target.closest('[data-act]');
@@ -105,6 +227,7 @@ export class TouchControls {
   }
 
   onMove(e) {
+    if (this.editing) return this.editMove(e);
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     e.preventDefault();
@@ -137,6 +260,7 @@ export class TouchControls {
   }
 
   onUp(e) {
+    if (this.editing) return this.editUp(e);
     const p = this.ptrs.get(e.pointerId);
     if (!p) return;
     this.ptrs.delete(e.pointerId);
@@ -194,6 +318,7 @@ export class TouchControls {
   }
 
   update() {
+    if (this.editing) return;
     const g = this.g, me = g.me, W = g.w;
     const blocked = g.anyOverlay() || g.hud.buyOpen || !g.input.locked || !document.getElementById('matchend').classList.contains('hidden');
     if (blocked !== this.cache.blocked) {
@@ -288,12 +413,15 @@ export class TouchControls {
     const dt = this.lastMotion ? Math.min(0.1, (now - this.lastMotion) / 1000) : 0;
     this.lastMotion = now;
     if (!rr || !dt || !this.g.me.alive || !this.inp.locked) return;
+    if (settings.gyroScope && !(this.g.w && this.g.w.scope > 0)) return;
     const ang = (screen.orientation && screen.orientation.angle) ?? (typeof window.orientation === 'number' ? window.orientation : 0);
     const b = rr.beta || 0, gm = rr.gamma || 0;
     let yawRate, pitchRate;
     if (ang === 90) { yawRate = b; pitchRate = -gm; }
     else if (ang === 270 || ang === -90) { yawRate = -b; pitchRate = gm; }
     else { yawRate = gm; pitchRate = b; }
+    if (settings.gyroInvX) yawRate = -yawRate;
+    if (settings.gyroInvY) pitchRate = -pitchRate;
     const k = DEG * dt * settings.gyroSens;
     if (Math.abs(yawRate) > 0.6) this.inp.gyroYaw += yawRate * k;
     if (Math.abs(pitchRate) > 0.6) this.inp.gyroPitch += pitchRate * k;
@@ -304,5 +432,6 @@ export class TouchControls {
     this.reset();
     window.removeEventListener('resize', this.h.resize);
     this.el.remove();
+    if (this.preview && !this.hadTouchClass) document.body.classList.remove('touch');
   }
 }

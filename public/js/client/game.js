@@ -48,6 +48,7 @@ export class Game {
     this.fx = new Effects(this.scene, { low: this.isTouch });
     this.vm = new ViewModel();
     this.input = new Input(renderer.domElement, this.isTouch);
+    this.input.setBinds(settings.binds);
     this.assist = null;
     this.aimEnemy = false;
 
@@ -930,7 +931,7 @@ export class Game {
     if (inp.hit('Escape') && inp.locked) { inp.unlock(); return; }
     if (this.paused) return;
     if (inp.hit('KeyB')) { this.openBuy(); return; }
-    if (inp.hit('KeyY') || inp.hit('Enter')) { this.openChat(false); return; }
+    if (inp.hit('KeyY')) { this.openChat(false); return; }
     if (inp.hit('KeyU')) { this.openChat(true); return; }
     if (inp.hit('KeyM') && this.mode !== 'dm') { this.showTeamSelect(); return; }
     if (inp.hit('F2') && this.isHost() && this.round.ph === 'warmup') this.net.send({ t: 'start' });
@@ -974,9 +975,10 @@ export class Game {
         dx *= slow;
         dy *= slow;
       }
-      const k = 0.2 * settings.touchSens * DEG * zoom;
-      this.yaw += -dx * k + inp.gyroYaw * zoom;
-      this.pitch = clamp(this.pitch - dy * k + inp.gyroPitch * zoom, -89 * DEG, 89 * DEG);
+      const tz = zoom === 1 ? 1 : (zoom / settings.zoomSens) * settings.touchZoomSens;
+      const k = 0.2 * settings.touchSens * DEG * tz;
+      this.yaw += -dx * k + inp.gyroYaw * tz;
+      this.pitch = clamp(this.pitch - dy * k + inp.gyroPitch * tz, -89 * DEG, 89 * DEG);
       // 辅助瞄准：转动视角或移动时，轻微吸附到敌人身上
       const active = dx !== 0 || dy !== 0 || inp.moveX !== 0 || inp.moveY !== 0 || inp.gyroYaw !== 0;
       if (a && active && this.me.alive) {
@@ -1054,8 +1056,8 @@ export class Game {
     cmd.fwd = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0);
     cmd.side = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0);
     cmd.jump = k('Space');
-    cmd.crouch = k('ControlLeft') || k('ControlRight') || k('KeyC') || this.w.defusing;
-    cmd.walk = k('ShiftLeft') || k('ShiftRight');
+    cmd.crouch = k('ControlLeft') || this.w.defusing;
+    cmd.walk = k('ShiftLeft');
     if (inp.touch && !cmd.fwd && !cmd.side && (inp.moveX || inp.moveY)) {
       cmd.fwd = inp.moveY;
       cmd.side = inp.moveX;
@@ -1134,7 +1136,7 @@ export class Game {
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
     const fw = (inp.down('KeyW') ? 1 : 0) - (inp.down('KeyS') ? 1 : 0) + inp.moveY;
     const sd = (inp.down('KeyD') ? 1 : 0) - (inp.down('KeyA') ? 1 : 0) + inp.moveX;
-    const up = (inp.down('Space') ? 1 : 0) - (inp.down('ControlLeft') || inp.down('KeyC') ? 1 : 0);
+    const up = (inp.down('Space') ? 1 : 0) - (inp.down('ControlLeft') ? 1 : 0);
     fc.x += (f[0] * fw + rx * sd) * sp;
     fc.y += (f[1] * fw + up) * sp;
     fc.z += (f[2] * fw + rz * sd) * sp;

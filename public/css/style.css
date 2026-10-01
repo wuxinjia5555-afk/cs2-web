@@ -478,3 +478,30 @@ body.touch #kill-icons { display: none; }
 
 /* 声纹 */
 #soundviz { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* 自定义按键布局 */
+#touch-ui .cl { right: auto !important; bottom: auto !important; margin: 0 !important; transform: translate(-50%, -50%) scale(var(--ts, 1)) !important; }
+#touch-ui .t-btn.cl.on { transform: translate(-50%, -50%) scale(calc(var(--ts, 1) * .93)) !important; }
+#touch-ui.editing { background: rgba(0, 0, 0, .35); }
+#touch-ui.editing .t-btn, #touch-ui.editing .t-buy, #touch-ui.editing .t-weapons { display: flex !important; outline: 2px dashed rgba(255, 255, 255, .75); outline-offset: 4px; }
+#touch-ui.editing .off { opacity: .45; }
+#touch-ui.editing .tl-sel { outline: 3px solid #ffd23f !important; }
+#touch-ui.editing .t-top, #touch-ui.editing .t-spec, #touch-ui.editing .t-joy { display: none !important; }
+.tl-panel { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 2; width: min(420px, 92vw);
+  background: rgba(14, 18, 26, .94); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; touch-action: auto; font-size: 13px; }
+.tl-tip { color: #ffe39a; margin-bottom: 6px; text-align: center; }
+.tl-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+.tl-row span { width: 120px; flex: none; }
+.tl-row input { flex: 1; }
+.tl-btns { display: flex; gap: 8px; margin-top: 8px; }
+.tl-btns button { flex: 1; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, .08); color: #fff; font-size: 14px; }
+.tl-btns button.acc { background: var(--acc); color: #111; font-weight: 700; border-color: var(--acc); }
+/* 电脑键位 */
+.binds-tip { font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+.binds-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+.bind-row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.bind-row span { flex: 1; }
+.bind-key { width: 84px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: #fff; font-family: inherit; font-size: 13px; cursor: pointer; }
+.bind-key:hover { border-color: var(--acc); }
+.bind-key.wait { background: var(--acc); color: #111; font-weight: 700; }
+@media (max-width: 700px) { .binds-list { grid-template-columns: 1fr; } }

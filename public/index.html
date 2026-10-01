@@ -271,12 +271,23 @@
         <label class="field"><span>滑屏灵敏度 <b id="v-tsens"></b></span><input type="range" id="s-tsens" min="0.3" max="3" step="0.05"></label>
         <label class="field"><span>按钮大小 <b id="v-bscale"></b></span><input type="range" id="s-bscale" min="0.7" max="1.4" step="0.05"></label>
         <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
+        <label class="field"><span>开镜灵敏度 <b id="v-tzoom"></b></span><input type="range" id="s-tzoom" min="0.3" max="2" step="0.05"></label>
         <label class="field"><span>陀螺仪灵敏度 <b id="v-gsens"></b></span><input type="range" id="s-gsens" min="0.2" max="3" step="0.1"></label>
         <label class="check"><input type="checkbox" id="s-assist"> 辅助瞄准（准星靠近敌人时减速+轻微吸附）</label>
         <label class="check"><input type="checkbox" id="s-autofire"> 自动开火（准星对准敌人自动射击）</label>
         <label class="check"><input type="checkbox" id="s-leftfire"> 左侧开火键</label>
         <label class="check"><input type="checkbox" id="s-vibrate"> 震动反馈（命中/击杀/受伤，安卓手机）</label>
-        <label class="check"><input type="checkbox" id="s-gyro"> 陀螺仪瞄准（转动手机转视角，实验功能）</label>
+        <label class="check"><input type="checkbox" id="s-gyro"> 陀螺仪瞄准（转动手机转视角）</label>
+        <label class="check"><input type="checkbox" id="s-gyroscope"> 只在开镜时使用陀螺仪</label>
+        <label class="check"><input type="checkbox" id="s-gyroinvx"> 陀螺仪左右反转</label>
+        <label class="check"><input type="checkbox" id="s-gyroinvy"> 陀螺仪上下反转</label>
+      </div>
+      <div class="row"><button class="btn" id="btn-touch-layout">✋ 自定义按键布局（拖动按钮位置、调大小）</button></div>
+      <div id="binds-sec">
+        <h3>键位设置（电脑）</h3>
+        <div class="binds-tip">点一下按键框，再按下新的键（Esc 取消，Backspace 清空）。每个动作可以设两个键。</div>
+        <div id="binds-list" class="binds-list"></div>
+        <div class="row"><button class="btn ghost" id="btn-binds-reset">恢复默认键位</button></div>
       </div>
       <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
       <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>

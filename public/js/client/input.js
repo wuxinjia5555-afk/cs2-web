@@ -1,4 +1,5 @@
 // 键鼠输入（指针锁定 + 原始鼠标输入）
+import { BIND_ACTIONS } from './settings.js';
 export class Input {
   constructor(canvas, touch = false) {
     this.canvas = canvas;
@@ -10,6 +11,7 @@ export class Input {
     this.gyroYaw = 0;
     this.gyroPitch = 0;
     this.keys = new Set();
+    this.phys = new Set();
     this.pressed = new Set();
     this.released = new Set();
     this.mouse = [false, false, false];
@@ -59,17 +61,43 @@ export class Input {
     this.unlock();
   }
 
+  // 键位映射：玩家按的键 -> 游戏逻辑认的键（每个动作的第一个默认键）。被改走的默认键失效
+  setBinds(binds) {
+    const map = new Map(), reserved = new Set();
+    for (const [act, , def] of BIND_ACTIONS) {
+      for (const k of def) if (!k.startsWith('Digit')) reserved.add(k);
+      for (const k of (binds && binds[act]) || def) if (k) map.set(k, def[0]);
+    }
+    this.keymap = map;
+    this.reservedKeys = reserved;
+  }
+
+  mapKey(c) {
+    if (!this.keymap) return c;
+    const m = this.keymap.get(c);
+    if (m) return m;
+    return this.reservedKeys.has(c) ? null : c;
+  }
+
   _kd(e) {
     if (!this.active || this.typing) return;
-    const c = e.code;
-    if (c === 'Tab' || ((this.locked || document.fullscreenElement) && (c === 'Space' || c.startsWith('Arrow') || e.ctrlKey || c === 'F2' || c === 'Quote' || c === 'Slash'))) e.preventDefault();
+    const raw = e.code;
+    const c = this.mapKey(raw);
+    if (raw === 'Tab' || c === 'Tab' || ((this.locked || document.fullscreenElement) && (c === 'Space' || raw.startsWith('Arrow') || e.ctrlKey || raw === 'F2' || raw === 'Quote' || raw === 'Slash' || (c && c !== raw)))) e.preventDefault();
+    if (!c) return;
+    this.phys.add(raw);
     if (!this.keys.has(c)) this.pressed.add(c);
     this.keys.add(c);
     if (this.onKey) this.onKey(c, true, e);
   }
 
   _ku(e) {
-    const c = e.code;
+    const raw = e.code;
+    this.phys.delete(raw);
+    const c = this.mapKey(raw);
+    if (!c) return;
+    // 同一个动作绑了两个键：另一个还按着就不算松开
+    for (const k of this.phys) if (this.mapKey(k) === c) return;
     this.keys.delete(c);
     this.released.add(c);
     if (this.active && this.onKey && !this.typing) this.onKey(c, false, e);
@@ -160,6 +188,7 @@ export class Input {
   releaseAll() {
     for (const k of this.keys) this.released.add(k);
     this.keys.clear();
+    this.phys.clear();
     for (let i = 0; i < 3; i++) { if (this.mouse[i]) this.mUp[i] = true; this.mouse[i] = false; }
     this.moveX = 0;
     this.moveY = 0;

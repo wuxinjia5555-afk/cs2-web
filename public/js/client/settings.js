@@ -9,6 +9,17 @@ export function deviceIsTouch() {
   return (coarse && !anyFine) || (ua && navigator.maxTouchPoints > 0);
 }
 
+// 电脑键位：[动作, 名称, 默认按键（e.code）]。游戏逻辑里认的是每个动作的第一个默认键
+export const BIND_ACTIONS = [
+  ['forward', '前进', ['KeyW']], ['back', '后退', ['KeyS']], ['left', '向左', ['KeyA']], ['right', '向右', ['KeyD']],
+  ['jump', '跳跃', ['Space']], ['crouch', '下蹲', ['ControlLeft', 'KeyC']], ['walk', '静步', ['ShiftLeft', 'ShiftRight']],
+  ['reload', '换弹', ['KeyR']], ['use', '拾取 / 拆包', ['KeyE']], ['drop', '丢弃武器', ['KeyG']], ['inspect', '检视武器', ['KeyF']],
+  ['lastWeapon', '上一把武器', ['KeyQ']], ['slot1', '主武器', ['Digit1']], ['slot2', '手枪', ['Digit2']], ['slot3', '刀', ['Digit3']],
+  ['slot4', '投掷物', ['Digit4']], ['slot5', 'C4 炸弹', ['Digit5']], ['buy', '购买菜单', ['KeyB']], ['score', '计分板', ['Tab']],
+  ['chat', '全体聊天', ['KeyY', 'Enter']], ['teamChat', '队伍聊天', ['KeyU']], ['team', '选择队伍', ['KeyM']],
+];
+export const defaultBinds = () => Object.fromEntries(BIND_ACTIONS.map(([a, , k]) => [a, k.slice()]));
+
 export const DEFAULTS = {
   name: '',
   sens: 2.0,
@@ -35,6 +46,13 @@ export const DEFAULTS = {
   btnOpacity: 0.6,
   leftFire: true,
   vibrate: true,
+  touchZoomSens: 0.8,
+  gyroScope: false,
+  gyroInvX: false,
+  gyroInvY: false,
+  // 自定义按钮布局：{ 按钮: { x, y（占屏幕宽高的比例，按钮中心）, s（大小倍数） } }
+  touchLayout: {},
+  binds: defaultBinds(),
 };
 
 function load() {
@@ -46,7 +64,7 @@ function load() {
     if (deviceIsTouch()) { base.shadows = false; base.res = 0.75; base.xhair.len = 7; base.xhair.thick = 2; }
     return base;
   }
-  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) } };
+  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) }, binds: { ...base.binds, ...(s.binds || {}) }, touchLayout: s.touchLayout || {} };
 }
 
 export const settings = load();

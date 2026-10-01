@@ -1,6 +1,7 @@
 // 入口：主菜单、单机/联机大厅、设置，负责创建 Game
 import * as THREE from 'three';
-import { settings, saveSettings, resetSettings, applyCrosshair, useTouch } from './client/settings.js';
+import { settings, saveSettings, resetSettings, applyCrosshair, useTouch, BIND_ACTIONS, defaultBinds } from './client/settings.js';
+import { TouchControls } from './client/touch.js';
 import { audio } from './client/audio.js';
 import { WsNet, LocalNet, defaultServerUrl } from './client/net.js';
 import { Game } from './client/game.js';
@@ -443,6 +444,11 @@ function bindSettings() {
   rng('s-bscale', 'btnScale', settings, (v) => Math.round(v * 100) + '%', relayout);
   rng('s-bop', 'btnOpacity', settings, (v) => Math.round(v * 100) + '%', relayout);
   rng('s-gsens', 'gyroSens', settings, (v) => v.toFixed(1));
+  rng('s-tzoom', 'touchZoomSens', settings, (v) => v.toFixed(2));
+  chk('s-gyroscope', 'gyroScope', settings);
+  chk('s-gyroinvx', 'gyroInvX', settings);
+  chk('s-gyroinvy', 'gyroInvY', settings);
+  renderBinds();
   chk('s-assist', 'aimAssist', settings);
   chk('s-autofire', 'autoFire', settings);
   chk('s-leftfire', 'leftFire', settings, relayout);
@@ -456,6 +462,76 @@ function bindSettings() {
   tm.onchange = () => { settings.touchMode = tm.value; saveSettings(); toast('操作方式将在刷新页面后生效'); };
   prev();
 }
+
+// ---------------- 电脑键位 ----------------
+const KEY_NAMES = {
+  Space: '空格', ControlLeft: '左 Ctrl', ControlRight: '右 Ctrl', ShiftLeft: '左 Shift', ShiftRight: '右 Shift', AltLeft: '左 Alt', AltRight: '右 Alt',
+  Tab: 'Tab', Enter: '回车', Backquote: '`', CapsLock: 'Caps', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
+};
+const keyName = (c) => (!c ? '—' : c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : c.startsWith('Numpad') ? '小键盘' + c.slice(6) : KEY_NAMES[c] || c);
+let bindCapture = null;
+
+function renderBinds() {
+  const box = $('binds-list');
+  $('binds-sec').classList.toggle('hidden', TOUCH);
+  if (TOUCH) return;
+  box.innerHTML = BIND_ACTIONS.map(([act, name]) => {
+    const keys = settings.binds[act] || [];
+    const cell = (i) => `<button class="bind-key${bindCapture && bindCapture.act === act && bindCapture.i === i ? ' wait' : ''}" data-act="${act}" data-i="${i}">${bindCapture && bindCapture.act === act && bindCapture.i === i ? '按下新键…' : esc(keyName(keys[i]))}</button>`;
+    return `<div class="bind-row"><span>${esc(name)}</span>${cell(0)}${cell(1)}</div>`;
+  }).join('');
+}
+
+function applyBinds() {
+  saveSettings();
+  if (game) game.input.setBinds(settings.binds);
+  renderBinds();
+}
+
+$('binds-list').addEventListener('click', (e) => {
+  const b = e.target.closest('.bind-key');
+  if (!b) return;
+  bindCapture = { act: b.dataset.act, i: +b.dataset.i };
+  renderBinds();
+});
+window.addEventListener('keydown', (e) => {
+  if (!bindCapture) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const { act, i } = bindCapture;
+  bindCapture = null;
+  if (e.code === 'Escape') { renderBinds(); return; }
+  const list = (settings.binds[act] || []).slice();
+  if (e.code === 'Backspace' || e.code === 'Delete') list[i] = null;
+  else {
+    // 这个键原来绑在别的动作上：从那里拿走
+    for (const [a] of BIND_ACTIONS) if (a !== act) settings.binds[a] = (settings.binds[a] || []).filter((k) => k !== e.code);
+    for (let j = 0; j < list.length; j++) if (list[j] === e.code) list[j] = null;
+    list[i] = e.code;
+  }
+  settings.binds[act] = list.filter(Boolean);
+  applyBinds();
+  audio.play('click');
+}, true);
+$('btn-binds-reset').addEventListener('click', () => { settings.binds = defaultBinds(); applyBinds(); toast('已恢复默认键位'); });
+
+// ---------------- 手机按键布局 ----------------
+$('btn-touch-layout').addEventListener('click', () => {
+  audio.init();
+  const ret = settingsReturn;
+  settingsReturn = null;
+  $('menu-settings').classList.add('hidden');
+  const back = () => openSettings(ret);
+  if (game && game.touch) {
+    $('pause').classList.add('hidden');
+    game.touch.startEdit(back);
+  } else {
+    const fake = { input: { vKey() {}, vMouse() {}, releaseAll() {}, moveX: 0, moveY: 0 }, me: { alive: true, inv: [] }, w: {} };
+    const tc = new TouchControls(fake, { preview: true });
+    tc.startEdit(() => { tc.destroy(); back(); });
+  }
+});
 
 function openSettings(onClose) {
   settingsReturn = onClose || null;
