@@ -58,13 +58,19 @@ npm start
 
 **局域网联机**：服务器启动时会打印类似 `http://192.168.1.23:8080` 的地址，同一个 Wi-Fi 下的朋友在浏览器打开这个地址，进入「联机对战」加入你的房间即可（第一次运行时 Windows 防火墙会询问，选择允许）。
 
-## 部署到公网（Render 免费版）
+## 部署到公网（Render 免费版，固定网址）
+
+Render 免费版的硬盘每次休眠 / 重启都会清空，所以账号数据（设置、金币、皮肤、好友）存在 Upstash 的免费云端 Redis 里。
 
 1. 把本目录上传到一个新的 GitHub 仓库。
-2. 登录 https://render.com → **New** → **Blueprint** → 选择这个仓库，Render 会读取 `render.yaml` 自动创建服务。
-3. 部署完成后打开 Render 给的地址（如 `https://defuse-fps.onrender.com`），把房间邀请链接发给朋友。
+2. 登录 https://upstash.com → **Create Database**（Redis，区域选 Singapore）→ 在数据库页面的 **REST API** 里复制 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN`。
+3. 登录 https://render.com → **New** → **Blueprint** → 选择这个仓库，Render 会读取 `render.yaml` 并让你填三个值：
+   - `DEV_PASSWORD`：开发者模式的密码（服务器启动时只保留加盐哈希）
+   - `UPSTASH_REDIS_REST_URL`、`UPSTASH_REDIS_REST_TOKEN`：第 2 步复制的两项
+4. 部署完成后打开 Render 给的地址（如 `https://defuse-fps.onrender.com`），把房间邀请链接发给朋友。
+5. （可选）把这台电脑上原来的账号搬过去：新服务器刚启动 30 分钟内、还没有任何账号时，运行 `node tools/migrate-accounts.mjs https://你的服务.onrender.com`（只能导一次）。
 
-免费实例闲置 15 分钟会休眠，第一次打开需要等 30~60 秒唤醒。
+免费实例闲置 15 分钟会休眠，第一次打开需要等大约 1 分钟唤醒。
 
 ## 目录结构
 

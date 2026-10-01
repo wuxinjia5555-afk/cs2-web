@@ -56,7 +56,14 @@ function json(res, obj) {
 }
 
 // ---------------- 账号（设置云同步） ----------------
-const accounts = createAccounts(path.join(__dirname, 'data', 'accounts.json'), path.join(__dirname, 'data', 'dev.json'));
+const accounts = await createAccounts(path.join(__dirname, 'data', 'accounts.json'), path.join(__dirname, 'data', 'dev.json'));
+// 服务器要关了（Render 重新部署 / 休眠时会先发 SIGTERM）：先把账号数据存好
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    try { await accounts.flush(); } catch {}
+    process.exit(0);
+  });
+}
 
 function readJson(req, limit = 200000) {
   return new Promise((resolve) => {
@@ -75,7 +82,7 @@ async function accountApi(req, res, what) {
     if (what === 'me') return json(res, accounts.me(tkHeader));
     if (what === 'search') return json(res, accounts.search(tkHeader, new URL(req.url, 'http://x').searchParams.get('q') || ''));
     if (req.method !== 'POST') return json(res, { error: '请求方式不对' });
-    const body = await readJson(req);
+    const body = await readJson(req, what === 'import' ? 5e6 : 200000);
     if (!body || typeof body !== 'object') return json(res, { error: '数据太大或格式不对' });
     const tk = tkHeader || body.tk; // 关页面时用 sendBeacon 发的请求带不了请求头，令牌放在内容里
     switch (what) {
@@ -89,6 +96,7 @@ async function accountApi(req, res, what) {
       case 'gift': return json(res, accounts.gift(tk, body.to, body.coins, body.skin ? String(body.skin) : null));
       case 'inbox-ack': return json(res, accounts.ackInbox(tk, body.upTo));
       case 'dev': return json(res, await accounts.dev(tk, body.password, !!body.off));
+      case 'import': return json(res, accounts.importAll(body.data));
     }
     json(res, { error: '没有这个接口' });
   } catch (e) {
@@ -105,7 +113,7 @@ const handler = (req, res) => {
   if (pathname === '/healthz') { res.writeHead(200); res.end('ok'); return; }
   if (pathname === '/api/info') {
     // 公网地址（隧道 / 部署）写在 server/public-url.txt 或环境变量 PUBLIC_URL；公网访客不返回局域网 IP
-    let pub = process.env.PUBLIC_URL || '';
+    let pub = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '';
     try { pub = fs.readFileSync(path.join(__dirname, 'public-url.txt'), 'utf8').trim() || pub; } catch {}
     const host = String(req.headers.host || '').replace(/:\d+$/, '');
     const local = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(host);
@@ -359,7 +367,7 @@ const lanUrls = (proto, port) => lanIps().map((ip) => `${proto}://${ip}:${port}`
 
 // https 证书：没有、或者局域网 IP 变了，就用 openssl 自动生成一张自签名证书
 function loadCert() {
-  if (process.env.HTTPS === '0') return null;
+  if (process.env.HTTPS === '0' || process.env.RENDER) return null; // 部署在 Render 上：本来就是 https，不用自己开
   const keyF = path.join(CERT_DIR, 'key.pem'), certF = path.join(CERT_DIR, 'cert.pem'), ipsF = path.join(CERT_DIR, 'ips.txt');
   const want = ['127.0.0.1', ...lanIps()].join(',');
   let have = '';

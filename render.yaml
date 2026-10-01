@@ -1,5 +1,7 @@
 # Render 一键部署（Blueprint）：https://render.com/docs/blueprint-spec
-# 免费实例在无人访问 15 分钟后会休眠，下次打开需要约 30~60 秒唤醒。
+# 免费实例在无人访问 15 分钟后会休眠，下次打开需要约 1 分钟唤醒。
+# 免费实例的硬盘每次休眠 / 重启都会清空，所以账号数据存在 Upstash（免费云端 Redis）里。
+# 下面 sync: false 的三项在 Render 创建服务时会让你填写（不会写进代码仓库）。
 services:
   - type: web
     name: defuse-fps
@@ -12,3 +14,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: DEV_PASSWORD
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

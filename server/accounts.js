@@ -1,6 +1,7 @@
 // 账号：名称 + 密码（scrypt 加盐哈希，不存明文），登录后发一个随机令牌（存在浏览器里，下次自动登录）。
 // 每个账号存一份设置（手机按键布局、灵敏度、键位、刀皮肤……），换设备 / 换网址登录就能拿回来。
-// 数据存在 server/data/accounts.json（不进 git）。
+// 数据存在 server/data/accounts.json（不进 git）；配了 Upstash（免费云端 Redis）就存云端——
+// 部署到 Render 免费版时必须这样，因为它的硬盘每次休眠 / 重启都会清空。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,6 +14,41 @@ export const KNIFE_SKINS = ['butterfly', 'karambit', 'm9', 'xeno'];
 const MAX_FRIENDS = 100;
 
 const scrypt = (pw, salt) => new Promise((resolve, reject) => crypto.scrypt(pw, salt, 32, (err, key) => (err ? reject(err) : resolve(key))));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 账号数据存哪：环境变量里有 Upstash 的地址和令牌就存云端（整份数据存成一个键），否则存本机文件
+function makeStore(file) {
+  const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    const KEY = process.env.ACCOUNTS_KEY || 'defuse:accounts';
+    const cmd = async (args) => {
+      const r = await fetch(url.replace(/\/$/, ''), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(args) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || 'HTTP ' + r.status);
+      return j.result;
+    };
+    return {
+      cloud: true,
+      where: 'Upstash 云端',
+      async load() { const s = await cmd(['GET', KEY]); return s ? JSON.parse(s) : null; },
+      async save(text) { await cmd(['SET', KEY, text]); },
+    };
+  }
+  return {
+    cloud: false,
+    where: file,
+    async load() {
+      let s;
+      try { s = fs.readFileSync(file, 'utf8'); } catch { return null; } // 还没有这个文件：新的空数据
+      return JSON.parse(s);
+    },
+    async save(text) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file + '.tmp', text);
+      fs.renameSync(file + '.tmp', file);
+    },
+  };
+}
 
 export function cleanName(n) {
   return String(n == null ? '' : n).normalize('NFC').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().replace(/\s+/g, ' ');
@@ -26,24 +62,50 @@ export function setDevPassword(file, pw) {
   fs.writeFileSync(file, JSON.stringify({ salt, hash }));
 }
 
-export function createAccounts(file, devFile) {
-  // 每次用到时再读：改了开发者密码不用重启服务器
-  const devCfg = () => { try { return JSON.parse(fs.readFileSync(devFile, 'utf8')); } catch { return null; } };
-  let db = { users: {}, tokens: {} };
-  try { db = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+export async function createAccounts(file, devFile) {
+  // 开发者密码：server/data/dev.json（每次用到时再读，改了密码不用重启）；
+  // 部署到云上时也可以用环境变量 DEV_PASSWORD（启动时算成加盐哈希，明文马上从环境变量里删掉）
+  let envDev = null;
+  if (process.env.DEV_PASSWORD) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    envDev = { salt, hash: crypto.scryptSync(process.env.DEV_PASSWORD, salt, 32).toString('hex') };
+    delete process.env.DEV_PASSWORD;
+  }
+  const devCfg = () => { try { return JSON.parse(fs.readFileSync(devFile, 'utf8')); } catch { return envDev; } };
+
+  // 读账号数据。云端读失败就多试几次，还不行就别启动——千万不能当成空数据，再把云端的数据覆盖掉
+  const store = makeStore(file);
+  let db;
+  for (let i = 0; ; i++) {
+    try { db = (await store.load()) || { users: {}, tokens: {} }; break; } catch (e) {
+      if (i >= 4) throw new Error('账号数据读不出来（' + store.where + '）：' + e.message);
+      console.error(`[账号] 读取失败（${e.message}），2 秒后重试`);
+      await sleep(2000);
+    }
+  }
   if (!db.users) db.users = {};
   if (!db.tokens) db.tokens = {};
-  let timer = null;
-  const save = () => {
+  console.log(`[账号] ${Object.keys(db.users).length} 个账号，存在 ${store.where}`);
+  const startedAt = Date.now();
+
+  // 保存：改完等一会儿一起存（云端 1.5 秒）；存失败了过几秒再试
+  let timer = null, inflight = null, again = false;
+  const save = (delay = store.cloud ? 1500 : 300) => {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      try {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file + '.tmp', JSON.stringify(db));
-        fs.renameSync(file + '.tmp', file);
-      } catch (e) { console.error('[账号] 保存失败', e.message); }
-    }, 300);
+    timer = setTimeout(flush, delay);
   };
+  async function flush() {
+    clearTimeout(timer);
+    timer = null;
+    if (inflight) { again = true; return inflight; } // 正在存：存完再存一次最新的
+    inflight = store.save(JSON.stringify(db)).catch((e) => {
+      console.error('[账号] 保存失败，5 秒后重试：', e.message);
+      if (!timer) timer = setTimeout(flush, 5000);
+    });
+    await inflight;
+    inflight = null;
+    if (again) { again = false; await flush(); }
+  }
   const key = (name) => name.toLowerCase();
   const fails = new Map(); // 账号 -> { n, t }：密码连续错太多次就先锁一会儿
   let regs = []; // 最近的注册时间（防止被刷）
@@ -81,6 +143,30 @@ export function createAccounts(file, devFile) {
 
   return {
     count: () => Object.keys(db.users).length,
+    // 关服务器前把还没存的数据马上存掉
+    async flush() {
+      if (inflight) await inflight;
+      if (timer || again) await flush();
+    },
+
+    // 搬家：新服务器上一个账号都没有时（只限启动后 30 分钟内），把旧服务器的账号数据整个导进来，只能导一次
+    importAll(data) {
+      if (Object.keys(db.users).length) return { error: '这里已经有账号了，不能再导入' };
+      if (Date.now() - startedAt > 30 * 60e3) return { error: '只能在服务器启动后 30 分钟内导入，重启一下服务器再试' };
+      if (!data || typeof data !== 'object' || !data.users || typeof data.users !== 'object') return { error: '数据格式不对' };
+      const users = {};
+      for (const [k, u] of Object.entries(data.users)) {
+        if (!u || typeof u.name !== 'string' || typeof u.salt !== 'string' || typeof u.hash !== 'string' || k !== key(cleanName(u.name))) return { error: '账号数据格式不对：' + k };
+        users[k] = u;
+      }
+      const tokens = {};
+      for (const [tk, e] of Object.entries(data.tokens || {})) if (/^[0-9a-f]{48}$/.test(tk) && e && users[e.u]) tokens[tk] = { u: e.u, t: Number(e.t) || Date.now() };
+      db.users = users;
+      db.tokens = tokens;
+      save(0);
+      console.log(`[账号] 导入了 ${Object.keys(users).length} 个账号`);
+      return { ok: true, count: Object.keys(users).length };
+    },
 
     async register(name, pw, settings) {
       name = cleanName(name);
@@ -122,8 +208,7 @@ export function createAccounts(file, devFile) {
       const k = userOf(tk);
       if (!k) return { error: '登录已失效，请重新登录', expired: true };
       const u = db.users[k];
-      touch(k);
-      save();
+      touch(k); // 在线时间不单独存（省云端读写次数），跟下次别的改动一起存
       return { ...view(k), settings: u.settings || {}, updated: u.updated || 0 };
     },
 
