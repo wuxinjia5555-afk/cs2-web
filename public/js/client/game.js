@@ -750,6 +750,7 @@ export class Game {
       this.lastKillT = this.now;
       if (this.rangeStats) { this.rangeStats.kills++; this.hud.rangeStats(this.rangeStats); }
       const n = (this.roundKills = (this.roundKills || 0) + 1);
+      if (this.mode === 'dm') this.refillAmmo(); // 死斗：杀一个人就把子弹补满（服务器那边也补了）
       const w = WEAPONS[m.w];
       const paid = this.mode === 'bomb' && this.round.ph !== 'warmup';
       const reward = paid ? ((w && w.killReward) ?? 300) : 0;
@@ -759,6 +760,18 @@ export class Game {
     } else if (m.as === this.myId) {
       this.hud.assistNote(v ? v.name : '');
     }
+  }
+
+  refillAmmo() {
+    for (const s of [1, 2]) {
+      const it = this.me.inv[s];
+      if (!it) continue;
+      const w = WEAPONS[it.w];
+      it.clip = w.mag;
+      it.res = w.res;
+    }
+    if (this.w.reloadEnd) { this.w.reloadEnd = 0; this.vm.cancelReload(); }
+    this.hud.ammoRefill();
   }
 
   // 手机震动（iPhone 的 Safari 不支持，会自动忽略）

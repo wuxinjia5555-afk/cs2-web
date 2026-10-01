@@ -602,3 +602,7 @@ body.touch .buy-item .buy-rf { font-size: 13px; padding: 4px 10px; }
   .acct-tip { display: none; }
   #acct-sync { display: block; }
 }
+
+/* 死斗击杀补满子弹：子弹数闪一下绿色 */
+#ammo-box.refill #ammo b, #ammo-box.refill #ammo small { animation: ammoRefill .7s ease-out; }
+@keyframes ammoRefill { 0% { color: #7dff7a; text-shadow: 0 0 12px rgba(125, 255, 122, .9); } 100% { color: inherit; text-shadow: none; } }

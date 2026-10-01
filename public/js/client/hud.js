@@ -381,6 +381,14 @@ export class Hud {
     el.innerHTML = `<b>训练统计</b><span>开枪 ${st.shots}</span><span>命中率 ${acc}%</span><span>爆头率 ${hs}%</span><span>击杀 ${st.kills}</span><button id="rs-reset">清零</button>`;
   }
 
+  // 弹药补满：子弹数闪一下绿色
+  ammoRefill() {
+    const el = $('ammo-box');
+    el.classList.remove('refill');
+    void el.offsetWidth;
+    el.classList.add('refill');
+  }
+
   hitmarker(hs, kill = false) {
     if (settings.hitmarker === false) return;
     const el = $('hitmarker');

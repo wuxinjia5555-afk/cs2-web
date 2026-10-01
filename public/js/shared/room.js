@@ -710,6 +710,7 @@ export class Room {
       if (this.isEnemy(a, v)) {
         a.kills++; a.roundKills++; a.score += 2;
         if (!dm) this.addMoney(a, (WEAPONS[wid] && WEAPONS[wid].killReward) ?? 300);
+        if (this.phase === 'dm' && a.alive) this.refillAmmo(a); // 死斗：杀一个人就把子弹补满
       } else {
         a.kills--; a.score -= 2;
         if (!dm) this.addMoney(a, -ECON.teamKillPenalty);
@@ -730,6 +731,19 @@ export class Room {
     v.dirty = true;
     if (this.phase === 'dm' && a && a !== v && a.kills >= this.opts.dmKills) this.endMatch(a.id);
     this.checkRoundEnd();
+  }
+
+  // 两把枪的弹匣和备弹都补满（换弹中的也直接算换好了）
+  refillAmmo(p) {
+    for (const s of [1, 2]) {
+      const it = p.inv[s];
+      if (!it) continue;
+      const w = WEAPONS[it.w];
+      it.clip = w.mag;
+      it.res = w.res;
+    }
+    p.reloadEnd = 0;
+    p.dirty = true;
   }
 
   addMoney(p, n) {
