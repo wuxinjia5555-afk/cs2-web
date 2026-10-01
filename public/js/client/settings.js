@@ -47,6 +47,10 @@ export const DEFAULTS = {
   leftFire: true,
   vibrate: true,
   touchZoomSens: 0.8,
+  touchSensX: 1.0, // 滑屏横向 / 纵向灵敏度倍数
+  touchSensY: 1.0,
+  gyroSensX: 1.0, // 陀螺仪横向 / 纵向灵敏度倍数
+  gyroSensY: 1.0,
   crouchMode: 'toggle', // toggle 点按切换 / hold 按住 / mixed 混合
   rangeDmg: true,
   scopeMode: 'toggle',

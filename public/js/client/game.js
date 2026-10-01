@@ -1085,8 +1085,8 @@ export class Game {
       }
       const tz = zoom === 1 ? 1 : (zoom / settings.zoomSens) * settings.touchZoomSens;
       const k = 0.2 * settings.touchSens * DEG * tz;
-      this.yaw += -dx * k + inp.gyroYaw * tz;
-      this.pitch = clamp(this.pitch - dy * k + inp.gyroPitch * tz, -89 * DEG, 89 * DEG);
+      this.yaw += -dx * k * settings.touchSensX + inp.gyroYaw * tz;
+      this.pitch = clamp(this.pitch - dy * k * settings.touchSensY + inp.gyroPitch * tz, -89 * DEG, 89 * DEG);
       // 辅助瞄准：转动视角或移动时，轻微吸附到敌人身上
       const active = dx !== 0 || dy !== 0 || inp.moveX !== 0 || inp.moveY !== 0 || inp.gyroYaw !== 0;
       if (a && active && this.me.alive) {

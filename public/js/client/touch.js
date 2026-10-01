@@ -609,8 +609,8 @@ export class TouchControls {
     if (settings.gyroInvX) yawRate = -yawRate;
     if (settings.gyroInvY) pitchRate = -pitchRate;
     const k = DEG * dt * settings.gyroSens;
-    if (Math.abs(yawRate) > 0.6) this.inp.gyroYaw += yawRate * k;
-    if (Math.abs(pitchRate) > 0.6) this.inp.gyroPitch += pitchRate * k;
+    if (Math.abs(yawRate) > 0.6) this.inp.gyroYaw += yawRate * k * settings.gyroSensX;
+    if (Math.abs(pitchRate) > 0.6) this.inp.gyroPitch += pitchRate * k * settings.gyroSensY;
   }
 
   destroy() {

@@ -503,6 +503,10 @@ function bindSettings() {
   rng('s-bop', 'btnOpacity', settings, (v) => Math.round(v * 100) + '%', relayout);
   rng('s-gsens', 'gyroSens', settings, (v) => v.toFixed(1));
   rng('s-tzoom', 'touchZoomSens', settings, (v) => v.toFixed(2));
+  rng('s-tsx', 'touchSensX', settings, (v) => '×' + v.toFixed(2));
+  rng('s-tsy', 'touchSensY', settings, (v) => '×' + v.toFixed(2));
+  rng('s-gsx', 'gyroSensX', settings, (v) => '×' + v.toFixed(2));
+  rng('s-gsy', 'gyroSensY', settings, (v) => '×' + v.toFixed(2));
   for (const [id, key] of [['s-crouchmode', 'crouchMode'], ['s-scopemode', 'scopeMode']]) {
     const el = $(id);
     el.value = settings[key];
