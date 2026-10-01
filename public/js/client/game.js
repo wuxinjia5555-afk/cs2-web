@@ -1,7 +1,7 @@
 // 客户端游戏主循环：本地预测移动、武器、命中判定、插值、观战、特效与界面联动
 import * as THREE from 'three';
 import { P, PHYS_DT, F, INTERP_DELAY, HG } from '../shared/constants.js';
-import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil } from '../shared/weapons.js';
+import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil, patternKick, nextSpray } from '../shared/weapons.js';
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
@@ -1393,10 +1393,10 @@ export class Game {
       }
       if (k < 3 && (w.type !== 'pistol' || Math.random() < 0.5)) this.fx.tracer(muz.x, muz.y, muz.z, res.x, res.y, res.z);
     }
-    const pat = w.pat[Math.min(Math.floor(W.spray), w.pat.length - 1)];
+    const pat = patternKick(w, W.spray);
     W.punchY += pat[0] * DEG * (0.9 + Math.random() * 0.2);
     W.punchP += pat[1] * DEG;
-    W.spray += 1;
+    W.spray = nextSpray(w, W.spray);
     this.vm.onFire(now, w.type === 'sniper' ? 1.4 : 1);
     audio.shot(w.id, null);
     this.net.send({ t: 'fire', w: w.id, o: [r2(eye.x), r2(eye.y), r2(eye.z)], h: hits, e: ends.slice(0, 12) });

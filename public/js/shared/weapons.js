@@ -125,8 +125,26 @@ export const WEAPONS = {
   c4: { id: 'c4', name: 'C4 炸弹', slot: 5, type: 'c4', speed: 250 * U, deploy: 0.8, pen: 0.5 },
 };
 
+// 超出图案后（无限子弹一直压枪）循环使用的最后一段：只保留左右晃动，并且一圈下来左右正好抵消，不会往一边越飘越远
+const LOOP = 12;
 for (const w of Object.values(WEAPONS)) {
-  if (w.recoil) w.pat = pattern(Math.max(w.mag, 30), w.recoil.up, w.recoil.side, w.recoil.phase || 0);
+  if (!w.recoil) continue;
+  w.pat = pattern(Math.max(w.mag, 30), w.recoil.up, w.recoil.side, w.recoil.phase || 0);
+  const tail = w.pat.slice(-LOOP).map((k) => k[0]);
+  const mean = tail.reduce((a, b) => a + b, 0) / LOOP;
+  w.loopKick = tail.map((v) => [v - mean, 0]);
+}
+
+// 第 spray 发的后坐力（角度）：[水平, 垂直]
+export function patternKick(w, spray) {
+  const i = Math.floor(spray), n = w.pat.length;
+  return i < n ? w.pat[i] : w.loopKick[(i - n) % LOOP];
+}
+
+// 开一枪后的计数：超出图案后在最后一段里循环，计数不会无限增长
+export function nextSpray(w, spray) {
+  const s = spray + 1, n = w.pat.length;
+  return s >= n + LOOP ? s - LOOP : s;
 }
 
 export const EQUIP = {
@@ -154,19 +172,23 @@ export function recoverRecoil(s, w, dt, since) {
   if (rc) {
     const iv = w.rpm ? 60 / w.rpm : 0.1;
     if (since > (rc.wait != null ? rc.wait : iv * 1.3)) {
-      const k = Math.exp(-rc.rec * dt);
+      // 自动武器松手后回正更快：指数回正 + 线性回正，约 0.3 秒回到准星
+      const rec = w.auto ? Math.max(rc.rec, 10) : rc.rec;
+      const lin = rc.lin != null ? rc.lin : w.auto ? 5 : 0;
+      const k = Math.exp(-rec * dt);
       s.punchP *= k;
       s.punchY *= k;
       // 线性回正：最后一点偏移也能很快归零（类似 CS 的 recoil_decay_lin）
-      if (rc.lin) {
+      if (lin) {
         const m = Math.hypot(s.punchP, s.punchY);
         if (m > 0) {
-          const f = Math.max(0, m - rc.lin * DEG * dt) / m;
+          const f = Math.max(0, m - lin * DEG * dt) / m;
           s.punchP *= f;
           s.punchY *= f;
         }
       }
-      s.spray = Math.max(0, s.spray - (dt / iv) * 1.6);
+      // 计数回落：打得越多回落越快，停火约 0.3 秒就回到第一发
+      s.spray = Math.max(0, s.spray - (dt / iv) * 2.5 - s.spray * 4 * dt);
     }
   }
   // 开枪带来的额外扩散：和 CS 一样，recover 秒后恢复到 10%
