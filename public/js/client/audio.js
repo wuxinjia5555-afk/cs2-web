@@ -1,23 +1,14 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-
-const GUN = {
-  pistol: { lp: 3600, dec: 0.13, thump: 170, tv: 0.55, vol: 0.75, crack: 0.35 },
-  deagle: { lp: 2300, dec: 0.32, thump: 110, tv: 0.9, vol: 1.0, crack: 0.45 },
-  smg: { lp: 3300, dec: 0.1, thump: 150, tv: 0.45, vol: 0.62, crack: 0.3 },
-  rifle: { lp: 2500, dec: 0.19, thump: 120, tv: 0.8, vol: 0.9, crack: 0.45 },
-  ak47: { lp: 2100, dec: 0.22, thump: 105, tv: 0.95, vol: 0.95, crack: 0.5 },
-  shotgun: { lp: 1700, dec: 0.36, thump: 90, tv: 1.0, vol: 1.0, crack: 0.3 },
-  sniper: { lp: 1900, dec: 0.62, thump: 80, tv: 1.1, vol: 1.15, crack: 0.6 },
-  silenced: { lp: 1500, dec: 0.07, thump: 0, tv: 0, vol: 0.32, crack: 0.1, bp: true },
-};
+import { GUN_PROFILES, gunProfileKey, synthGun } from './gunsynth.js';
 
 class AudioSys {
   constructor() {
     this.ctx = null;
     this.lx = 0; this.ly = 0; this.lz = 0; this.lyaw = 0;
     this.lastVoice = 0;
+    this.gunBufs = {};
   }
 
   init() {
@@ -36,19 +27,55 @@ class AudioSys {
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    // 简易混响
+    // 混响：越往后越闷的噪声尾巴（高频衰减得快，听起来不刺耳）
     this.reverb = ctx.createConvolver();
-    const rl = Math.floor(ctx.sampleRate * 1.4);
+    const rl = Math.floor(ctx.sampleRate * 1.2);
     const ir = ctx.createBuffer(2, rl, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const c = ir.getChannelData(ch);
-      for (let i = 0; i < rl; i++) c[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / rl, 3.2);
+      let lp = 0;
+      for (let i = 0; i < rl; i++) {
+        const t = i / ctx.sampleRate;
+        const k = 0.3 + 0.65 * Math.min(1, t / 0.7);
+        lp += (1 - k) * (Math.random() * 2 - 1 - lp);
+        c[i] = lp * Math.exp(-t / 0.2) * (t < 0.006 ? t / 0.006 : 1);
+      }
     }
     this.reverb.buffer = ir;
     this.revGain = ctx.createGain();
     this.revGain.gain.value = 0.22;
     this.reverb.connect(this.revGain);
     this.revGain.connect(this.master);
+    this.warmGuns();
+  }
+
+  // 枪声缓冲区：每种枪 2 份略有不同的波形，用到时才合成（并在空闲时提前合成好）
+  _gunBuf(key) {
+    let arr = this.gunBufs[key];
+    if (!arr) arr = this.gunBufs[key] = [];
+    if (arr.length < 2 && (arr.length === 0 || Math.random() < 0.5)) arr.push(this._renderGun(key, arr.length));
+    return arr[(Math.random() * arr.length) | 0];
+  }
+
+  _renderGun(key, v) {
+    const sr = this.ctx.sampleRate;
+    const data = synthGun(GUN_PROFILES[key], sr, 11 + v * 101 + key.length * 7);
+    const buf = this.ctx.createBuffer(1, data.length, sr);
+    buf.getChannelData(0).set(data);
+    return buf;
+  }
+
+  warmGuns() {
+    const keys = Object.keys(GUN_PROFILES);
+    let k = 0;
+    const step = () => {
+      if (!this.ctx || k >= keys.length * 2) return;
+      const key = keys[k % keys.length], arr = this.gunBufs[key] || (this.gunBufs[key] = []);
+      if (arr.length < 2) arr.push(this._renderGun(key, arr.length));
+      k++;
+      setTimeout(step, 30);
+    };
+    setTimeout(step, 200);
   }
 
   setVolume(v) { if (this.master) this.master.gain.value = v; }
@@ -128,19 +155,25 @@ class AudioSys {
     if (!this.ctx) return;
     const w = WEAPONS[wid];
     if (!w) return;
-    let prof = GUN[w.silenced ? 'silenced' : wid === 'ak47' ? 'ak47' : wid === 'deagle' ? 'deagle' : w.type] || GUN.rifle;
-    const o = this._out(pos, w.silenced ? 7 : 22, prof.vol, w.type === 'sniper' ? 0.6 : 0.35);
+    const key = gunProfileKey(w);
+    const P = GUN_PROFILES[key];
+    const o = this._out(pos, P.ref, P.gain * settings.gunVol, pos ? 0.3 : 0.12);
     if (!o) return;
-    const t = this.ctx.currentTime;
-    const lp = prof.lp * (1 - o.far * 0.6) * (0.92 + Math.random() * 0.16);
-    if (prof.bp) {
-      this._noise(o.input, t, { type: 'bandpass', f: 1400, q: 1.1, dec: prof.dec, vol: 1 });
-      this._tone(o.input, t, { f: 900, f2: 300, dec: 0.04, vol: 0.2, type: 'square' });
-      return;
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this._gunBuf(key);
+    src.playbackRate.value = 0.95 + Math.random() * 0.1;
+    let node = src;
+    if (o.far > 0.03) {
+      // 越远越闷
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 700 + 9000 * (1 - o.far) * (1 - o.far);
+      src.connect(lp);
+      node = lp;
     }
-    this._noise(o.input, t, { f: lp, f2: lp * 0.35, dec: prof.dec, vol: 1 });
-    if (prof.crack) this._noise(o.input, t, { type: 'highpass', f: 2500, dec: 0.035, vol: prof.crack * (1 - o.far) });
-    if (prof.thump) this._tone(o.input, t, { f: prof.thump, f2: prof.thump * 0.4, dec: 0.12, vol: prof.tv });
+    node.connect(o.input);
+    src.start();
   }
 
   step(pos, vol = 0.5, surface = 'hard') {

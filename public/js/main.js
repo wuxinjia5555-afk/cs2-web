@@ -411,6 +411,14 @@ function bindSettings() {
   rng('s-sens', 'sens', settings, (v) => v.toFixed(2));
   rng('s-zoom', 'zoomSens', settings, (v) => v.toFixed(2));
   rng('s-vol', 'volume', settings, (v) => Math.round(v * 100) + '%', () => audio.setVolume(settings.volume));
+  let gunPreview = 0;
+  rng('s-gunvol', 'gunVol', settings, (v) => Math.round(v * 100) + '%', () => {
+    // 拖动时试播一声（限速）
+    if (performance.now() - gunPreview < 300) return;
+    gunPreview = performance.now();
+    audio.init();
+    audio.shot('ak47', null);
+  });
   rng('s-res', 'res', settings, (v) => Math.round(v * 100) + '%', () => { if (!game) resize(); });
   rng('s-xlen', 'len', x, null, prev);
   rng('s-xgap', 'gap', x, null, prev);
