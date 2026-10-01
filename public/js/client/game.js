@@ -700,8 +700,8 @@ export class Game {
     if (!kill) audio.play(head ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit');
     const v = this.players.get(m.v);
     if (v && v.model) v.model.hitT = this.now;
-    if (head && v && settings.hsFx !== false) {
-      // 爆头闪光：在敌人头的位置闪一下
+    if (head && v) {
+      // 爆头闪光：在敌人头的位置闪一下（一直开着）
       const hp = v.model && v.model.head ? v.model.head.localToWorld(new THREE.Vector3(0, 0.17, 0)) : v.rp ? new THREE.Vector3(v.rp.x, v.rp.y + 1.62, v.rp.z) : null;
       if (hp) this.fx.headPop(hp.x, hp.y, hp.z, !!m.hm);
     }

@@ -135,7 +135,8 @@ export class Room {
 
   addBot(team) {
     const used = new Set([...this.players.values()].map((p) => p.name));
-    const base = BOT_NAMES.find((n) => !used.has('BOT ' + n));
+    const free = BOT_NAMES.filter((n) => !used.has('BOT ' + n));
+    const base = free.length ? pick(free, this.rng) : null; // 每局随机抽名字
     const p = this.newPlayer('BOT ' + (base || this.nextId), true);
     p.team = team;
     p.inv = this.defaultInv(team);

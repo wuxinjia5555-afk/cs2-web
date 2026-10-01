@@ -251,7 +251,7 @@ function butterfly(g) {
     h.add(box(0.0066, 0.013, 0.016, K.pin, x, -0.001, 0.146));
     pivot.add(h);
   }
-  g.userData.kfx = { kind: 'butterfly', blade, hA, hB };
+  g.userData.kfx = { kind: 'butterfly', pivot, blade, hA, hB };
   g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
 }
 

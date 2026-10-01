@@ -232,6 +232,7 @@ function startGame(net, init, extra = []) {
             return;
           }
           hideReconnect();
+          if (newestPublic) { moveToPublic(); return; } // 公网地址换过了：回到菜单就跳到新地址
           checkOrientation();
           resize();
           if (net.isLocal) { showMenu('menu-main'); }
@@ -291,6 +292,13 @@ async function reconnect(net) {
       }, 6000);
       return;
     } catch {
+      // 公网地址换过了（免费隧道每小时换）而且新地址连不上：直接跳到新地址，进去后重新加入房间
+      if (newestPublic && i >= 1) {
+        showReconnect('公网地址换了，正在跳到新地址…（打开后如果有 Enter site 就点一下，再重新加入房间）');
+        await sleep(1500);
+        moveToPublic();
+        return;
+      }
       showReconnect(`网络断开了，正在重新连接…（第 ${i + 1} 次）`);
       await sleep(delays[i]);
     }
@@ -300,6 +308,34 @@ async function reconnect(net) {
 }
 
 $('rc-retry').addEventListener('click', () => { if (game) reconnect(game.net); });
+
+// ---------------- 公网地址自动跟随 ----------------
+// 免费隧道的地址每小时换一次：服务器会在旧地址到期前先开好新地址。页面开着就自动跟过去（设置一起带过去，
+// 因为不同地址的浏览器存储是分开的）；对局里先不跳，断线重连时直接连新地址，打完回到菜单再跳
+const TUNNEL_HOST = /\.(pinggy-free\.link|pinggy\.link|pinggy\.net|lhr\.life|localhost\.run)$/i;
+let newestPublic = '';
+let followTip = false;
+function moveToPublic() {
+  const q = new URLSearchParams(location.search);
+  q.set('import', btoa(unescape(encodeURIComponent(JSON.stringify(settings)))));
+  location.replace(`${newestPublic}${location.pathname}?${q}`);
+}
+async function followPublic() {
+  if (!TUNNEL_HOST.test(location.hostname)) return;
+  let u;
+  try {
+    const j = await (await fetch('/api/info', { cache: 'no-store' })).json();
+    if (!j.public) return;
+    u = new URL(j.public);
+  } catch { return; }
+  if (u.host === location.host) return;
+  newestPublic = u.origin;
+  if (!game) { moveToPublic(); return; }
+  if (!game.net.isLocal) game.net.url = `wss://${u.host}/ws`;
+  if (!followTip) { followTip = true; toast('公网地址马上要换了（免费隧道每小时换一次）。这局照常打，回到菜单会自动跳到新地址', 6000); }
+}
+setTimeout(followPublic, 4000);
+setInterval(followPublic, 40000);
 $('rc-lobby').addEventListener('click', () => { hideReconnect(); if (game) game.exit(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && game && !game.net.isLocal && !game.net.open) reconnect(game.net);
@@ -480,7 +516,6 @@ function bindSettings() {
   });
   chk('s-soundviz', 'soundViz', settings);
   chk('s-hitmarker', 'hitmarker', settings);
-  chk('s-hsfx', 'hsFx', settings);
   chk('s-quickstop', 'quickStop', settings);
   rng('s-gunvol', 'gunVol', settings, (v) => Math.round(v * 100) + '%', () => {
     // 拖动时试播一声（限速）

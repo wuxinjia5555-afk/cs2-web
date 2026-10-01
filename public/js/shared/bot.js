@@ -3,7 +3,10 @@ import { P } from './constants.js';
 import { WEAPONS } from './weapons.js';
 import { angleDiff, anglesFromDir, clamp, dirFromAngles, pick } from './util.js';
 
-export const BOT_NAMES = ['阿强', '小明', '老王', '大壮', '铁柱', '翠花', '二狗', '建国', '志强', '小芳', '阿杰', '浩然', '子轩', '一鸣', '晓峰', '嘉豪', '大牛', '小虎', '阿飞', '文轩'];
+// 人机名字：照 CS:GO / CS2 里人机的起名风格（BOT Albert、BOT Vitaliy 这种）
+export const BOT_NAMES = ['Albert', 'Allen', 'Bert', 'Bob', 'Cecil', 'Clarence', 'Elliot', 'Elmer', 'Ernie', 'Eugene', 'Fergus', 'Ferris',
+  'Frank', 'Frasier', 'Fred', 'George', 'Graham', 'Harvey', 'Irwin', 'Larry', 'Lester', 'Marvin', 'Neil', 'Niles', 'Oliver', 'Opie',
+  'Quinn', 'Ringo', 'Rex', 'Sam', 'Steve', 'Toby', 'Ulric', 'Vitaliy', 'Vladimir', 'Wade', 'Xander', 'Yanni', 'Yuri', 'Zach'];
 
 export const BOT_DIFF = [
   { name: '简单', react: 0.6, turn: 5, aimErr: 0.1, errDecay: 1.4, head: 0.08, burst: [2, 4], comp: 0.25, range: 45, fovCos: 0.35, strafe: false, pause: 0.45 },

@@ -55,12 +55,28 @@ function track(tr, e) {
   return a;
 }
 const BF_DRAW = [bfSeg(true, 0.05, 0.3, 1.6)];
-// 爪子刀（参考 CS2）：拔刀时绕食指顺时针转一圈，先快后慢地停住；
-// 检视：转一圈多，刀身朝下挂在手指上晃一晃，再甩回来、最后再转一圈接住。角度减小 = 屏幕上顺时针
-const HANG = -(TAU + Math.PI / 2);
-const KA_DRAW = [{ t0: 0.05, t1: 0.5, a0: TAU, a1: 0, ease: (x) => eOut(x, 2) }];
-const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5, t1: 1.85, a0: HANG, a1: -TAU, ease: sstep },
-  { t0: 1.95, t1: 2.4, a0: -TAU, a1: -2 * TAU, ease: (x) => eOut(x, 2) }];
+// 蝴蝶刀检视（照 CS:GO / CS2 的检视拆帧做的）：抬手把刀亮到画面中间、刀面对着镜头 →
+// 整把刀在指间甩一圈（咬柄被甩开、最后“咔”地合上）→ 合刀、再开刀 → 捏着销轴把咬柄张开成 Y 字展示一会儿 → “咔”合上放下
+const BF_INSP_FLIP = [bfSeg(false, 1.35, 1.8, 1.4), bfSeg(true, 1.9, 2.4, 1.5)];
+// 返回 [整把刀绕销轴的转角, 刀身, 咬柄]
+function bfInspect(e) {
+  let P = 0, b = 0, h = 0;
+  const q = seg(e, 0.45, 1.25);
+  if (q > 0 && q < 1) { P = -TAU * sstep(q); h = Math.sin(q * Math.PI) * 1.9; }
+  if (e >= 1.35 && e < 2.4) [b, h] = bfAngles(BF_INSP_FLIP, false, e);
+  if (e >= 2.5 && e < 3.6) {
+    const yIn = sstep(seg(e, 2.5, 2.8)), shut = seg(e, 3.3, 3.45);
+    h = 1.75 * yIn * (1 - shut * shut); // 张开，最后越合越快“咔”一声
+    P = (-0.5 + Math.sin((e - 2.5) * 3) * 0.06) * yIn * (1 - sstep(seg(e, 3.3, 3.6)));
+  }
+  return [P, b, h];
+}
+// 爪子刀（参考 CS2）：拔刀时绕食指往里转一圈（屏幕上逆时针：刀刃在前，先往上、往里翻），先快后慢地停住；
+// 检视：往里转大半圈，刀身朝下挂在手指上晃一晃，再甩回来、最后再转一圈接住。角度增大 = 屏幕上逆时针
+const HANG = Math.PI * 1.5;
+const KA_DRAW = [{ t0: 0.05, t1: 0.5, a0: -TAU, a1: 0, ease: (x) => eOut(x, 2) }];
+const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5, t1: 1.85, a0: HANG, a1: TAU, ease: sstep },
+  { t0: 1.95, t1: 2.4, a0: TAU, a1: 2 * TAU, ease: (x) => eOut(x, 2) }];
 const M9_ROLL = [{ t0: 0.42, t1: 0.86, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.02, t1: 1.42, a0: Math.PI, a1: TAU, ease: sstep }];
 const M9_TOSS = { draw: [0.06, 0.36], inspect: [1.56, 1.96] };
 // 翻刀时手腕转过来，让刀面对着屏幕（不然转刀是侧着看的，看不清）
@@ -68,20 +84,21 @@ const WRIST = { ry: 0.85, rz: 0.25, rx: -0.12, px: -0.075, py: 0.055, pz: 0.05 }
 export const KNIFE_FX = {
   butterfly: {
     draw: { dur: 0.5, back: [0.3, 0.5], ev: bfEv(BF_DRAW) },
-    // 检视（参考 CS2，不花哨）：抬手把刀竖起来、刀面对着镜头，转过去看背面，再转回来放下
-    inspect: { dur: 2.6, back: [2.1, 2.6], ev: [{ t: 0.05, k: 'kn_swish' }, { t: 1.0, k: 'kn_swish' }, { t: 1.75, k: 'kn_swish' }] },
+    inspect: { dur: 4.0, back: [3.5, 4.0], ev: [{ t: 0.05, k: 'kn_swish' }, { t: 0.45, k: 'kn_swish' }, { t: 1.25, k: 'kn_clack' }, ...bfEv(BF_INSP_FLIP),
+      { t: 2.55, k: 'kn_tick' }, { t: 3.45, k: 'kn_clack' }] },
     parts(P, mode, e) {
-      const [b, h] = mode === 'draw' ? bfAngles(BF_DRAW, true, e) : [0, 0];
+      const [a, b, h] = mode === 'draw' ? [0, ...bfAngles(BF_DRAW, true, e)] : mode === 'inspect' ? bfInspect(e) : [0, 0, 0];
+      P.pivot.rotation.x = a;
       P.blade.rotation.x = b;
       P.hB.rotation.x = h;
     },
     wrist: { inspect: { ry: 0, rz: 0, rx: 0, px: 0, py: 0, pz: 0 } },
     pose(mode, e, o) {
       if (mode !== 'inspect') return;
-      const w = sstep(seg(e, 0, 0.4)) * (1 - sstep(seg(e, 2.1, 2.6)));
-      const side = sstep(seg(e, 1.0, 1.45)) - sstep(seg(e, 1.75, 2.2)); // 0 正面 → 1 背面 → 0
-      o.rx += w * 1.2; o.ry += w * (-0.35 + Math.sin(e * 2.1) * 0.07); o.rz += w * (1.75 + side * Math.PI);
-      o.px += w * -0.03; o.py += w * 0.1; o.pz += w * 0.06;
+      // 把刀亮到画面中间偏右、刀面对着镜头
+      const w = sstep(seg(e, 0, 0.45)) * (1 - sstep(seg(e, 3.5, 4.0)));
+      o.rx += w * 1.2; o.ry += w * (-0.35 + Math.sin(e * 1.7) * 0.05); o.rz += w * 1.75;
+      o.px += w * -0.04; o.py += w * 0.1; o.pz += w * 0.08;
     },
   },
   karambit: {
