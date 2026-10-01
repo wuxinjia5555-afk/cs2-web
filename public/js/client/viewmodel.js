@@ -80,7 +80,10 @@ const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5
 const M9_ROLL = [{ t0: 0.42, t1: 0.86, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.02, t1: 1.42, a0: Math.PI, a1: TAU, ease: sstep }];
 const M9_TOSS = { draw: [0.06, 0.36], inspect: [1.56, 1.96] };
 // 剥皮小刀：拔刀时在手里往后翻一圈握住；检视：亮刀 → 慢慢翻面看两面 → 指间快速转两圈 → 放下
-const XE_DRAW = [{ t0: 0.04, t1: 0.42, a0: TAU, a1: 0, ease: (x) => eOut(x, 2.2) }];
+// 切刀（照游戏视频拆帧做的）：刀尖朝上、刀面对着镜头从下面抬上来 → 在手里飞快顺时针转一整圈（约 0.2 秒）
+// → 竖着握住，手腕一拧绕刀身转一圈、露出刀背锯齿 → 放下到平时的拿法
+const XE_DRAW = [{ t0: 0.06, t1: 0.28, a0: 0, a1: -TAU, ease: sstep }];
+const XE_DRAW_ROLL = [{ t0: 0.3, t1: 0.56, a0: 0, a1: TAU, ease: (x) => eOut(x, 2) }];
 const XE_ROLL = [{ t0: 0.5, t1: 1.05, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.35, t1: 1.9, a0: Math.PI, a1: TAU, ease: sstep }];
 const XE_TWIRL = [{ t0: 2.0, t1: 2.55, a0: 0, a1: -2 * TAU, ease: (x) => eOut(x, 1.8) }];
 // 翻刀时手腕转过来，让刀面对着屏幕（不然转刀是侧着看的，看不清）
@@ -128,11 +131,19 @@ export const KNIFE_FX = {
     wrist: { draw: { ry: 0, rz: 0.12, rx: 0.05, px: -0.03, py: 0.035, pz: 0.03 }, inspect: { ry: 0, rz: 0.15, rx: -0.05, px: -0.05, py: 0.07, pz: 0 } },
   },
   xeno: {
-    draw: { dur: 0.56, back: [0.4, 0.56], ev: [{ t: 0.04, k: 'kn_swish' }, { t: 0.42, k: 'kn_catch' }] },
+    draw: { dur: 0.6, back: [0.42, 0.6], ev: [{ t: 0.06, k: 'kn_swish' }, { t: 0.28, k: 'kn_tick' }, { t: 0.3, k: 'kn_swish' }, { t: 0.54, k: 'kn_catch' }] },
     inspect: { dur: 3.1, back: [2.65, 3.1], ev: [{ t: 0.5, k: 'kn_swish' }, { t: 1.35, k: 'kn_swish' }, { t: 2.0, k: 'kn_swish' }, { t: 2.55, k: 'kn_catch' }] },
+    wrist: { draw: { ry: 0, rz: 0, rx: 0, px: 0, py: 0, pz: 0 } },
+    pose(mode, e, o) {
+      if (mode !== 'draw') return;
+      // 切刀时刀尖朝上、刀面对着镜头举在画面右下，最后放下到平时的拿法
+      const w = 1 - sstep(seg(e, 0.42, 0.6));
+      o.rx += w * 1.2; o.ry += w * -0.35; o.rz += w * 1.75;
+      o.px += w * -0.05; o.py += w * 0.08; o.pz += w * 0.05;
+    },
     parts(P, mode, e) {
       const a = mode === 'draw' ? track(XE_DRAW, e) : mode === 'inspect' ? track(XE_TWIRL, e) : 0;
-      P.spin.rotation.set(a, 0, mode === 'inspect' ? track(XE_ROLL, e) : 0);
+      P.spin.rotation.set(a, 0, mode === 'draw' ? track(XE_DRAW_ROLL, e) : mode === 'inspect' ? track(XE_ROLL, e) : 0);
       // 挂绳跟着转动甩一甩
       const sw = Math.abs(a) > 0.01 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
       P.cord.rotation.set(sw, 0, sw * 0.4);
