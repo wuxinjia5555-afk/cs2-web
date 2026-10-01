@@ -10,7 +10,7 @@ import { buildMapMeshes, setupEnvironment } from './world.js';
 import { PlayerModel, makeWeapon, makeHealthPack } from './models.js';
 import { ViewModel } from './viewmodel.js';
 import { Effects } from './effects.js';
-import { Hud, weaponName } from './hud.js';
+import { Hud, weaponName, SKIN_NAME } from './hud.js';
 import { Input } from './input.js';
 import { audio } from './audio.js';
 import { settings, saveSettings, useTouch } from './settings.js';
@@ -427,13 +427,14 @@ export class Game {
       }
     }
     const d = this.nearDrop();
-    if (d) return T ? `点「捡起」拿 ${weaponName(d.w)}` : `按 E 捡起 ${weaponName(d.w)}`;
+    const dn = d && (d.w === 'knife' ? SKIN_NAME[d.skin] || '匕首' : weaponName(d.w));
+    if (d) return T ? `点「捡起」拿 ${dn}` : `按 E 捡起 ${dn}`;
     return '';
   }
 
   nearDrop() {
     for (const d of this.drops.values()) {
-      if (d.w === 'c4' || d.w === 'knife') continue;
+      if (d.w === 'c4') continue;
       if (Math.hypot(d.pr.x - this.sim.x, d.pr.z - this.sim.z) < 1.9 && Math.abs(d.pr.y - this.sim.y) < 2) return d;
     }
     return null;
@@ -509,7 +510,17 @@ export class Game {
         if (this.specId === m.id) this.specId = null;
         break;
       }
-      case 'pskin': { const p = this.players.get(m.id); if (p) p.skin = m.k || null; break; }
+      case 'pskin': {
+        const p = this.players.get(m.id);
+        if (p) p.skin = m.k || null;
+        // 自己捡了别人的刀：手里的刀换模型
+        if (m.id === this.myId && this.vm.knifeSkin !== (m.k || 'default')) {
+          this.vm.knifeSkin = m.k || 'default';
+          if (this.me.slot === 3) { this.vm.wid = null; this.vm.setWeapon('knife', 0.5, this.now); }
+          this.hud.showWeaponList();
+        }
+        break;
+      }
       case 'pteam': {
         const p = this.players.get(m.id);
         if (p) {
@@ -1050,7 +1061,7 @@ export class Game {
     if (rest) pr.rest = true;
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
-    this.drops.set(id, { w, pr, mesh, t0: this.now });
+    this.drops.set(id, { w, pr, mesh, t0: this.now, skin: skin || '' });
   }
 
   // ---------------- 死斗血包 ----------------

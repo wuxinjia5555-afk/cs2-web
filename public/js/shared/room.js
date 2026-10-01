@@ -1172,12 +1172,20 @@ export class Room {
     if (!p.alive) return;
     let best = null, bd = 2.2 * 2.2;
     for (const d of this.drops) {
-      if (d.w === 'c4' || d.w === 'knife') continue;
+      if (d.w === 'c4') continue;
       const dx = d.pr.x - p.x, dz = d.pr.z - p.z, dy = d.pr.y - p.y;
       const dd = dx * dx + dz * dz;
       if (dd < bd && Math.abs(dy) < 2) { bd = dd; best = d; }
     }
     if (!best) return;
+    if (best.w === 'knife') {
+      // 捡起扔在地上的刀：手里的刀换成那把刀的皮肤（只在这一局）
+      this.drops.splice(this.drops.indexOf(best), 1);
+      this.bcast({ t: 'pick', id: best.id, by: p.id, w: 'knife' });
+      const k = best.skin || null;
+      if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }
+      return;
+    }
     const w = WEAPONS[best.w];
     if (p.inv[w.slot]) this.dropItem(p, w.slot, false);
     this.pickup(p, best);
