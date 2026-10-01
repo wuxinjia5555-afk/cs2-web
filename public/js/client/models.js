@@ -1,6 +1,6 @@
 // 程序生成的低多边形模型：士兵、武器、投掷物、C4
 import * as THREE from 'three';
-import { textSprite } from './textures.js';
+import { textSprite, flare } from './textures.js';
 
 const geoCache = new Map();
 const matCache = new Map();
@@ -593,3 +593,27 @@ export function armColors(team) {
   return { sleeve: P.shirt, glove: P.glove };
 }
 export { box as mbox };
+
+// 死斗血包：白色医疗箱 + 红十字，底下一团绿光
+export function makeHealthPack() {
+  const g = new THREE.Group();
+  const kit = new THREE.Group();
+  const red = 0xe2262c;
+  kit.add(box(0.32, 0.2, 0.24, 0xf1f2f4));
+  kit.add(box(0.322, 0.04, 0.242, 0xcfd4da, 0, -0.07, 0));
+  kit.add(box(0.15, 0.012, 0.045, red, 0, 0.106, 0));
+  kit.add(box(0.045, 0.012, 0.15, red, 0, 0.106, 0));
+  for (const s of [-1, 1]) {
+    kit.add(box(0.12, 0.035, 0.012, red, 0, 0.01, s * 0.121));
+    kit.add(box(0.035, 0.12, 0.012, red, 0, 0.01, s * 0.121));
+  }
+  kit.add(box(0.12, 0.025, 0.03, 0x3a3f46, 0, 0.12, 0));
+  g.add(kit);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: flare(), color: 0x5dff8a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.75 }));
+  glow.scale.set(0.95, 0.95, 1);
+  g.add(glow);
+  kit.scale.setScalar(1.3);
+  g.userData.kit = kit;
+  g.userData.glow = glow;
+  return g;
+}

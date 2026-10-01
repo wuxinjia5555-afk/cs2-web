@@ -9,6 +9,8 @@ import { BotBrain, BOT_NAMES, DummyBrain } from './bot.js';
 import { mulberry32, r2, r3, shuffle, pick, clamp, isNum, isVec3, cleanText, dirFromAngles, DEG } from './util.js';
 
 const DT = 1 / TICK_RATE;
+const HPACK_LIFE = 30; // 死斗血包存在多久（秒）
+const HPACK_R = 2.2; // 走到多近会被吸过去（米）
 const eyeOf = (p) => p.y + (p.crouched ? P.crouchEye : P.standEye);
 
 export class Room {
@@ -341,6 +343,7 @@ export class Room {
   }
 
   clearRound() {
+    this.hpacks = [];
     this.bomb = null;
     this.nades = [];
     this.smokes = [];
@@ -472,6 +475,7 @@ export class Room {
         break;
       case 'dm':
         this.respawnDead();
+        this.hpackTick();
         if (t >= this.phaseEnd) this.endMatch();
         break;
       case 'range':
@@ -724,6 +728,7 @@ export class Room {
     }
     if (assister) { assister.assists++; assister.score += 1; }
     v.dmgBy = {};
+    if (this.phase === 'dm') this.spawnHealthPack(v); // 死斗：倒下的位置掉一个血包
     this.bcast({ t: 'kill', k: a ? a.id : -1, v: v.id, w: wid, hs: hs ? 1 : 0, as: assister ? assister.id : -1 });
     if (v.bot) v.bot.onDeath();
     if (this.phase === 'dm' || this.phase === 'warmup') v.respawnAt = this.time + (this.phase === 'dm' ? TIMES.dmRespawn : TIMES.warmupRespawn);
@@ -731,6 +736,40 @@ export class Room {
     v.dirty = true;
     if (this.phase === 'dm' && a && a !== v && a.kills >= this.opts.dmKills) this.endMatch(a.id);
     this.checkRoundEnd();
+  }
+
+  // ---------------- 死斗血包 ----------------
+  // 有人死了就在他倒下的位置掉一个血包；没满血满甲的人走近（HPACK_R 米内）自动吸过去，回满血和护甲（带头盔）
+  spawnHealthPack(v) {
+    if (!this.hpacks) this.hpacks = [];
+    const k = { id: this.eid++, x: r2(v.x), y: r2(v.y), z: r2(v.z), t: this.time };
+    this.hpacks.push(k);
+    if (this.hpacks.length > 24) { const old = this.hpacks.shift(); this.bcast({ t: 'hpkp', id: old.id, by: -1 }); }
+    this.bcast({ t: 'hpk', k: [k.id, k.x, k.y, k.z] });
+  }
+
+  hpackTick() {
+    const list = this.hpacks;
+    if (!list || !list.length) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const k = list[i];
+      if (this.time - k.t > HPACK_LIFE) { list.splice(i, 1); this.bcast({ t: 'hpkp', id: k.id, by: -1 }); continue; }
+      if (this.time - k.t < 0.4) continue; // 刚掉出来，等它落地
+      let best = null, bd = HPACK_R * HPACK_R;
+      for (const p of this.players.values()) {
+        if (!p.alive || (p.team !== 'T' && p.team !== 'CT')) continue;
+        if (p.hp >= 100 && p.armor >= 100 && p.helmet) continue; // 满血满甲的不捡，留给别人
+        const dx = p.x - k.x, dz = p.z - k.z, dd = dx * dx + dz * dz;
+        if (dd < bd && Math.abs(p.y - k.y) < 1.8) { bd = dd; best = p; }
+      }
+      if (!best) continue;
+      list.splice(i, 1);
+      best.hp = 100;
+      best.armor = 100;
+      best.helmet = true;
+      best.dirty = true;
+      this.bcast({ t: 'hpkp', id: k.id, by: best.id });
+    }
   }
 
   // 两把枪的弹匣和备弹都补满（换弹中的也直接算换好了）
@@ -1471,6 +1510,7 @@ export class Room {
       smokes: this.smokes.map((s) => ({ id: s.id, p: [r2(s.x), r2(s.y), r2(s.z)], left: s.until - this.time })),
       fires: this.fires.map((f) => ({ id: f.id, p: [r2(f.x), r2(f.y), r2(f.z)], left: f.until - this.time })),
       drops: this.drops.map((d) => [d.id, d.w, r2(d.pr.x), r2(d.pr.y), r2(d.pr.z), 0, 0, 0]),
+      hpk: (this.hpacks || []).map((k) => [k.id, k.x, k.y, k.z]),
       me: { p: [r2(p.x), r2(p.y), r2(p.z)], yaw: r3(p.yaw), al: p.alive ? 1 : 0, tm: p.team },
       ro: this.opts.mode === 'range' ? this.rangeOpts : undefined,
     });

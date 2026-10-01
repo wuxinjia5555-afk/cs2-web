@@ -192,6 +192,7 @@ export class Hud {
     $('fx-flash').style.opacity = g.flashAlpha.toFixed(3);
     $('fx-smoke').style.opacity = g.smokeAlpha.toFixed(3);
     $('fx-hurt').style.opacity = Math.max(0, g.hurtT - now).toFixed(3);
+    $('fx-heal').style.opacity = Math.max(0, ((g.healT || 0) - now) * 1.6).toFixed(3);
     this.toggle('scope', me.alive && g.w.scope > 0);
     // 进度条
     let prog = null;

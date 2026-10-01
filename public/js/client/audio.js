@@ -254,6 +254,13 @@ class AudioSys {
     switch (name) {
       case 'hit': this._playFx('hit', 0.5 * vol); break;
       case 'kn_swish': case 'kn_tick': case 'kn_clack': case 'kn_catch': this._playFx(name, KNIFE_GAIN[name] * vol); break;
+      case 'heal':
+        // 捡到血包：两声往上滑的清亮音
+        o = this._out(null, 1, 0.32 * vol, 0.05);
+        this._tone(o.input, t, { f: 620, f2: 930, dec: 0.16, vol: 0.55, type: 'triangle' });
+        this._tone(o.input, t + 0.09, { f: 930, f2: 1400, dec: 0.28, vol: 0.45, type: 'triangle' });
+        this._noise(o.input, t, { type: 'highpass', f: 5000, dec: 0.2, vol: 0.12 });
+        break;
       case 'headshot': this._playFx('hs_helmet', 0.62 * vol); break;
       case 'headshot_nohelm': this._playFx('hs_nohelm', 0.66 * vol); break;
       case 'killconfirm':

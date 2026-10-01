@@ -7,7 +7,7 @@ import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
 import { dirFromAngles, anglesFromDir, angleDiff, clamp, lerp, lerpAngle, DEG, r2, r3 } from '../shared/util.js';
 import { buildMapMeshes, setupEnvironment } from './world.js';
-import { PlayerModel, makeWeapon } from './models.js';
+import { PlayerModel, makeWeapon, makeHealthPack } from './models.js';
 import { ViewModel } from './viewmodel.js';
 import { Effects } from './effects.js';
 import { Hud, weaponName } from './hud.js';
@@ -77,6 +77,7 @@ export class Game {
     this.nades = new Map();
     this.localNadeN = 0;
     this.drops = new Map();
+    this.hpacks = new Map(); // 死斗血包
     this.bombMesh = null;
     this.bombLed = null;
     this.nextBeep = 0;
@@ -108,6 +109,7 @@ export class Game {
     for (const s of init.smokes || []) this.fx.addSmoke(s.id, s.p[0], s.p[1], s.p[2], NADE.smoke.dur, NADE.smoke.dur - s.left);
     for (const f of init.fires || []) this.fx.addFire(f.id, f.p[0], f.p[1], f.p[2], NADE.molotov.dur, NADE.molotov.dur - f.left);
     for (const d of init.drops || []) this.addDrop(d, true);
+    for (const k of init.hpk || []) this.addHealthPack(k);
     if (this.bomb && this.bomb.st === 'planted') this.placeBombMesh();
 
     this.hud = new Hud(this);
@@ -496,6 +498,8 @@ export class Game {
       case 'planting': this.onPlanting(m); break;
       case 'defusing': this.onDefusing(m); break;
       case 'drop': this.addDrop(m.d, false); break;
+      case 'hpk': this.addHealthPack(m.k); break;
+      case 'hpkp': this.onHealthPackPick(m); break;
       case 'dropr': { const d = this.drops.get(m.id); if (d) { d.pr.x = m.p[0]; d.pr.y = m.p[1]; d.pr.z = m.p[2]; d.pr.rest = true; d.pr.vx = d.pr.vy = d.pr.vz = 0; } break; }
       case 'pick': this.onPick(m); break;
       case 'pjoin': { const p = this.addPlayerInfo(m.p); if (!p.bot) this.hud.chat({ sys: true, text: `${p.name} 加入了游戏` }); break; }
@@ -826,6 +830,8 @@ export class Game {
     this.nades.clear();
     for (const d of this.drops.values()) this.scene.remove(d.mesh);
     this.drops.clear();
+    for (const k of this.hpacks.values()) this.scene.remove(k.mesh);
+    this.hpacks.clear();
     this.fx.clearRound();
     for (const c of this.corpses) this.scene.remove(c.obj);
     this.corpses = [];
@@ -1045,6 +1051,59 @@ export class Game {
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
     this.drops.set(id, { w, pr, mesh, t0: this.now });
+  }
+
+  // ---------------- 死斗血包 ----------------
+  addHealthPack(k) {
+    const [id, x, y, z] = k;
+    if (this.hpacks.has(id)) return;
+    const mesh = makeHealthPack();
+    mesh.position.set(x, y + 0.35, z);
+    mesh.scale.setScalar(0.01);
+    this.scene.add(mesh);
+    this.hpacks.set(id, { mesh, x, y, z, t0: this.now, by: null, pt: 0 });
+  }
+
+  onHealthPackPick(m) {
+    const k = this.hpacks.get(m.id);
+    if (!k) return;
+    k.by = m.by;
+    k.pt = this.now;
+    k.from = k.mesh.position.clone();
+    if (m.by === this.myId) {
+      audio.play('heal');
+      this.healT = this.now + 0.6;
+      this.hud.center('血量、护甲已回满', 1.2);
+    }
+  }
+
+  updateHealthPacks(dt) {
+    const now = this.now;
+    for (const [id, k] of this.hpacks) {
+      const m = k.mesh, u = m.userData;
+      if (k.by != null) {
+        // 被捡走：飞向捡到的人（“吸”过去），越飞越小
+        const q = Math.min(1, (now - k.pt) / 0.22);
+        let tx = k.x, ty = k.y + 1.2, tz = k.z;
+        if (k.by === this.myId) { tx = this.camera.position.x; ty = this.camera.position.y - 0.4; tz = this.camera.position.z; }
+        else { const p = this.players.get(k.by); if (p && p.rp) { tx = p.rp.x; ty = p.rp.y + 1.1; tz = p.rp.z; } }
+        if (k.by === -1) { m.scale.setScalar(Math.max(0.01, 1 - q)); }
+        else {
+          const e = q * q;
+          m.position.set(k.from.x + (tx - k.from.x) * e, k.from.y + (ty - k.from.y) * e, k.from.z + (tz - k.from.z) * e);
+          m.scale.setScalar(Math.max(0.01, 1 - q * 0.75));
+        }
+        if (q >= 1) { this.scene.remove(m); this.hpacks.delete(id); }
+        continue;
+      }
+      const age = now - k.t0;
+      m.scale.setScalar(Math.min(1, 0.01 + age * 4));
+      m.position.y = k.y + 0.35 + Math.sin(now * 2.6 + id) * 0.06;
+      u.kit.rotation.y += dt * 1.6;
+      const pulse = 0.85 + Math.sin(now * 5 + id) * 0.15;
+      u.glow.scale.set(1.25 * pulse, 1.25 * pulse, 1);
+      m.visible = age < 26 || Math.sin(now * 18) > -0.2; // 快消失时闪烁
+    }
   }
 
   onPick(m) {
@@ -1667,6 +1726,7 @@ export class Game {
       if (!n.pr.rest) { n.mesh.rotation.x += dt * 9; n.mesh.rotation.z += dt * 5; }
       if (n.local && target > 8) { this.scene.remove(n.mesh); this.nades.delete(id); }
     }
+    this.updateHealthPacks(dt);
     for (const d of this.drops.values()) {
       if (!d.pr.rest) {
         const target = now - d.t0;
