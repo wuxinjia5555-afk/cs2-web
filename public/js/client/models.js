@@ -377,19 +377,52 @@ export class PlayerModel {
     if (wid) this.gunHolder.add(makeWeapon(wid, true));
   }
 
-  // st: {speed, crouch, pitch, alive, bomb}
+  // 记录倒下的方向（世界坐标里“被推开”的方向），yaw 是尸体的朝向
+  setDeathPush(dx, dz, yaw) {
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    this.fallYaw = Math.atan2(dx * c - dz * s, dx * s + dz * c);
+    this.fallRoll = (Math.random() - 0.5) * 0.6;
+  }
+
+  // st: {speed, crouch, pitch, alive, bomb, now}
   update(dt, st) {
     if (!st.alive) {
-      if (this.deadT < 0) this.deadT = 0;
+      if (this.deadT < 0) {
+        this.deadT = 0;
+        this.body.rotation.order = 'YXZ';
+        if (this.fallYaw == null) this.fallYaw = 0;
+      }
       this.deadT += dt;
-      const k = Math.min(1, this.deadT / 0.45);
-      this.body.rotation.x = (Math.PI / 2) * (k * k);
-      this.body.position.y = 0.12 * k;
+      const T = 0.55;
+      const k = Math.min(1, this.deadT / T);
+      // 先一个踉跄，再加速摔倒，落地轻轻弹一下
+      const e = k * k * (2.2 - 1.2 * k);
+      const bt = (this.deadT - T) / 0.22;
+      const bounce = bt > 0 && bt < 1 ? Math.sin(bt * Math.PI) * 0.07 : 0;
+      this.crouchAmt *= Math.max(0, 1 - dt * 5);
+      const c = this.crouchAmt;
+      this.body.rotation.y = this.fallYaw;
+      this.body.rotation.x = (Math.PI / 2) * e - bounce;
+      this.body.rotation.z = (this.fallRoll || 0) * e;
+      this.body.position.y = 0.12 * e;
+      this.hips.position.y = 0.82 - 0.4 * c;
+      this.upper.rotation.x = 0.06 * e;
+      this.head.rotation.x = 0.3 * e;
+      this.arms.rotation.x = 1.25 * e;
+      this.legL.rotation.x = 1.1 * c + 0.35 * e;
+      this.legR.rotation.x = 1.1 * c + 0.05 * e;
+      this.legL.userData.shin.rotation.x = -2.0 * c - 0.7 * e;
+      this.legR.userData.shin.rotation.x = -2.0 * c - 0.15 * e;
       this.c4.visible = false;
       if (this.tag) this.tag.visible = false;
       return;
     }
-    if (this.deadT >= 0) { this.deadT = -1; this.body.rotation.x = 0; this.body.position.y = 0; }
+    if (this.deadT >= 0) {
+      this.deadT = -1;
+      this.fallYaw = null;
+      this.body.rotation.set(0, 0, 0);
+      this.body.position.y = 0;
+    }
     this.crouchAmt += ((st.crouch ? 1 : 0) - this.crouchAmt) * Math.min(1, dt * 12);
     const c = this.crouchAmt;
     const amp = Math.min(1, st.speed / 5);
@@ -401,9 +434,12 @@ export class PlayerModel {
     this.legR.rotation.x = 1.1 * c - sw;
     this.legL.userData.shin.rotation.x = -2.0 * c - Math.max(0, -sw) * 0.9;
     this.legR.userData.shin.rotation.x = -2.0 * c - Math.max(0, sw) * 0.9;
-    this.upper.rotation.x = -0.18 * c;
-    this.arms.rotation.x = (st.pitch || 0) + 0.18 * c;
-    this.head.rotation.x = (st.pitch || 0) * 0.5 + 0.18 * c;
+    // 中弹时身体一缩
+    const ht = this.hitT != null && st.now != null ? st.now - this.hitT : 9;
+    const fl = ht >= 0 && ht < 0.22 ? Math.sin((ht / 0.22) * Math.PI) * 0.3 : 0;
+    this.upper.rotation.x = -0.18 * c + fl;
+    this.arms.rotation.x = (st.pitch || 0) + 0.18 * c - fl * 0.7;
+    this.head.rotation.x = (st.pitch || 0) * 0.5 + 0.18 * c + fl * 0.6;
     this.c4.visible = !!st.bomb;
   }
 }

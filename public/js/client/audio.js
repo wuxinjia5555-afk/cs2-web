@@ -154,7 +154,7 @@ class AudioSys {
   }
 
   // 通用音效
-  play(name, pos = null, vol = 1) {
+  play(name, pos = null, vol = 1, opts = {}) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     let o;
@@ -174,6 +174,24 @@ class AudioSys {
         this._noise(o.input, t, { f: 900, dec: 0.12, vol: 1 });
         this._tone(o.input, t, { f: 120, f2: 60, dec: 0.1, vol: 0.8 });
         break;
+      case 'killconfirm': {
+        // 击杀确认：一记闷响 + 上扬的提示音，连杀越多音越高；爆头多一声金属“叮”
+        const n = Math.max(1, Math.min(6, opts.streak || 1));
+        o = this._out(null, 1, 0.55 * vol, 0.15);
+        const base = 620 * Math.pow(1.122, n - 1);
+        this._tone(o.input, t, { f: 150, f2: 50, dec: 0.18, vol: 0.9 });
+        this._noise(o.input, t, { type: 'bandpass', f: 1600, q: 1.2, dec: 0.06, vol: 0.45 });
+        this._tone(o.input, t + 0.02, { f: base, dec: 0.2, vol: 0.45, type: 'triangle' });
+        this._tone(o.input, t + 0.09, { f: base * 1.5, dec: 0.3, vol: 0.45, type: 'triangle' });
+        if (n >= 2) this._tone(o.input, t + 0.16, { f: base * 2, dec: 0.38, vol: 0.4, type: 'triangle' });
+        if (n >= 4) this._tone(o.input, t + 0.23, { f: base * 2.5, dec: 0.45, vol: 0.36, type: 'triangle' });
+        if (opts.hs) {
+          this._tone(o.input, t, { f: 3100, dec: 0.5, vol: 0.32 });
+          this._tone(o.input, t, { f: 4650, dec: 0.32, vol: 0.2 });
+          this._noise(o.input, t, { type: 'highpass', f: 3000, dec: 0.05, vol: 0.45 });
+        }
+        break;
+      }
       case 'kill':
         o = this._out(null, 1, 0.25 * vol, 0);
         this._tone(o.input, t, { f: 880, dec: 0.09, vol: 0.5, type: 'triangle' });

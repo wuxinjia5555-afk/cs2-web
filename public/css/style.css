@@ -436,3 +436,42 @@ body.touch #buymenu .btn.small { padding: 8px 14px; font-size: 14px; }
   #fshelp .panel { width: min(640px, 100%); }
   .fs-text { font-size: 12.5px; line-height: 1.55; }
 }
+
+/* ---------- 击杀反馈 ---------- */
+#kill-banner { position: absolute; top: 66%; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; white-space: nowrap; }
+#kill-banner.show { animation: kbpop 2.2s ease-out forwards; }
+@keyframes kbpop {
+  0% { opacity: 0; transform: translateX(-50%) scale(1.6); }
+  8% { opacity: 1; transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(1); }
+}
+.kb-main { display: inline-flex; align-items: center; gap: 9px; padding: 5px 40px; font-size: 21px; font-weight: 800;
+  background: linear-gradient(90deg, rgba(140, 18, 18, 0), rgba(140, 18, 18, .8) 25%, rgba(140, 18, 18, .8) 75%, rgba(140, 18, 18, 0)); }
+.kb-main.hs { background: linear-gradient(90deg, rgba(200, 28, 28, 0), rgba(205, 30, 30, .92) 25%, rgba(205, 30, 30, .92) 75%, rgba(200, 28, 28, 0)); }
+.kb-icon { font-size: 20px; color: #fff; }
+.kb-label { color: #ffe0e0; letter-spacing: 2px; }
+.kb-name { text-shadow: 0 1px 3px #000; }
+.kb-sub { font-size: 13px; color: #eef0f3; margin-top: 4px; text-shadow: 0 1px 3px #000; }
+.kb-sub.assist { font-size: 15px; color: #ffe39a; }
+.kb-money { color: #7dff7a; font-weight: 800; margin-left: 4px; }
+.kb-streak { margin-top: 3px; font-size: 28px; font-weight: 900; letter-spacing: 5px; color: #ffd23f;
+  text-shadow: 0 0 14px rgba(255, 170, 0, .85), 0 2px 4px #000; animation: kbstreak .45s ease-out; }
+.kb-streak.s3 { color: #ffa53a; }
+.kb-streak.s4 { color: #ff6a3c; }
+.kb-streak.s5 { color: #ff47d7; font-size: 32px; text-shadow: 0 0 18px rgba(255, 60, 210, .9), 0 2px 4px #000; }
+@keyframes kbstreak { 0% { transform: scale(2.2); opacity: 0; } 60% { transform: scale(.92); opacity: 1; } 100% { transform: scale(1); } }
+#kill-icons { position: absolute; top: calc(66% + 96px); left: 50%; transform: translateX(-50%); display: flex; gap: 3px;
+  font-size: 17px; color: #ff5b5b; text-shadow: 0 1px 3px #000; pointer-events: none; }
+#kill-icons i { font-style: normal; }
+#kill-icons i:last-child { display: inline-block; animation: kbstreak .4s ease-out; }
+#hitmarker.kill { width: 34px; height: 34px; margin: -17px 0 0 -17px; animation: hmkill .45s ease-out; }
+#hitmarker.kill::before, #hitmarker.kill::after { width: 3px; height: 34px; margin-left: -1.5px;
+  background: linear-gradient(#ff2a2a 0 36%, transparent 36% 64%, #ff2a2a 64%); }
+@keyframes hmkill { 0% { transform: scale(.4); } 30% { transform: scale(1.18); } 100% { transform: scale(1); } }
+body.touch #kill-banner { top: 63%; }
+body.touch .kb-main { font-size: 15px; padding: 3px 26px; gap: 6px; }
+body.touch .kb-icon { font-size: 14px; }
+body.touch .kb-sub { font-size: 11px; margin-top: 2px; }
+body.touch .kb-streak { font-size: 19px; letter-spacing: 3px; }
+body.touch #kill-icons { display: none; }

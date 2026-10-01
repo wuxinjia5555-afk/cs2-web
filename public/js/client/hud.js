@@ -300,9 +300,37 @@ export class Hud {
     this.centerT = this.g.now + dur;
   }
 
-  hitmarker(hs) {
-    this.hitT = this.g.now + (hs ? 0.25 : 0.15);
-    $('hitmarker').classList.toggle('hs', !!hs);
+  hitmarker(hs, kill = false) {
+    const el = $('hitmarker');
+    this.hitT = this.g.now + (kill ? 0.45 : hs ? 0.25 : 0.15);
+    el.classList.toggle('hs', !!hs && !kill);
+    el.classList.remove('kill');
+    if (kill) { void el.offsetWidth; el.classList.add('kill'); }
+  }
+
+  // 屏幕中央的击杀提示（连杀会额外显示“双杀/三杀…”）
+  killConfirm({ name, team, weapon, hs, streak, reward }) {
+    const el = $('kill-banner');
+    const st = streak >= 2 ? ['', '', '双杀！', '三杀！', '四杀！', '五杀！'][streak] || `${streak} 连杀！` : '';
+    el.innerHTML = `<div class="kb-main${hs ? ' hs' : ''}"><span class="kb-icon">${hs ? '◎' : '✖'}</span><span class="kb-label">${hs ? '爆头击杀' : '击杀'}</span><span class="kb-name ${this.teamCls(team)}">${esc(name)}</span></div>`
+      + `<div class="kb-sub">${esc(weaponName(weapon))}${reward ? ` <span class="kb-money">+$${reward}</span>` : ''}</div>`
+      + (st ? `<div class="kb-streak s${Math.min(streak, 5)}">${st}</div>` : '');
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    $('kill-icons').innerHTML = '<i>☠</i>'.repeat(Math.min(streak, 10));
+  }
+
+  assistNote(name) {
+    const el = $('kill-banner');
+    el.innerHTML = `<div class="kb-sub assist">助攻 · ${esc(name)}</div>`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+
+  clearKillIcons() {
+    $('kill-icons').innerHTML = '';
   }
 
   moneyPop(delta) {

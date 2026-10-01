@@ -31,6 +31,7 @@ export const DEFAULTS = {
   btnScale: 1.0,
   btnOpacity: 0.6,
   leftFire: true,
+  vibrate: true,
 };
 
 function load() {

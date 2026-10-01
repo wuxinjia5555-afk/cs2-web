@@ -431,6 +431,7 @@ function bindSettings() {
   chk('s-assist', 'aimAssist', settings);
   chk('s-autofire', 'autoFire', settings);
   chk('s-leftfire', 'leftFire', settings, relayout);
+  chk('s-vibrate', 'vibrate', settings);
   chk('s-gyro', 'gyro', settings, () => {
     askGyro();
     if (game && game.touch) { if (settings.gyro) game.touch.enableGyro(); else game.touch.disableGyro(); }

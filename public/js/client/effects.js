@@ -88,6 +88,7 @@ class Particles {
 export class Effects {
   constructor(scene, opts = {}) {
     this.scene = scene;
+    this.pools = [];
     this.low = !!opts.low;
     this.parts = new Particles(scene);
     // 曳光弹
@@ -181,6 +182,23 @@ export class Effects {
         0.35 + Math.random() * 0.3, 0.08 + Math.random() * 0.1, 0.55, 0.03, 0.03, 0.95, 7, 0.1, 1);
     }
     this.parts.emit(x, y, z, 0, 0.3, 0, 0.35, 0.35, 0.45, 0.02, 0.02, 0.6, 0, 0.8, 0);
+  }
+
+  // 尸体下面慢慢扩散开的血泊（gy 是地面高度）
+  bloodPool(x, gy, z) {
+    if (!this.poolGeo) this.poolGeo = new THREE.CircleGeometry(1, 20);
+    const m = new THREE.Mesh(this.poolGeo, new THREE.MeshBasicMaterial({
+      color: 0x520707, transparent: true, opacity: 0.88, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+    }));
+    m.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI);
+    m.position.set(x, gy + 0.015, z);
+    m.renderOrder = 1;
+    m.userData = { t: 0, size: 0.5 + Math.random() * 0.3, sy: 0.7 + Math.random() * 0.3 };
+    m.scale.set(0.05, 0.05 * m.userData.sy, 1);
+    this.scene.add(m);
+    this.pools.push(m);
+    if (this.pools.length > 16) { const old = this.pools.shift(); this.scene.remove(old); old.material.dispose(); }
   }
 
   muzzle(x, y, z) {
@@ -306,6 +324,8 @@ export class Effects {
   }
 
   clearRound() {
+    for (const m of this.pools) { this.scene.remove(m); m.material.dispose(); }
+    this.pools = [];
     for (const s of this.smokes) this.disposeGroup(s.g);
     for (const f of this.fires) { this.freeLight(f.light); this.disposeGroup(f.g); }
     this.smokes = [];
@@ -315,6 +335,14 @@ export class Effects {
   update(dt, camPos, audio) {
     this.time += dt;
     this.parts.update(dt);
+    for (const m of this.pools) {
+      const u = m.userData;
+      if (u.t >= 2.5) continue;
+      u.t += dt;
+      const k = Math.min(1, u.t / 2.5);
+      const r = 0.05 + u.size * (1 - (1 - k) * (1 - k) * (1 - k));
+      m.scale.set(r, r * u.sy, 1);
+    }
     for (let i = 0; i < this.maxTr; i++) {
       if (this.trLife[i] > 0) {
         this.trLife[i] -= dt;

@@ -75,6 +75,7 @@ export class Game {
     this.specId = null;
     this.deathT = -1;
     this.deathPos = null;
+    this.corpses = [];
     this.fc = null;
     this.flashUntil = 0; this.flashDur = 1; this.flashAlpha = 0;
     this.smokeAlpha = 0;
@@ -418,7 +419,7 @@ export class Game {
       case 'mend': this.hud.matchEnd(m); this.input.unlock(); this.suppressPause = true; break;
       case 'kill': this.onKill(m); break;
       case 'hurt': this.onHurt(m); break;
-      case 'hit': this.hud.hitmarker(m.g === HG.HEAD); audio.play(m.g === HG.HEAD ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit'); break;
+      case 'hit': this.onHit(m); break;
       case 'shot': this.onShot(m); break;
       case 'rl': { const p = this.players.get(m.id); if (p && p.rp) audio.reloadAt([p.rp.x, p.rp.y + 1.2, p.rp.z]); break; }
       case 'gthrow': this.onNadeThrow(m); break;
@@ -551,7 +552,10 @@ export class Game {
     this.me.alive = true;
     this.me.hp = 100;
     this.deathT = -1;
+    this.killerId = null;
     this.specId = null;
+    if (this.mode !== 'dm' && this.round.ph !== 'warmup') this.roundKills = 0;
+    this.hud.clearKillIcons();
     const W = this.w;
     W.punchP = W.punchY = W.spray = W.fireAcc = 0;
     W.reloadEnd = 0; W.scope = 0; W.rescopeAt = 0; W.nadeHold = null; W.planting = false; W.defusing = false;
@@ -570,6 +574,8 @@ export class Game {
     this.round = m;
     if (m.host != null) this.hostId = m.host;
     if (m.ph === 'freeze' && prev !== 'freeze') {
+      this.roundKills = 0;
+      this.hud.clearKillIcons();
       this.hud.hideRoundEnd();
       this.hud.hideMatchEnd();
       if (!$('matchend').classList.contains('hidden')) $('matchend').classList.add('hidden');
@@ -601,17 +607,42 @@ export class Game {
     }
   }
 
+  onHit(m) {
+    const kill = !!m.k, head = m.g === HG.HEAD;
+    this.hud.hitmarker(head, kill);
+    if (!kill) audio.play(head ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit');
+    const v = this.players.get(m.v);
+    if (v && v.model) v.model.hitT = this.now;
+    if (!kill) this.vibrate(12);
+  }
+
   onKill(m) {
     this.hud.killFeed(m);
     const v = this.players.get(m.v);
+    const k = this.players.get(m.k);
     if (v) {
       v.alive = false;
       v.deathT = this.now;
-      if (v.rp) audio.play('bodyfall', [v.rp.x, v.rp.y, v.rp.z]);
+      if (v.rp) {
+        audio.play('bodyfall', [v.rp.x, v.rp.y, v.rp.z]);
+        // 尸体朝“被打过来的方向”倒下
+        let dx, dz;
+        if (m.k === this.myId) { dx = v.rp.x - this.sim.x; dz = v.rp.z - this.sim.z; }
+        else if (k && k.rp && k !== v) { dx = v.rp.x - k.rp.x; dz = v.rp.z - k.rp.z; }
+        else { const a = v.rp.yaw; dx = Math.sin(a); dz = Math.cos(a); }
+        const dl = Math.hypot(dx, dz) || 1;
+        dx /= dl; dz /= dl;
+        v.deathPush = [dx, dz];
+        const crouch = v.rp.f & F.CROUCH;
+        const by = v.rp.y + (m.hs ? (crouch ? 1.2 : 1.62) : crouch ? 0.85 : 1.2);
+        this.fx.blood(v.rp.x, by, v.rp.z, dx, 0.35, dz, true);
+        this.fx.blood(v.rp.x, by - 0.15, v.rp.z, dx * 1.4, 0.15, dz * 1.4, !!m.hs);
+      }
     }
     if (m.v === this.myId) {
       this.me.alive = false;
       this.deathT = this.now;
+      this.killerId = m.k;
       this.deathPos = { x: this.sim.x, y: this.sim.y + this.eyeOff, z: this.sim.z };
       this.w.scope = 0;
       this.w.planting = false;
@@ -619,9 +650,26 @@ export class Game {
       this.w.nadeHold = null;
       this.hud.deathInfo(this.players.get(m.k), m.w, m.hs);
       if (this.hud.buyOpen) this.closeBuy();
-    } else if (m.k === this.myId) {
-      audio.play('kill');
+      if (this.mode === 'dm' || this.round.ph === 'warmup') this.roundKills = 0;
+      this.vibrate([70, 40, 90]);
+    } else if (m.k === this.myId && this.isEnemyId(m.v)) {
+      const n = (this.roundKills = (this.roundKills || 0) + 1);
+      const w = WEAPONS[m.w];
+      const paid = this.mode !== 'dm' && this.round.ph !== 'warmup';
+      const reward = paid ? ((w && w.killReward) ?? 300) : 0;
+      this.hud.killConfirm({ name: v ? v.name : '', team: v ? v.team : 'T', weapon: m.w, hs: !!m.hs, streak: n, reward });
+      audio.play('killconfirm', null, 1, { streak: n, hs: !!m.hs });
+      if (n >= 2) audio.speak(['', '', '双杀', '三杀', '四杀', '五杀'][n] || `${n}连杀`);
+      this.vibrate(n >= 2 ? [30, 30, 30, 30, 60] : [30, 30, 50]);
+    } else if (m.as === this.myId) {
+      this.hud.assistNote(v ? v.name : '');
     }
+  }
+
+  // 手机震动（iPhone 的 Safari 不支持，会自动忽略）
+  vibrate(pattern) {
+    if (!this.isTouch || !settings.vibrate || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch {}
   }
 
   onHurt(m) {
@@ -630,6 +678,7 @@ export class Game {
     this.hurtT = this.now + Math.min(0.6, 0.15 + m.d / 60);
     this.tagUntil = this.now + 0.3;
     audio.play('hurt', null, Math.min(1, 0.3 + m.d / 60));
+    this.vibrate(Math.round(Math.min(70, 20 + m.d)));
     if (m.o) {
       const ang = Math.atan2(-(m.o[0] - this.sim.x), -(m.o[2] - this.sim.z));
       this.hud.damageFrom(ang);
@@ -664,6 +713,8 @@ export class Game {
     for (const d of this.drops.values()) this.scene.remove(d.mesh);
     this.drops.clear();
     this.fx.clearRound();
+    for (const c of this.corpses) this.scene.remove(c.obj);
+    this.corpses = [];
     if (this.bombMesh) { this.scene.remove(this.bombMesh); this.bombMesh = null; }
     this.bomb = null;
     this.flashUntil = 0;
@@ -1339,11 +1390,25 @@ export class Game {
         this.scene.add(p.model.root);
       }
       const m = p.model;
+      if (alive) {
+        // 死斗里复活前，把尸体留在原地
+        if (p.seenAlive && p.deadYaw != null && m.deadT >= 0 && (this.mode === 'dm' || this.round.ph === 'warmup')) this.leaveCorpse(m);
+        p.deadYaw = null;
+        p.seenAlive = true;
+      }
       m.root.position.set(x, y, z);
-      m.root.rotation.y = yaw;
+      if (!alive && p.deadYaw == null) {
+        p.deadYaw = yaw;
+        const [dx, dz] = p.deathPush || [Math.sin(yaw), Math.cos(yaw)];
+        p.deathPush = null;
+        m.setDeathPush(dx, dz, yaw);
+        if (p.seenAlive) this.bloodPoolAt(x, y, z, dx, dz);
+      }
+      m.root.rotation.y = alive ? yaw : p.deadYaw;
       m.setWeapon(alive ? a.w : null);
-      m.update(dt, { speed: p.speed, crouch: !!(f & F.CROUCH), pitch, alive, bomb: !!(f & F.BOMB) });
-      m.root.visible = alive || this.now - (p.deathT || this.now) < 30;
+      m.update(dt, { speed: p.speed, crouch: !!(f & F.CROUCH), pitch, alive, bomb: !!(f & F.BOMB), now: this.now });
+      // 还没出生过的玩家不显示（否则会在地图原点躺着）
+      m.root.visible = alive || !!p.seenAlive;
       if (m.tag) m.tag.visible = alive && this.mode !== 'dm' && (p.team === myTeam || myTeam === 'SPEC') && this.specId !== p.id;
       if (this.specId === p.id && !this.me.alive) m.root.visible = false;
       if (alive && f & F.GROUND && !(f & F.WALK) && !(f & F.CROUCH) && p.speed > 2.9) {
@@ -1351,7 +1416,25 @@ export class Game {
         if (p.stepAcc > 2.3) { p.stepAcc = 0; audio.step([x, y, z], 0.75, this.surfaceUnder(x, y, z)); }
       }
     }
+    while (this.corpses.length && this.now - this.corpses[0].t > (this.isTouch ? 12 : 20)) this.scene.remove(this.corpses.shift().obj);
     if (this.frameN % 3 === 0) this.updateTargetName();
+  }
+
+  leaveCorpse(m) {
+    const c = m.root.clone();
+    c.traverse((o) => { if (o.isSprite) o.visible = false; });
+    this.scene.add(c);
+    this.corpses.push({ obj: c, t: this.now });
+    while (this.corpses.length > (this.isTouch ? 4 : 8)) this.scene.remove(this.corpses.shift().obj);
+  }
+
+  // 血泊放在尸体胸口下面；找不到地面就不放
+  bloodPoolAt(x, y, z, dx, dz) {
+    for (const d of [1.0, 0.5]) {
+      const px = x + dx * d, pz = z + dz * d;
+      const h = this.world.raycast(px, y + 0.5, pz, 0, -1, 0, 3);
+      if (h && h.t > 0.05) { this.fx.bloodPool(px, y + 0.5 - h.t, pz); return; }
+    }
   }
 
   // 触屏辅助瞄准：找准星附近、看得见的敌人
@@ -1445,12 +1528,25 @@ export class Game {
       cam.position.set(lerp(this.prev.x, this.sim.x, a), lerp(this.prev.y, this.sim.y, a) + this.eyeOff, lerp(this.prev.z, this.sim.z, a));
       cam.rotation.set(this.pitch + W.punchP * 0.5 + sy, this.yaw + W.punchY * 0.5 + sx, 0);
       this.freeCamActive = false;
-    } else if (this.deathT >= 0 && now - this.deathT < 2.4 && this.deathPos) {
+    } else if (this.deathT >= 0 && now - this.deathT < 3 && this.deathPos) {
       const t = now - this.deathT;
       const k = Math.min(1, t / 0.6);
       cam.position.set(this.deathPos.x, this.deathPos.y - k * 1.25, this.deathPos.z);
-      roll = k * 0.45;
-      cam.rotation.set(this.pitch * (1 - k) + 0.1 * k, this.yaw, roll);
+      const killer = this.killerId != null && this.killerId !== this.myId ? this.players.get(this.killerId) : null;
+      if (killer && killer.rp && t > 0.45) {
+        // 看向凶手
+        const [ty, tp] = anglesFromDir(killer.rp.x - cam.position.x, killer.rp.y + 1.2 - cam.position.y, killer.rp.z - cam.position.z);
+        const q = Math.min(1, dt * 5);
+        this.yaw = lerpAngle(this.yaw, ty, q);
+        this.pitch = lerp(this.pitch, tp, q);
+        this.deathRoll = lerp(this.deathRoll ?? 0.45, 0.12, q);
+        cam.rotation.set(this.pitch, this.yaw, this.deathRoll);
+      } else {
+        roll = k * 0.45;
+        this.deathRoll = roll;
+        cam.rotation.set(this.pitch * (1 - k) + 0.1 * k, this.yaw, roll);
+        if (k >= 1) this.pitch = 0.1;
+      }
     } else {
       const sp = this.me.team !== 'SPEC' || this.specId != null ? this.specTarget() : null;
       if (sp && sp.rp) {
