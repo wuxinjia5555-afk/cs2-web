@@ -11,7 +11,8 @@ import { mapImage } from './client/mapimg.js';
 import { buildMapMeshes, setupEnvironment } from './client/world.js';
 import { setMaxAnisotropy } from './client/textures.js';
 import { drawQR } from './client/qr.js';
-import { account, initAccount, login, register, logout, uploadNow, adoptToken } from './client/account.js';
+import { account, initAccount, login, register, logout, uploadNow, adoptToken, ownsSkin, refreshAccount, unlockSkin, searchPlayers,
+  addFriend, removeFriend, giftCoins, giftSkin, devOn, devOff } from './client/account.js';
 
 window.__gameReady = true;
 
@@ -693,16 +694,36 @@ let inv = null;
 
 function invNow() { return performance.now() / 1000; }
 
+// 金币显示：开发者模式是无限
+function coinText() {
+  if (!account.name) return '';
+  return account.dev ? '💰 ∞' : `💰 ${account.coins}`;
+}
+
 function renderInv() {
+  if (!inv) return;
   const cur = settings.skins.knife || 'default';
-  $('inv-knives').innerHTML = KNIVES.map((k) => `<button class="inv-item ${k.cls}${inv.sel === k.id ? ' sel' : ''}" data-k="${k.id}">
-    <span class="inv-n">${esc(k.name)}</span><span class="inv-r">${esc(k.rarity)}</span>${cur === k.id ? '<span class="inv-eq">已装备</span>' : ''}</button>`).join('');
+  $('inv-coins').textContent = account.name ? coinText() + ' 金币' : '（登录后才能解锁皮肤）';
+  $('inv-knives').innerHTML = KNIVES.map((k) => {
+    const own = ownsSkin(k.id);
+    const tag = cur === k.id ? '<span class="inv-eq">已装备</span>' : own ? '' : `<span class="inv-lock">🔒 ${account.price}</span>`;
+    return `<button class="inv-item ${k.cls}${inv.sel === k.id ? ' sel' : ''}${own ? '' : ' locked'}" data-k="${k.id}">
+    <span class="inv-n">${esc(k.name)}</span><span class="inv-r">${esc(own ? k.rarity : '未解锁')}</span>${tag}</button>`;
+  }).join('');
   const k = KNIVES.find((x) => x.id === inv.sel);
   $('inv-name').textContent = k.name;
   $('inv-name').className = 'inv-name ' + k.cls;
   $('inv-desc').textContent = k.desc;
-  $('inv-equip').textContent = cur === k.id ? '✓ 已装备' : '装备';
-  $('inv-equip').disabled = cur === k.id;
+  const b = $('inv-equip'), own = ownsSkin(k.id);
+  b.classList.toggle('buy', !own && inv.confirm !== k.id);
+  b.classList.toggle('confirm', !own && inv.confirm === k.id);
+  if (!own) {
+    b.textContent = inv.confirm === k.id ? `确认花 ${account.price} 金币解锁？` : `🔒 解锁 · ${account.price} 金币`;
+    b.disabled = !!inv.busy;
+  } else {
+    b.textContent = cur === k.id ? '✓ 已装备' : '装备';
+    b.disabled = cur === k.id;
+  }
 }
 
 function invShow(id) {
@@ -743,8 +764,10 @@ function openInventory() {
     vm.sfx = (k) => audio.play(k);
     inv = { r, vm, sel: 'default' };
   }
+  inv.confirm = null;
   invShow(settings.skins.knife || 'default');
   if (!inv.running) { inv.running = true; inv.last = 0; requestAnimationFrame(invLoop); }
+  refreshAccount();
 }
 
 $('btn-inv').addEventListener('click', openInventory);
@@ -754,11 +777,38 @@ $('inv-knives').addEventListener('click', (e) => {
 });
 $('inv-draw').addEventListener('click', () => { inv.vm.wid = null; inv.vm.setWeapon('knife', 0.5, invNow()); if (!inv.vm.knifeFx()) audio.play('deploy'); });
 $('inv-inspect').addEventListener('click', () => { inv.vm.drawDur = 0; inv.vm.onInspect(invNow()); });
-$('inv-equip').addEventListener('click', () => {
+$('inv-equip').addEventListener('click', async () => {
+  const k = KNIVES.find((x) => x.id === inv.sel), name = k.name.replace('★ ', '');
+  if (!ownsSkin(k.id)) {
+    // 解锁：要登录、金币够，再点一次确认
+    if (!account.token) { toast('先登录账号才能解锁皮肤（金币存在账号里）'); openAccount(); return; }
+    if (!account.dev && account.coins < account.price) { audio.play('click'); toast(`金币不够：解锁要 ${account.price} 金币，你现在有 ${account.coins}`); return; }
+    if (inv.confirm !== k.id) {
+      inv.confirm = k.id;
+      clearTimeout(inv.ct);
+      inv.ct = setTimeout(() => { inv.confirm = null; renderInv(); }, 4000);
+      audio.play('click');
+      renderInv();
+      return;
+    }
+    clearTimeout(inv.ct);
+    inv.confirm = null;
+    inv.busy = true;
+    renderInv();
+    const r = await unlockSkin(k.id);
+    inv.busy = false;
+    if (r.error) { toast(r.error); renderInv(); return; }
+    settings.skins.knife = k.id; // 解锁了直接装备上
+    saveSettings();
+    audio.play('buy');
+    toast(`🎉 已解锁并装备：${name}`);
+    renderInv();
+    return;
+  }
   settings.skins.knife = inv.sel;
   saveSettings();
   audio.play('buy');
-  toast('已装备：' + KNIVES.find((k) => k.id === inv.sel).name.replace('★ ', ''));
+  toast('已装备：' + name);
   renderInv();
 });
 
@@ -769,7 +819,7 @@ async function playUrl() {
     const r = await fetch('/api/info', { cache: 'no-store' });
     const j = await r.json();
     // 有公网地址就优先用公网地址：在哪都能扫码进来
-    if (j.public) return { url: j.public.replace(/\/$/, '') + '/', local: false, public: true };
+    if (j.public) return { url: j.public.replace(/\/$/, '') + '/', local: false, public: true, board: j.board || '' };
     if (!local) return { url: location.origin + location.pathname, local: false };
     if (j.lanHttps && j.lanHttps.length) return { url: j.lanHttps[0] + '/', local: true, https: true, plain: j.lan && j.lan[0] ? j.lan[0] + '/' : null };
     if (j.lan && j.lan.length) return { url: j.lan[0] + '/', local: true };
@@ -794,7 +844,9 @@ async function showQR(roomCode) {
     $('qr-tip').innerHTML = info.local
       ? '手机和这台电脑连<b>同一个 Wi-Fi</b>，用手机相机或浏览器扫一扫即可打开。<br>请横屏游玩；进入后点「联机对战」可以和电脑上的玩家一起玩。'
         + (info.https ? `<br><b>第一次打开会提示“不安全 / 非私人连接”</b>：点「显示详细信息 → 访问此网站」（安卓点「高级 → 继续前往」）。用 https 打开手机陀螺仪才能用。${info.plain ? `<br>不想看到提示也可以用：${info.plain}${roomCode ? `?room=${roomCode}` : ''}（不能用陀螺仪）` : ''}` : '')
-      : info.public ? '<b>公网地址</b>：不管在哪、用不用同一个 Wi-Fi，扫一扫都能打开（横屏游玩）。<br>需要这台电脑开着服务器。' : '用手机相机或浏览器扫一扫即可打开（横屏游玩）。';
+      : info.public ? '<b>公网地址</b>：不管在哪、用不用同一个 Wi-Fi，扫一扫都能打开（横屏游玩）。<br>需要这台电脑开着服务器。'
+          + (info.board ? `<br>📌 免费公网地址大约每小时换一次，新地址会自动发到<b>网址公告页</b>，把它加到收藏夹就不怕找不到了：<br><a href="${esc(info.board)}" target="_blank" rel="noopener">${esc(info.board)}</a>` : '')
+        : '用手机相机或浏览器扫一扫即可打开（横屏游玩）。';
     $('qr-copy').onclick = () => navigator.clipboard?.writeText(url).then(() => toast('已复制：' + url), () => toast(url));
   }
   box.classList.remove('hidden');
@@ -823,7 +875,7 @@ function syncText() {
 }
 function renderAccount() {
   const on = !!account.name;
-  $('acct-status').innerHTML = on ? `👤 <b>${esc(account.name)}</b> · ${esc(syncText())}` : account.state === 'loading' ? '登录中…' : '未登录 · 设置只存在这台设备上';
+  $('acct-status').innerHTML = on ? `👤 <b>${esc(account.name)}</b> · ${coinText()} · ${esc(syncText())}` : account.state === 'loading' ? '登录中…' : '未登录 · 设置只存在这台设备上';
   $('btn-account').textContent = on ? '账号' : '登录 / 注册';
   $('name-input').disabled = on;
   $('name-input').value = on ? account.name : settings.name || '';
@@ -833,6 +885,21 @@ function renderAccount() {
   $('acct-me-name').textContent = account.name;
   const t = account.lastSync ? new Date(account.lastSync).toTimeString().slice(0, 5) : '';
   $('acct-sync').textContent = on ? `${syncText()}${t && account.state === 'ok' ? `（${t}）` : ''}。在别的手机 / 电脑上用这个账号登录，就能用同一套设置。` : '';
+  $('acct-coins').textContent = on ? coinText() + ' 金币' : '';
+  $('acct-dev-tag').classList.toggle('hidden', !account.dev);
+  $('dev-off-box').classList.toggle('hidden', account.dev);
+  $('dev-on-box').classList.toggle('hidden', !account.dev);
+  renderInv();
+  renderFriends();
+}
+function openAccount() {
+  audio.init();
+  audio.play('click');
+  renderAccount();
+  setAcctTab(acctTab);
+  $('dev-msg').textContent = '';
+  showMenu('menu-account');
+  refreshAccount();
 }
 function setAcctTab(tab) {
   acctTab = tab;
@@ -862,12 +929,156 @@ async function acctSubmit() {
   showMenu('menu-main');
 }
 account.onChange = renderAccount;
-$('btn-account').addEventListener('click', () => { audio.init(); audio.play('click'); renderAccount(); setAcctTab(acctTab); showMenu('menu-account'); });
+$('btn-account').addEventListener('click', openAccount);
+// 开发者模式：输密码打开（密码只在服务器上校验）
+async function devEnter() {
+  const pw = $('dev-pw').value;
+  if (!pw) { $('dev-msg').textContent = '请输入开发者密码'; return; }
+  $('dev-enter').disabled = true;
+  $('dev-msg').textContent = '正在验证…';
+  const r = await devOn(pw);
+  $('dev-enter').disabled = false;
+  $('dev-pw').value = '';
+  if (r.error) { $('dev-msg').textContent = r.error; return; }
+  $('dev-msg').textContent = '';
+  audio.play('buy');
+  toast('🛠 已进入开发者模式：所有皮肤 + 无限金币');
+}
+$('dev-enter').addEventListener('click', devEnter);
+$('dev-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') devEnter(); });
+$('dev-exit').addEventListener('click', async () => {
+  const r = await devOff();
+  if (r.error) { $('dev-msg').textContent = r.error; return; }
+  toast('已关闭开发者模式');
+});
 for (const b of document.querySelectorAll('.acct-tabs [data-tab]')) b.addEventListener('click', () => { audio.play('click'); setAcctTab(b.dataset.tab); });
 $('acct-submit').addEventListener('click', acctSubmit);
 for (const id of ['acct-name', 'acct-pw', 'acct-pw2']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') acctSubmit(); });
 $('acct-logout').addEventListener('click', async () => { await logout(); toast('已退出登录（这台设备上的设置还在）'); renderAccount(); });
 $('acct-sync-now').addEventListener('click', () => uploadNow());
+
+// ---------------- 好友 ----------------
+const SKIN_LABEL = { butterfly: '★ 蝴蝶刀', karambit: '★ 爪子刀', m9: '★ M9 刺刀', xeno: '★ 剥皮小刀' };
+let giftTo = null, delAsk = null;
+function seenText(t) {
+  if (!t) return '很久没上线';
+  const s = (Date.now() - t) / 1000;
+  if (s < 150) return '在线';
+  if (s < 3600) return `${Math.round(s / 60)} 分钟前在线`;
+  if (s < 86400) return `${Math.round(s / 3600)} 小时前在线`;
+  return `${Math.round(s / 86400)} 天前在线`;
+}
+function renderFriends() {
+  const on = !!account.name;
+  $('fr-out').classList.toggle('hidden', on);
+  $('fr-in').classList.toggle('hidden', !on);
+  $('fr-coins').textContent = on ? coinText() + ' 金币' : '';
+  if (!on) return;
+  const fs = account.friends || [];
+  $('fr-count').textContent = `（${fs.length}）`;
+  $('fr-list').innerHTML = fs.length
+    ? fs.map((f) => {
+      const live = f.seen && Date.now() - f.seen < 150e3;
+      return `<div class="fr-row"><span class="fr-dot${live ? ' on' : ''}"></span><b>${esc(f.name)}</b><small>${seenText(f.seen)}</small>
+        <span class="fr-act"><button class="btn small" data-gift="${esc(f.name)}">🎁 赠送</button><button class="btn small ghost" data-del="${esc(f.name)}">${delAsk === f.name ? '确认删除？' : '删除'}</button></span></div>`;
+    }).join('')
+    : '<div class="fr-empty">还没有好友。在上面输入名称搜索，再点「加好友」。</div>';
+  if (giftTo && !fs.some((f) => f.name === giftTo)) giftTo = null;
+  $('fr-gift').classList.toggle('hidden', !giftTo);
+  if (giftTo) {
+    $('fr-gift-name').textContent = giftTo;
+    const mine = account.dev ? Object.keys(SKIN_LABEL) : (account.owned || []);
+    $('fr-gift-skins').innerHTML = mine.map((s) => `<button class="btn small" data-gskin="${s}">送 ${esc(SKIN_LABEL[s] || s)}</button>`).join('');
+    $('fr-gift-tip').textContent = account.dev
+      ? '开发者模式：金币无限，皮肤送出去你自己也还有。'
+      : `你有 ${account.coins} 金币。${mine.length ? '注意：皮肤送出去后你自己就没有了。' : '你还没有可以送的皮肤。'}`;
+  }
+}
+async function doSearch() {
+  const q = $('fr-q').value.trim();
+  if (!q) { $('fr-results').innerHTML = ''; return; }
+  $('fr-results').innerHTML = '<div class="fr-empty">搜索中…</div>';
+  const r = await searchPlayers(q);
+  if (r.error) { $('fr-results').innerHTML = `<div class="fr-empty">${esc(r.error)}</div>`; return; }
+  $('fr-results').innerHTML = r.list.length
+    ? r.list.map((u) => `<div class="fr-row"><b>${esc(u.name)}</b><span class="fr-act">${u.friend ? '<small>已是好友</small>' : `<button class="btn small accent" data-add="${esc(u.name)}">＋ 加好友</button>`}</span></div>`).join('')
+    : '<div class="fr-empty">没有找到这个名称的玩家</div>';
+}
+function openFriends() {
+  audio.init();
+  audio.play('click');
+  giftTo = null;
+  delAsk = null;
+  renderFriends();
+  showMenu('menu-friends');
+  refreshAccount();
+}
+$('btn-friends').addEventListener('click', openFriends);
+$('fr-login').addEventListener('click', openAccount);
+$('fr-search').addEventListener('click', doSearch);
+$('fr-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+$('fr-results').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-add]');
+  if (!b) return;
+  b.disabled = true;
+  const r = await addFriend(b.dataset.add);
+  if (r.error) { toast(r.error); b.disabled = false; return; }
+  audio.play('click');
+  toast(`已添加好友：${b.dataset.add}`);
+  b.outerHTML = '<small>已是好友</small>';
+});
+$('fr-list').addEventListener('click', async (e) => {
+  const g = e.target.closest('[data-gift]'), d = e.target.closest('[data-del]');
+  if (g) {
+    audio.play('click');
+    giftTo = giftTo === g.dataset.gift ? null : g.dataset.gift;
+    renderFriends();
+    if (giftTo) $('fr-gift').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  if (d) {
+    const n = d.dataset.del;
+    if (delAsk !== n) { delAsk = n; renderFriends(); setTimeout(() => { if (delAsk === n) { delAsk = null; renderFriends(); } }, 4000); return; }
+    delAsk = null;
+    const r = await removeFriend(n);
+    if (r.error) toast(r.error); else toast(`已删除好友：${n}`);
+  }
+});
+$('fr-gift-close').addEventListener('click', () => { giftTo = null; renderFriends(); });
+$('fr-gift-send').addEventListener('click', async () => {
+  const n = Math.floor(Number($('fr-gift-coins').value));
+  if (!giftTo || !(n > 0)) { toast('输入要送的金币数量'); return; }
+  $('fr-gift-send').disabled = true;
+  const r = await giftCoins(giftTo, n);
+  $('fr-gift-send').disabled = false;
+  if (r.error) { toast(r.error); return; }
+  $('fr-gift-coins').value = '';
+  audio.play('buy');
+  toast('🎁 ' + r.text);
+});
+$('fr-gift-skins').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-gskin]');
+  if (!b || !giftTo) return;
+  b.disabled = true;
+  const r = await giftSkin(giftTo, b.dataset.gskin);
+  b.disabled = false;
+  if (r.error) { toast(r.error); return; }
+  audio.play('buy');
+  toast('🎁 ' + r.text);
+});
+
+// 收到的消息（加好友、收到金币 / 皮肤）
+account.onInbox = (list) => {
+  const text = list.map((e) => e.kind === 'friend' ? `${e.from} 加你为好友了`
+    : e.kind === 'coins' ? `${e.from} 送给你 ${e.v} 金币 💰`
+    : e.kind === 'skin' ? `${e.from} 送给你 ${SKIN_LABEL[e.v] || e.v} 🎁` : '').filter(Boolean).join('；');
+  if (!text) return;
+  if (game && game.hud) game.hud.chat({ sys: true, text });
+  else toast(text, 5000);
+};
+// 每分钟刷新一次（好友在线状态、收到的礼物）
+setInterval(() => { if (account.token && document.visibilityState === 'visible') refreshAccount(); }, 60000);
+
 renderAccount();
 initAccount().then(() => audio.setVolume(settings.volume));
 

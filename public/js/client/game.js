@@ -14,6 +14,7 @@ import { Hud, weaponName, SKIN_NAME } from './hud.js';
 import { Input } from './input.js';
 import { audio } from './audio.js';
 import { settings, saveSettings, useTouch } from './settings.js';
+import { account } from './account.js';
 import { TouchControls } from './touch.js';
 
 const BASE_FOV = 73.74;
@@ -52,7 +53,8 @@ export class Game {
     this.input = new Input(renderer.domElement, this.isTouch);
     this.input.setBinds(settings.binds);
     // 告诉服务器我的刀皮肤（别人看到的第三人称模型）
-    if (settings.skins && settings.skins.knife && settings.skins.knife !== 'default') this.net.send({ t: 'skin', k: settings.skins.knife });
+    // （联机服务器会按账号检查这把刀解锁了没有）
+    if (settings.skins && settings.skins.knife && settings.skins.knife !== 'default') this.net.send({ t: 'skin', k: settings.skins.knife, tk: account.token || undefined });
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;

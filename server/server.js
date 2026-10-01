@@ -56,7 +56,7 @@ function json(res, obj) {
 }
 
 // ---------------- 账号（设置云同步） ----------------
-const accounts = createAccounts(path.join(__dirname, 'data', 'accounts.json'));
+const accounts = createAccounts(path.join(__dirname, 'data', 'accounts.json'), path.join(__dirname, 'data', 'dev.json'));
 
 function readJson(req, limit = 200000) {
   return new Promise((resolve) => {
@@ -73,6 +73,7 @@ async function accountApi(req, res, what) {
   const tkHeader = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   try {
     if (what === 'me') return json(res, accounts.me(tkHeader));
+    if (what === 'search') return json(res, accounts.search(tkHeader, new URL(req.url, 'http://x').searchParams.get('q') || ''));
     if (req.method !== 'POST') return json(res, { error: '请求方式不对' });
     const body = await readJson(req);
     if (!body || typeof body !== 'object') return json(res, { error: '数据太大或格式不对' });
@@ -82,6 +83,12 @@ async function accountApi(req, res, what) {
       case 'login': return json(res, await accounts.login(body.name, body.password));
       case 'settings': return json(res, accounts.saveSettings(tk, body.settings));
       case 'logout': return json(res, accounts.logout(tk));
+      case 'unlock': return json(res, accounts.unlock(tk, String(body.skin || '')));
+      case 'friend-add': return json(res, accounts.addFriend(tk, body.name));
+      case 'friend-remove': return json(res, accounts.removeFriend(tk, body.name));
+      case 'gift': return json(res, accounts.gift(tk, body.to, body.coins, body.skin ? String(body.skin) : null));
+      case 'inbox-ack': return json(res, accounts.ackInbox(tk, body.upTo));
+      case 'dev': return json(res, await accounts.dev(tk, body.password, !!body.off));
     }
     json(res, { error: '没有这个接口' });
   } catch (e) {
@@ -102,7 +109,10 @@ const handler = (req, res) => {
     try { pub = fs.readFileSync(path.join(__dirname, 'public-url.txt'), 'utf8').trim() || pub; } catch {}
     const host = String(req.headers.host || '').replace(/:\d+$/, '');
     const local = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(host);
-    return json(res, local ? { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [], public: pub } : { public: pub });
+    // 网址公告页（隧道每换一次地址就发到这里），见 tools/tunnel.mjs
+    let board = '';
+    try { const n = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'notify.json'), 'utf8')); if (n.ntfy) board = 'https://ntfy.sh/' + encodeURIComponent(n.ntfy); } catch {}
+    return json(res, local ? { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [], public: pub, board } : { public: pub, board });
   }
   if (pathname.startsWith('/lib/three/')) return serveFile(req, res, path.join(THREE_DIR, path.basename(pathname)));
   if (pathname === '/') pathname = '/index.html';
@@ -261,6 +271,8 @@ function handleMsg(conn, m) {
       return;
     default:
       if (conn.entry && conn.pid != null) {
+        // 刀皮肤：账号里没解锁的不能用（别人看到的还是默认匕首）
+        if (m.t === 'skin') { if (!accounts.canUse(m.tk, m.k)) m.k = null; delete m.tk; }
         try { conn.entry.room.handle(conn.pid, m); } catch (err) { console.error('room.handle', m.t, err); }
       }
   }

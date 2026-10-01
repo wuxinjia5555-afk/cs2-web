@@ -212,6 +212,7 @@
         <button class="btn" id="btn-help">⌨ 操作说明</button>
         <button class="btn" id="btn-qr">📱 手机扫码</button>
         <button class="btn" id="btn-inv">🎒 背包</button>
+        <button class="btn" id="btn-friends">👥 好友</button>
       </div>
     </div>
     <div class="foot">地图、模型、音效均为原创程序生成 · 玩法规则参考 CS2</div>
@@ -392,9 +393,36 @@
         <div class="acct-tip acct-login">登录后会换成账号里存的设置（画质设置每台设备单独保存）。</div>
       </div>
       <div id="acct-in" class="hidden">
-        <div class="acct-me">👤 <b id="acct-me-name"></b></div>
+        <div class="acct-me">👤 <b id="acct-me-name"></b><span class="dev-tag hidden" id="acct-dev-tag">开发者</span><span class="acct-coins" id="acct-coins"></span></div>
         <div class="acct-tip" id="acct-sync"></div>
         <div class="row"><button class="btn" id="acct-sync-now">☁ 立即同步</button><button class="btn danger" id="acct-logout">退出登录</button></div>
+        <div class="acct-sec">🛠 开发者模式</div>
+        <div id="dev-off-box" class="inline-form"><input id="dev-pw" type="password" maxlength="64" autocomplete="off" placeholder="输入开发者密码"><button class="btn" id="dev-enter">进入</button></div>
+        <div id="dev-on-box" class="hidden"><div class="acct-note">已开启：所有刀皮肤都能用，金币无限，可以随便送给好友。</div><button class="btn" id="dev-exit">关闭开发者模式</button></div>
+        <div class="acct-msg" id="dev-msg"></div>
+      </div>
+      <div class="row"><button class="btn ghost" data-back>返回</button></div>
+    </div>
+  </div>
+
+  <div id="menu-friends" class="menu hidden">
+    <div class="menu-box fr-box">
+      <h2>好友 <small id="fr-coins"></small></h2>
+      <div id="fr-out" class="hidden">
+        <div class="acct-note">登录账号后才能加好友、互相赠送金币和皮肤。</div>
+        <button class="btn big accent" id="fr-login">登录 / 注册</button>
+      </div>
+      <div id="fr-in">
+        <div class="inline-form"><input id="fr-q" maxlength="16" placeholder="输入玩家名称搜索" enterkeyhint="search"><button class="btn" id="fr-search">🔍 搜索</button></div>
+        <div class="fr-list" id="fr-results"></div>
+        <div class="acct-sec">我的好友 <small id="fr-count"></small></div>
+        <div class="fr-list" id="fr-list"></div>
+        <div id="fr-gift" class="fr-gift hidden">
+          <div class="fr-gift-h"><span>🎁 送给 <b id="fr-gift-name"></b></span><button class="btn small ghost" id="fr-gift-close">✕</button></div>
+          <div class="inline-form"><input id="fr-gift-coins" type="number" min="1" step="1" inputmode="numeric" placeholder="送多少金币"><button class="btn accent" id="fr-gift-send">送金币</button></div>
+          <div class="fr-gift-skins" id="fr-gift-skins"></div>
+          <div class="acct-note" id="fr-gift-tip"></div>
+        </div>
       </div>
       <div class="row"><button class="btn ghost" data-back>返回</button></div>
     </div>
@@ -402,12 +430,12 @@
 
   <div id="menu-inventory" class="menu hidden">
     <div class="menu-box wide inv-box">
-      <h2>背包</h2>
+      <h2>背包 <small id="inv-coins"></small></h2>
       <div class="inv-wrap">
         <div class="inv-list">
           <div class="inv-cat">刀具</div>
           <div class="inv-items" id="inv-knives"></div>
-          <div class="inv-tip">更多武器皮肤以后会陆续加入</div>
+          <div class="inv-tip" id="inv-tip">刀皮肤要用金币解锁（每把 1599），好友之间可以互相赠送金币和皮肤</div>
         </div>
         <div class="inv-preview">
           <canvas id="inv-canvas"></canvas>
