@@ -753,6 +753,10 @@ export class Game {
     if (p) p.lastShotT = this.now;
     if (m.w === 'knife') { audio.play('knife', m.o); return; }
     audio.shot(m.w, m.o);
+    if (p && this.isEnemyId(p.id)) {
+      const d = Math.hypot(m.o[0] - this.camera.position.x, m.o[2] - this.camera.position.z);
+      if (d < 70) this.soundPing(m.o[0], m.o[2], d / 70, 'shot');
+    }
     let mx = m.o[0], my = m.o[1] - 0.12, mz = m.o[2];
     if (p && p.model && p.model.gunHolder.children[0]) {
       const g = p.model.gunHolder.children[0];
@@ -1081,8 +1085,19 @@ export class Game {
     const sp = Math.hypot(s.vx, s.vz);
     if (s.onGround && sp > 2.9 && !cmd.walk && !s.crouched) {
       this.stepAcc += sp * dt;
-      if (this.stepAcc > 2.3) { this.stepAcc = 0; audio.step(null, 0.28, this.surfaceUnder(s.x, s.y, s.z)); }
+      if (this.stepAcc > 2.3) { this.stepAcc = 0; audio.step(null, 0.14, this.surfaceUnder(s.x, s.y, s.z)); }
     }
+  }
+
+  // 声纹：把敌人声音的方向画在准星周围（k：0 很近 ~ 1 刚好听得到）
+  soundPing(x, z, k, kind) {
+    if (!settings.soundViz || !this.me.alive) return;
+    const cam = this.camera.position, yaw = this.camera.rotation.y;
+    const dx = x - cam.x, dz = z - cam.z;
+    if (dx * dx + dz * dz < 1) return;
+    const rx = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+    const fz = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
+    this.hud.soundPing(Math.atan2(rx, fz), Math.max(0.3, 1 - k), kind);
   }
 
   surfaceUnder(x, y, z) {
@@ -1405,7 +1420,11 @@ export class Game {
       if (this.specId === p.id && !this.me.alive) m.root.visible = false;
       if (alive && f & F.GROUND && !(f & F.WALK) && !(f & F.CROUCH) && p.speed > 2.9) {
         p.stepAcc += p.speed * dt;
-        if (p.stepAcc > 2.3) { p.stepAcc = 0; audio.step([x, y, z], 0.75, this.surfaceUnder(x, y, z)); }
+        if (p.stepAcc > 2.3) {
+          p.stepAcc = 0;
+          const heard = audio.step([x, y, z], 0.6, this.surfaceUnder(x, y, z));
+          if (heard && this.isEnemyId(p.id)) this.soundPing(x, z, heard.d / 32, 'step');
+        }
       }
     }
     while (this.corpses.length && this.now - this.corpses[0].t > (this.isTouch ? 12 : 20)) this.scene.remove(this.corpses.shift().obj);

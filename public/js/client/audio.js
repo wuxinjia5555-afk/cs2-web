@@ -1,7 +1,9 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, synthGun, synthStep } from './gunsynth.js';
+
+const STEP_RANGE = 32; // 脚步声最远能听到的距离（米），和 CS 差不多
 
 class AudioSys {
   constructor() {
@@ -9,6 +11,7 @@ class AudioSys {
     this.lx = 0; this.ly = 0; this.lz = 0; this.lyaw = 0;
     this.lastVoice = 0;
     this.gunBufs = {};
+    this.stepBufs = {};
   }
 
   init() {
@@ -65,7 +68,21 @@ class AudioSys {
     return buf;
   }
 
+  _stepBuf(surface) {
+    const arr = this.stepBufs[surface] || (this.stepBufs[surface] = []);
+    if (arr.length < 6) {
+      const sr = this.ctx.sampleRate;
+      const data = synthStep(surface, sr, 3 + arr.length * 31 + surface.length);
+      const buf = this.ctx.createBuffer(1, data.length, sr);
+      buf.getChannelData(0).set(data);
+      arr.push(buf);
+      return buf;
+    }
+    return arr[(Math.random() * arr.length) | 0];
+  }
+
   warmGuns() {
+    for (const s of ['hard', 'sand', 'metal']) for (let i = 0; i < 6; i++) this._stepBuf(s);
     const keys = Object.keys(GUN_PROFILES);
     let k = 0;
     const step = () => {
@@ -176,14 +193,31 @@ class AudioSys {
     src.start();
   }
 
+  // 脚步声；返回 {d} 表示听得到（用于声纹），听不到返回 null
   step(pos, vol = 0.5, surface = 'hard') {
-    if (!this.ctx) return;
-    const o = this._out(pos, 5, vol, 0.05);
-    if (!o) return;
-    const t = this.ctx.currentTime;
-    const f = surface === 'sand' ? 650 : surface === 'metal' ? 2100 : 1100;
-    this._noise(o.input, t, { type: 'bandpass', f: f * (0.85 + Math.random() * 0.3), q: 1.3, dec: 0.08, vol: 0.9 });
-    this._tone(o.input, t, { f: 95, f2: 55, dec: 0.06, vol: 0.35 });
+    if (!this.ctx) return null;
+    let d = 0;
+    if (pos) {
+      d = Math.hypot(pos[0] - this.lx, pos[1] - this.ly, pos[2] - this.lz);
+      if (d > STEP_RANGE) return null;
+      if (d > STEP_RANGE - 8) vol *= (STEP_RANGE - d) / 8;
+    }
+    const o = this._out(pos, 8, vol * settings.stepVol, 0.03);
+    if (!o) return null;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this._stepBuf(surface);
+    src.playbackRate.value = 0.92 + Math.random() * 0.16;
+    let node = src;
+    if (o.far > 0.05) {
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 900 + 7000 * (1 - o.far) * (1 - o.far);
+      src.connect(lp);
+      node = lp;
+    }
+    node.connect(o.input);
+    src.start();
+    return { d };
   }
 
   // 通用音效

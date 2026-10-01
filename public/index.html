@@ -53,6 +53,7 @@
   <div id="chat-input-wrap" class="hidden"><span id="chat-mode">全部</span><input id="chat-input" maxlength="120" autocomplete="off"></div>
 
   <div id="crosshair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div>
+  <canvas id="soundviz"></canvas>
   <div id="hitmarker"></div>
   <div id="kill-banner"></div>
   <div id="kill-icons"></div>
@@ -250,6 +251,7 @@
         <label class="field"><span>开镜灵敏度倍率 <b id="v-zoom"></b></span><input type="range" id="s-zoom" min="0.3" max="2" step="0.05"></label>
         <label class="field"><span>音量 <b id="v-vol"></b></span><input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
         <label class="field"><span>枪声音量 <b id="v-gunvol"></b></span><input type="range" id="s-gunvol" min="0" max="1" step="0.05"></label>
+        <label class="field"><span>脚步音量 <b id="v-stepvol"></b></span><input type="range" id="s-stepvol" min="0" max="1" step="0.05"></label>
         <label class="field"><span>画面分辨率 <b id="v-res"></b></span><input type="range" id="s-res" min="0.5" max="1.5" step="0.1"></label>
         <label class="field"><span>准星颜色</span><input type="color" id="s-xcolor"></label>
         <label class="field"><span>准星长度 <b id="v-xlen"></b></span><input type="range" id="s-xlen" min="1" max="14" step="1"></label>
@@ -259,6 +261,7 @@
         <label class="check"><input type="checkbox" id="s-xdyn"> 动态准星（随精度扩散）</label>
         <label class="check"><input type="checkbox" id="s-shadows"> 实时阴影</label>
         <label class="check"><input type="checkbox" id="s-voice"> 语音播报（下包/胜负）</label>
+        <label class="check"><input type="checkbox" id="s-soundviz"> 声纹（准星周围显示敌人脚步/枪声的方向）</label>
         <label class="check"><input type="checkbox" id="s-full"> 进入游戏自动全屏（防止 Ctrl+W 误关页面）</label>
         <label class="check"><input type="checkbox" id="s-fps"> 显示帧率/延迟</label>
       </div>

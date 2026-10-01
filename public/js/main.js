@@ -412,6 +412,13 @@ function bindSettings() {
   rng('s-zoom', 'zoomSens', settings, (v) => v.toFixed(2));
   rng('s-vol', 'volume', settings, (v) => Math.round(v * 100) + '%', () => audio.setVolume(settings.volume));
   let gunPreview = 0;
+  rng('s-stepvol', 'stepVol', settings, (v) => Math.round(v * 100) + '%', () => {
+    if (performance.now() - gunPreview < 250) return;
+    gunPreview = performance.now();
+    audio.init();
+    audio.step(null, 0.5, 'hard');
+  });
+  chk('s-soundviz', 'soundViz', settings);
   rng('s-gunvol', 'gunVol', settings, (v) => Math.round(v * 100) + '%', () => {
     // 拖动时试播一声（限速）
     if (performance.now() - gunPreview < 300) return;

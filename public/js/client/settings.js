@@ -15,6 +15,8 @@ export const DEFAULTS = {
   zoomSens: 1.0,
   volume: 0.7,
   gunVol: 0.8,
+  stepVol: 0.7,
+  soundViz: true,
   res: 1.0,
   shadows: true,
   voice: true,

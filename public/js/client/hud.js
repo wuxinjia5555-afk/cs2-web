@@ -72,8 +72,65 @@ export class Hud {
   }
 
   // ---------------- 每帧 ----------------
+  // 声纹：方向 ang（0=正前方，顺时针为正），强度 s（0~1）
+  soundPing(ang, s, kind) {
+    const now = this.g.now;
+    if (!this.pings) this.pings = [];
+    for (const p of this.pings) {
+      let da = p.a - ang;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (p.kind === kind && now - p.t < 0.3 && Math.abs(da) < 0.25) { p.a = ang; p.s = Math.max(p.s, s); p.t = now; return; }
+    }
+    this.pings.push({ a: ang, s, t: now, kind });
+    if (this.pings.length > 24) this.pings.shift();
+  }
+
+  drawPings(now) {
+    const cv = $('soundviz');
+    if (!cv || (!(this.pings && this.pings.length) && !this.pingDrawn)) return;
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const w = window.innerWidth, h = window.innerHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    this.pingDrawn = false;
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) * (this.g.isTouch ? 0.19 : 0.15);
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 3;
+    for (let i = this.pings.length - 1; i >= 0; i--) {
+      const p = this.pings[i], life = p.kind === 'shot' ? 1.2 : 0.9, age = now - p.t;
+      if (age > life || age < 0) { this.pings.splice(i, 1); continue; }
+      const al = (1 - age / life) * p.s;
+      const base = p.a - Math.PI / 2;
+      const col = p.kind === 'shot' ? '255,170,40' : '255,72,60';
+      for (let k = 0; k < 3; k++) {
+        const r = R + k * 9 + age * 16;
+        const span = (p.kind === 'shot' ? 0.26 : 0.2) - k * 0.03;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, base - span, base + span);
+        ctx.strokeStyle = `rgba(${col},${(al * (1 - k * 0.3)).toFixed(3)})`;
+        ctx.lineWidth = p.kind === 'shot' ? 5 : 4;
+        ctx.stroke();
+      }
+      if (p.kind === 'shot') {
+        // 枪声：外圈再加一个小三角箭头
+        const r = R + 34 + age * 16, ax = cx + Math.cos(base) * r, ay = cy + Math.sin(base) * r;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(base + Math.PI / 2);
+        ctx.fillStyle = `rgba(${col},${al.toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(5, 3); ctx.lineTo(-5, 3); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      this.pingDrawn = true;
+    }
+  }
+
   update(dt) {
     const g = this.g, me = g.me, now = g.now;
+    this.drawPings(now);
     const spectating = !me.alive;
     const specP = spectating && g.specId != null ? g.players.get(g.specId) : null;
     // 血量护甲

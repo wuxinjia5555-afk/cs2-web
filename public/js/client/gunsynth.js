@@ -201,3 +201,38 @@ export function synthGun(P, sr, seed = 1) {
   for (let i = 0; i < n; i++) out[i] *= g * (i > n - fade ? (n - i) / fade : 1);
   return out;
 }
+
+// 脚步声：脚跟落地的“咚” + 稍后脚尖的轻响；沙地多一层沙粒摩擦声，金属地面带一点共鸣
+export function synthStep(surface, sr, seed = 1) {
+  const R = rng(seed);
+  const metal = surface === 'metal', sand = surface === 'sand';
+  const n = Math.ceil((metal ? 0.3 : 0.2) * sr);
+  const out = new Float32Array(n);
+  const v = 0.85 + R() * 0.3; // 每一步轻重不同
+  const toeAt = 0.04 + R() * 0.03; // 脚尖落地的时间
+  const lpF = sand ? 400 : 620;
+  const thudF = new Biquad(sr).set('lp', lpF, 0.8), thudF2 = new Biquad(sr).set('lp', lpF, 0.8);
+  const toeF = new Biquad(sr).set('lp', sand ? 900 : 1500, 0.8);
+  const scuffF = new Biquad(sr).set('bp', sand ? 2300 : metal ? 1800 : 1400, sand ? 0.8 : 1.3);
+  const modes = metal ? [[420 * (0.96 + R() * 0.08), 0.08], [1150 * (0.96 + R() * 0.08), 0.05], [2300, 0.03]] : [];
+  const modeF = modes.map(([f]) => new Biquad(sr).set('bp', f, 18));
+  let grain = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = R() * 2 - 1;
+    let s = thudF2.p(thudF.p(w)) * 5 * v * env(t, 0.003, 0.02);
+    const toe = toeF.p(w);
+    if (t >= toeAt) s += toe * 2.2 * v * env(t - toeAt, 0.002, 0.014);
+    const sc = scuffF.p(w);
+    if (sand) {
+      if ((i & 63) === 0) grain = R() < 0.4 ? 1.4 : 0.35; // 沙粒：一颗一颗的细碎声
+      s += sc * 0.8 * grain * env(t, 0.004, 0.05);
+    } else s += sc * 0.55 * env(t, 0.001, 0.01);
+    for (let k = 0; k < modes.length; k++) s += modeF[k].p(w) * 9 * Math.exp(-t / modes[k][1]);
+    out[i] = s;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const fade = Math.round(0.02 * sr);
+  for (let i = 0; i < n; i++) out[i] = Math.tanh((out[i] / (peak || 1)) * 1.3) / Math.tanh(1.3) * 0.8 * (i > n - fade ? (n - i) / fade : 1);
+  return out;
+}
