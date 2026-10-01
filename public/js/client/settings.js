@@ -28,6 +28,9 @@ export const DEFAULTS = {
   gunVol: 0.8,
   stepVol: 0.7,
   soundViz: true,
+  hitmarker: true, // 打中时准星旁边的四条线
+  hsFx: true, // 爆头时敌人头上闪一下
+  quickStop: true, // 手机：松开摇杆立刻急停
   res: 1.0,
   shadows: true,
   voice: true,

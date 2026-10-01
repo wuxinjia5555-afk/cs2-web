@@ -128,6 +128,7 @@ export class Effects {
     this.smokes = [];
     this.fires = [];
     this.booms = [];
+    this.pops = [];
     this.lights = [];
     for (let k = 0; k < (this.low ? 0 : 3); k++) {
       const l = new THREE.PointLight(0xffffff, 0, 10, 1.5);
@@ -310,6 +311,24 @@ export class Effects {
     }
   }
 
+  // 爆头：头上“砰”地闪一下白光 + 一圈火花（戴头盔是金属火花，没戴是白色碎光）
+  headPop(x, y, z, helmet) {
+    const mk = (color, size, life) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: flare(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false, color }));
+      s.position.set(x, y, z);
+      s.renderOrder = 10;
+      this.scene.add(s);
+      this.pops.push({ s, t: 0, life, size });
+    };
+    mk(0xffffff, 0.55, 0.14);
+    mk(helmet ? 0xffd27a : 0xff8a8a, 1.1, 0.22);
+    for (let k = 0; k < (helmet ? 14 : 9); k++) {
+      const a = Math.random() * Math.PI * 2, e = (Math.random() - 0.3) * 1.2, v = 2.5 + Math.random() * 3.5;
+      const c = helmet ? [1, 0.85 + Math.random() * 0.15, 0.45] : [1, 0.95, 0.95];
+      this.parts.emit(x, y, z, Math.cos(a) * Math.cos(e) * v, Math.sin(e) * v + 1, Math.sin(a) * Math.cos(e) * v, 0.18 + Math.random() * 0.15, 0.035, c[0], c[1], c[2], 1, 9, 0, 0);
+    }
+  }
+
   flashPop(x, y, z) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: flare(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, color: 0xffffff }));
     s.position.set(x, y, z);
@@ -353,6 +372,15 @@ export class Effects {
     }
     this.tracers.geometry.attributes.position.needsUpdate = true;
     this.tracers.geometry.attributes.color.needsUpdate = true;
+    for (let i = this.pops.length - 1; i >= 0; i--) {
+      const p = this.pops[i];
+      p.t += dt;
+      const k = p.t / p.life;
+      if (k >= 1) { this.scene.remove(p.s); p.s.material.dispose(); this.pops.splice(i, 1); continue; }
+      const sz = p.size * (0.35 + 0.65 * Math.sqrt(k));
+      p.s.scale.set(sz, sz, 1);
+      p.s.material.opacity = 1 - k * k;
+    }
     for (const s of this.flashes) {
       if (!s.visible) continue;
       s.userData.t -= dt;

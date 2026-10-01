@@ -48,10 +48,11 @@ export class Game {
     this.fx = new Effects(this.scene, { low: this.isTouch });
     this.vm = new ViewModel();
     this.vm.knifeSkin = (settings.skins && settings.skins.knife) || 'default';
+    this.vm.sfx = (k) => audio.play(k);
     this.input = new Input(renderer.domElement, this.isTouch);
     this.input.setBinds(settings.binds);
     // 告诉服务器我的刀皮肤（别人看到的第三人称模型）
-    if (settings.skins && settings.skins.knife === 'butterfly') this.net.send({ t: 'skin', k: 'butterfly' });
+    if (settings.skins && settings.skins.knife && settings.skins.knife !== 'default') this.net.send({ t: 'skin', k: settings.skins.knife });
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;
@@ -314,6 +315,13 @@ export class Game {
     this.net.send({ t: 'buy', item: id });
   }
 
+  // 退款：这回合买的、还没用过的东西，在购买时间内、购买区里可以原价退回
+  refund(id) {
+    audio.init();
+    if (!this.canBuy()) { this.hud.center(this.inBuyZone() ? '购买时间已过，不能退款' : '你不在购买区内', 1.5); return; }
+    this.net.send({ t: 'refund', item: id });
+  }
+
   openChat(team) {
     this.chatOpen = true;
     this.chatTeam = team;
@@ -513,6 +521,7 @@ export class Game {
       case 'chat': this.hud.chat(m); if (m.id !== this.myId) audio.play('click', null, 0.6); break;
       case 'err': this.hud.center(m.text, 2); break;
       case 'bought': this.onBought(m.item); break;
+      case 'refunded': audio.play('pickup'); this.hud.center(`已退款 +$${m.m}`, 1.2); break;
       case 'msg': this.onServerMsg(m); break;
       case 'reset': this.onReset(); break;
       case 'pong': this.ping = Math.round(performance.now() - m.c); break;
@@ -555,6 +564,7 @@ export class Game {
     me.helmet = !!m.hm;
     me.money = m.m;
     me.kit = !!m.kit;
+    me.rf = m.rf || [];
     if (m.tm !== me.team) { me.team = m.tm; this.vm.setTeam(m.tm); }
     const recent = this.now - this.w.lastShot < 0.8 || this.w.reloadEnd > 0;
     for (const s of [1, 2]) {
@@ -690,6 +700,11 @@ export class Game {
     if (!kill) audio.play(head ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit');
     const v = this.players.get(m.v);
     if (v && v.model) v.model.hitT = this.now;
+    if (head && v && settings.hsFx !== false) {
+      // 爆头闪光：在敌人头的位置闪一下
+      const hp = v.model && v.model.head ? v.model.head.localToWorld(new THREE.Vector3(0, 0.17, 0)) : v.rp ? new THREE.Vector3(v.rp.x, v.rp.y + 1.62, v.rp.z) : null;
+      if (hp) this.fx.headPop(hp.x, hp.y, hp.z, !!m.hm);
+    }
     if (!kill) this.vibrate(12);
   }
 
@@ -1104,10 +1119,16 @@ export class Game {
     else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
   }
 
+  // 能不能观战这个人：只能看活着的队友（纯观众可以看所有活着的人）；死人、敌人都不行
+  canSpec(p) {
+    if (!p || p.id === this.myId || !p.alive || !p.rp || !(p.rp.f & F.ALIVE)) return false;
+    if (p.team !== 'T' && p.team !== 'CT') return false;
+    if (this.me.team === 'SPEC') return true;
+    return this.mode === 'bomb' && p.team === this.me.team;
+  }
+
   cycleSpec(dir) {
-    const alive = [...this.players.values()].filter((p) => p.id !== this.myId && p.rp && p.rp.f & F.ALIVE);
-    let list = alive.filter((p) => this.mode === 'dm' || this.me.team === 'SPEC' || p.team === this.me.team);
-    if (!list.length) list = alive;
+    const list = [...this.players.values()].filter((p) => this.canSpec(p));
     if (!list.length) { this.specId = null; return; }
     let i = list.findIndex((p) => p.id === this.specId);
     i = i < 0 ? 0 : (i + dir + list.length) % list.length;
@@ -1137,7 +1158,7 @@ export class Game {
     this.vm.cancelReload();
     this.vm.setWeapon(w.id, w.deploy || 0.5, this.now);
     this.vm.drawStart = this.now;
-    audio.play('deploy');
+    if (!this.vm.knifeFx()) audio.play('deploy'); // 特殊刀的切刀声跟着动作走（viewmodel 里触发）
     this.lastSlotSend = this.now;
     this.net.send({ t: 'slot', s, g: me.nade });
     this.hud.showWeaponList();
@@ -1176,6 +1197,10 @@ export class Game {
       cmd.side = inp.moveX;
       if (Math.hypot(inp.moveX, inp.moveY) < 0.6) cmd.walk = true;
     }
+    // 手机“松手急停”：摇杆一松开就刹住（相当于电脑上按反方向键急停），开枪马上就准
+    const touchMove = !!(inp.touch && (inp.moveX || inp.moveY));
+    if (this.touchMoveWas && !touchMove && inp.touch && settings.quickStop !== false) this.quickStopT = this.now + 0.12;
+    this.touchMoveWas = touchMove;
     cmd.yaw = this.yaw;
     cmd.speed = moveSpeed(w, this.w.scope > 0) * (this.now < this.tagUntil ? 0.55 : 1);
     cmd.frozen = this.frozen();
@@ -1184,6 +1209,7 @@ export class Game {
     while (this.acc >= PHYS_DT && n < 10) {
       this.prev.x = s.x; this.prev.y = s.y; this.prev.z = s.z;
       const wasGround = s.onGround, vy0 = s.vy, cr0 = s.crouched, y0 = s.y;
+      if (this.now < (this.quickStopT || 0) && s.onGround && !cmd.fwd && !cmd.side) { s.vx *= 0.3; s.vz *= 0.3; }
       stepPlayer(s, cmd, PHYS_DT, this.world);
       this.pushFromPlayers();
       if (s.crouched !== cr0) { this.eyeOff += y0 - s.y; this.prev.y += s.y - y0; }
@@ -1240,7 +1266,8 @@ export class Game {
   }
 
   updateFreeCam(dt) {
-    if (this.me.team !== 'SPEC' && this.specTarget()) return;
+    // 在队伍里的人死了不能自由飞（不然能看到敌人）：有队友就看队友，没有就停在自己倒下的地方
+    if (this.me.team !== 'SPEC') { this.freeCamActive = false; return; }
     const inp = this.input, fc = this.fc;
     this.freeCamActive = true;
     if (this.chatOpen || this.paused) return;
@@ -1261,7 +1288,7 @@ export class Game {
   specTarget() {
     if (this.specId != null) {
       const p = this.players.get(this.specId);
-      if (p && p.rp && p.rp.f & F.ALIVE) return p;
+      if (this.canSpec(p)) return p;
     }
     this.cycleSpec(1);
     return this.specId != null ? this.players.get(this.specId) : null;
@@ -1679,10 +1706,18 @@ export class Game {
       }
     } else {
       const sp = this.me.team !== 'SPEC' || this.specId != null ? this.specTarget() : null;
+      this.noSpecMate = !sp && this.me.team !== 'SPEC';
       if (sp && sp.rp) {
         const f = sp.rp.f;
         cam.position.set(sp.rp.x, sp.rp.y + (f & F.CROUCH ? P.crouchEye : P.standEye), sp.rp.z);
         cam.rotation.set(sp.rp.pitch, sp.rp.yaw, 0);
+        this.freeCamActive = false;
+      } else if (this.me.team === 'T' || this.me.team === 'CT') {
+        // 没有活着的队友可看：镜头留在自己倒下的地方（可以转视角，不能乱飞）；还没出生过就在自家出生点
+        const sp0 = (this.map.spawns[this.me.team] || [])[0];
+        const d = this.deathPos ? { x: this.deathPos.x, y: this.deathPos.y - 1.25, z: this.deathPos.z } : sp0 ? { x: sp0.x, y: sp0.y + P.standEye, z: sp0.z } : this.fc;
+        cam.position.set(d.x, d.y, d.z);
+        cam.rotation.set(this.pitch, this.yaw, this.deathPos ? this.deathRoll ?? 0.12 : 0);
         this.freeCamActive = false;
       } else {
         cam.position.set(this.fc.x, this.fc.y, this.fc.z);

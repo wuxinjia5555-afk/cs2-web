@@ -746,6 +746,7 @@ export class Room {
       case 'reload': this.onReload(p); break;
       case 'slot': this.onSlot(p, m); break;
       case 'buy': this.onBuy(p, String(m.item)); break;
+      case 'refund': this.onRefund(p, String(m.item)); break;
       case 'drop': this.onDrop(p); break;
       case 'use': this.onUse(p); break;
       case 'plant': this.onPlant(p, !!m.on); break;
@@ -756,7 +757,7 @@ export class Room {
       case 'start': if (p.id === this.hostId && this.phase === 'warmup') this.startMatch(); break;
       case 'range': if (this.opts.mode === 'range') this.setRangeOpts(m.o); break;
       case 'skin': {
-        const k = m.k === 'butterfly' ? 'butterfly' : null;
+        const k = ['butterfly', 'karambit', 'm9'].includes(m.k) ? m.k : null;
         if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }
         break;
       }
@@ -822,6 +823,7 @@ export class Room {
     if (p.fireTokens < 0.6) return;
     p.fireTokens -= 1;
     it.clip--;
+    if (it.rf) { it.rf = null; p.dirty = true; } // 开过枪就不能退款了
     p.protectUntil = 0;
     p.lastShotT = this.time;
     if (!isVec3(m.o)) return;
@@ -920,9 +922,76 @@ export class Room {
     return (this.map.buy[p.team] || []).some((z) => inRect(z, p.x, p.z));
   }
 
+  // 这回合买的东西（退款用）。回合数变了就清空
+  rfOf(p) {
+    if (!p.rf || p.rf.r !== this.round) p.rf = { r: this.round, nades: {}, armor: [], kit: 0 };
+    return p.rf;
+  }
+
+  // 现在能退款的东西：这回合买的、没开过枪 / 没扔出去 / 护甲没掉
+  refundable(p) {
+    const out = [];
+    for (const s of [1, 2]) { const it = p.inv[s]; if (it && it.rf && it.rf.r === this.round) out.push(it.w); }
+    if (!p.rf || p.rf.r !== this.round) return out;
+    for (const [k, n] of Object.entries(p.rf.nades)) if (n > 0 && p.inv[4].includes(k)) out.push(k);
+    const top = p.rf.armor[p.rf.armor.length - 1];
+    if (top && p.armor >= 100) out.push(top.item);
+    if (p.rf.kit && p.kit) out.push('kit');
+    return out;
+  }
+
+  onRefund(p, item) {
+    if (!p.alive || (p.team !== 'T' && p.team !== 'CT')) return;
+    if (this.phase === 'warmup' || this.phase === 'dm' || this.phase === 'range') return;
+    if (!(this.phase === 'freeze' || (this.phase === 'live' && this.time < this.buyEnd))) return this.err(p, '购买时间已过，不能退款');
+    if (!this.inBuyZone(p)) return this.err(p, '不在购买区内，不能退款');
+    const rf = this.rfOf(p), w = WEAPONS[item];
+    const no = () => this.err(p, '这件装备不能退款（用过了或不是这回合买的）');
+    let back = 0;
+    if (w && (w.slot === 1 || w.slot === 2)) {
+      const it = p.inv[w.slot];
+      if (!it || it.w !== item || !it.rf || it.rf.r !== this.round) return no();
+      back = it.rf.price;
+      p.inv[w.slot] = null;
+      // 买枪时扔在地上的旧枪还没人捡：还给你
+      const d = it.rf.drop != null ? this.drops.find((x) => x.id === it.rf.drop) : null;
+      if (d) {
+        this.drops.splice(this.drops.indexOf(d), 1);
+        this.bcast({ t: 'pick', id: d.id, by: -1 });
+        p.inv[w.slot] = { w: d.w, clip: d.clip, res: d.res };
+      }
+      if (p.slot === w.slot && !p.inv[w.slot]) p.slot = p.inv[1] ? 1 : p.inv[2] ? 2 : 3;
+      p.drawEnd = this.time + 0.4;
+      p.reloadEnd = 0;
+      p.scoped = false;
+    } else if (w && w.slot === 4) {
+      if (!(rf.nades[item] > 0) || !p.inv[4].includes(item)) return no();
+      p.inv[4].splice(p.inv[4].lastIndexOf(item), 1);
+      rf.nades[item]--;
+      back = w.price;
+      if (p.slot === 4 && !p.inv[4].length) { p.slot = p.inv[1] ? 1 : p.inv[2] ? 2 : 3; p.drawEnd = this.time + 0.4; }
+    } else if (item === 'vest' || item === 'vesthelm') {
+      const top = rf.armor[rf.armor.length - 1];
+      if (!top || top.item !== item || p.armor < 100) return no();
+      rf.armor.pop();
+      p.armor = top.prevA;
+      p.helmet = top.prevH;
+      back = top.price;
+    } else if (item === 'kit') {
+      if (!rf.kit || !p.kit) return no();
+      p.kit = false;
+      back = rf.kit;
+      rf.kit = 0;
+    } else return;
+    p.money = Math.min(ECON.max, p.money + back);
+    p.dirty = true;
+    this.send(p, { t: 'refunded', item, m: back });
+  }
+
   onBuy(p, item) {
     if (!p.alive || (p.team !== 'T' && p.team !== 'CT')) return;
     const free = this.phase === 'warmup' || this.phase === 'dm' || this.phase === 'range';
+    const prevA = p.armor, prevH = p.helmet;
     if (!free) {
       if (!(this.phase === 'freeze' || (this.phase === 'live' && this.time < this.buyEnd))) return this.err(p, '购买时间已过');
       if (!this.inBuyZone(p)) return this.err(p, '不在购买区内');
@@ -941,8 +1010,9 @@ export class Room {
           if (!free) return this.err(p, '已拥有该武器');
           cur.clip = w.mag; cur.res = w.res;
         } else {
-          if (cur && !free) this.dropItem(p, w.slot, false);
+          const old = cur && !free ? this.dropItem(p, w.slot, false) : null;
           p.inv[w.slot] = this.item(item);
+          if (!free) p.inv[w.slot].rf = { r: this.round, price, drop: old ? old.id : null };
         }
         if (this.opts.mode === 'dm') p.dmLoadout[w.slot] = item;
         p.slot = w.slot;
@@ -967,6 +1037,12 @@ export class Room {
       p.kit = true;
     } else return;
     p.money -= price;
+    if (!free && price > 0) {
+      const rf = this.rfOf(p);
+      if (w && w.slot === 4) rf.nades[item] = (rf.nades[item] || 0) + 1;
+      else if (item === 'vest' || item === 'vesthelm') rf.armor.push({ item, price, prevA, prevH });
+      else if (item === 'kit') rf.kit = price;
+    }
     p.dirty = true;
     this.send(p, { t: 'bought', item });
   }
@@ -1006,7 +1082,7 @@ export class Room {
   }
 
   onDrop(p) {
-    if (!p.alive || this.opts.mode === 'dm') return;
+    if (!p.alive) return;
     if (p.slot === 1 || p.slot === 2 || p.slot === 5) this.dropItem(p, p.slot, true);
   }
 
@@ -1189,6 +1265,7 @@ export class Room {
     if (Math.abs(m.o[0] - p.x) > 2 || Math.abs(m.o[2] - p.z) > 2 || Math.abs(m.o[1] - eyeOf(p)) > 2) return;
     if (Math.hypot(m.v[0], m.v[1], m.v[2]) > 30) return;
     p.inv[4].splice(idx, 1);
+    if (p.rf && p.rf.r === this.round && p.rf.nades[type] > 0) p.rf.nades[type]--;
     p.dirty = true;
     if (p.slot === 4 && !p.inv[4].length) { p.slot = p.inv[1] ? 1 : p.inv[2] ? 2 : 3; p.drawEnd = this.time + 0.4; }
     p.protectUntil = 0;
@@ -1364,7 +1441,7 @@ export class Room {
     const it = (s) => (p.inv[s] ? [p.inv[s].w, p.inv[s].clip, p.inv[s].res] : null);
     this.send(p, {
       t: 'self', al: p.alive ? 1 : 0, hp: Math.max(0, p.hp), ar: p.armor, hm: p.helmet ? 1 : 0, m: p.money,
-      kit: p.kit ? 1 : 0, i1: it(1), i2: it(2), i4: p.inv[4].slice(), i5: p.inv[5] ? 1 : 0, sl: p.slot, tm: p.team,
+      kit: p.kit ? 1 : 0, i1: it(1), i2: it(2), i4: p.inv[4].slice(), i5: p.inv[5] ? 1 : 0, sl: p.slot, tm: p.team, rf: this.refundable(p),
     });
   }
 

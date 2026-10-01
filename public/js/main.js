@@ -479,6 +479,9 @@ function bindSettings() {
     audio.step(null, 0.5, 'hard');
   });
   chk('s-soundviz', 'soundViz', settings);
+  chk('s-hitmarker', 'hitmarker', settings);
+  chk('s-hsfx', 'hsFx', settings);
+  chk('s-quickstop', 'quickStop', settings);
   rng('s-gunvol', 'gunVol', settings, (v) => Math.round(v * 100) + '%', () => {
     // 拖动时试播一声（限速）
     if (performance.now() - gunPreview < 300) return;
@@ -626,7 +629,9 @@ $('btn-help').addEventListener('click', () => { audio.init(); showMenu('menu-hel
 // ---------------- 背包（皮肤） ----------------
 const KNIVES = [
   { id: 'default', name: '默认匕首', rarity: '普通', cls: 'r-common', desc: '警察和匪徒的默认刀具。' },
-  { id: 'butterfly', name: '★ 蝴蝶刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时会翻刀（切刀动作），按 F 检视也会翻刀。联机时别人看到的也是蝴蝶刀。' },
+  { id: 'butterfly', name: '★ 蝴蝶刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时甩开刀柄、“咔”一声合进手里；按 F 检视会连续开合两次。' },
+  { id: 'karambit', name: '★ 爪子刀', rarity: '隐秘', cls: 'r-covert', desc: '食指套着刀环，拔刀时绕手指转两圈接住；按 F 检视会正转、反转再甩一圈。' },
+  { id: 'm9', name: '★ M9 刺刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时把刀抛起来翻一圈再接住；按 F 检视会转刀给你看两面，再抛一次。' },
 ];
 let inv = null;
 
@@ -649,7 +654,14 @@ function invShow(id) {
   inv.vm.knifeSkin = id;
   inv.vm.wid = null;
   inv.vm.setWeapon('knife', 0.5, invNow());
+  invCenter();
   renderInv();
+}
+
+// 不同的刀在第一人称里的位置不一样，预览时都挪到画面中间
+function invCenter() {
+  const lay = inv.vm.cur && inv.vm.cur.userData.lay;
+  if (lay) inv.vm.root.position.set(0.04 - lay.pos[0], -0.05 - lay.pos[1], -0.18 - lay.pos[2]);
 }
 
 function invLoop() {
@@ -672,7 +684,7 @@ function openInventory() {
     r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     const vm = new ViewModel();
     vm.setTeam('CT');
-    vm.root.position.set(-0.13, 0.13, 0.2); // 把刀挪到画面中间、拉近一点
+    vm.sfx = (k) => audio.play(k);
     inv = { r, vm, sel: 'default' };
   }
   invShow(settings.skins.knife || 'default');
@@ -684,7 +696,7 @@ $('inv-knives').addEventListener('click', (e) => {
   const b = e.target.closest('[data-k]');
   if (b) { audio.play('click'); invShow(b.dataset.k); }
 });
-$('inv-draw').addEventListener('click', () => { inv.vm.wid = null; inv.vm.setWeapon('knife', 0.5, invNow()); audio.play('deploy'); });
+$('inv-draw').addEventListener('click', () => { inv.vm.wid = null; inv.vm.setWeapon('knife', 0.5, invNow()); if (!inv.vm.knifeFx()) audio.play('deploy'); });
 $('inv-inspect').addEventListener('click', () => { inv.vm.drawDur = 0; inv.vm.onInspect(invNow()); });
 $('inv-equip').addEventListener('click', () => {
   settings.skins.knife = inv.sel;

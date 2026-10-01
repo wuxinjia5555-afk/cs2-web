@@ -20,6 +20,7 @@ const HTML = `
 <button class="t-btn t-knife" data-act="knife"><span>刀</span></button>
 <button class="t-btn t-nade" data-act="nade"><span>道具</span></button>
 <button class="t-btn t-inspect" data-act="inspect"><span>检视</span></button>
+<button class="t-btn t-dropbtn" data-act="drop"><span>丢弃</span></button>
 <div class="t-radar-proxy"><span>小地图</span></div>
 <div class="t-wheel"></div>
 <div class="t-weapons"></div>
@@ -37,7 +38,7 @@ const HTML = `
 // 可以自定义位置和大小的按钮
 const CUSTOM = [['fire', '.t-fire', '开火'], ['firel', '.t-fire-l', '左开火'], ['jump', '.t-jump', '跳'], ['crouch', '.t-crouch', '蹲'],
   ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏'],
-  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['radar', '.t-radar-proxy', '小地图'],
+  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['drop', '.t-dropbtn', '丢弃'], ['radar', '.t-radar-proxy', '小地图'],
   ['top', '.t-top', '右上角按钮']];
 const NADE_SHORT = { he: '手雷', flash: '闪光', smoke: '烟雾', molotov: '燃烧', incgrenade: '燃烧' };
 
@@ -504,6 +505,7 @@ export class TouchControls {
     const alt = w.type === 'sniper' ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? (this.throwShort ? '近抛' : '远抛') : '';
     this.set('.t-alt', 'alt', alt, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-reload', 'reload', isGun(w), (el, v) => el.classList.toggle('off', !v));
+    this.set('.t-dropbtn', 'drop', me.slot === 1 || me.slot === 2 || me.slot === 5, (el, v) => el.classList.toggle('off', !v));
     this.set('.t-alt', 'altLit', w.type === 'grenade' && !!this.throwShort, (el, v) => el.classList.toggle('lit', v));
     this.set('.t-knife span', 'knife', me.slot === 3 ? '切回' : '刀', (el, v) => { el.textContent = v; });
     const nades = me.inv[4] || [];

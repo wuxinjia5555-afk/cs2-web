@@ -9,7 +9,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const WNAME = { world: '摔落', c4: 'C4 爆炸', he: '手雷', molotov: '燃烧', incgrenade: '燃烧', knife: '匕首' };
 export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || (EQUIP[w] && EQUIP[w].name) || w;
-export const SKIN_NAME = { butterfly: '蝴蝶刀' };
+export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀' };
 const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
 const REASON = { elim: '全歼敌人', time: '时间耗尽', bomb: '目标已被摧毁', defuse: '炸弹已被拆除' };
 
@@ -205,9 +205,11 @@ export class Hud {
     this.set('hint', g.hintText());
     this.set('target-name', g.targetName || '');
     // 观战
-    this.toggle('spec-info', !!specP || (spectating && me.team === 'SPEC'));
+    const noMate = spectating && !specP && me.team !== 'SPEC' && g.noSpecMate && g.mode === 'bomb' && !(g.deathT >= 0 && now - g.deathT < 3);
+    this.toggle('spec-info', !!specP || (spectating && me.team === 'SPEC') || noMate);
     const T = g.isTouch;
     if (specP) $('spec-info').innerHTML = `正在观战：<b class="${specP.team === 'CT' ? 'ct-c' : 't-c'}">${esc(specP.name)}</b> ♥ ${specP.hp}<small>${T ? '点下方 ◀ ▶ 切换观战对象' : '左键/右键 切换观战对象'}</small>`;
+    else if (noMate) $('spec-info').innerHTML = '队友已全部阵亡<small>等待下一回合</small>';
     else if (spectating && me.team === 'SPEC') $('spec-info').innerHTML = T ? '自由观战（左侧摇杆移动，右侧滑动转视角）<small>点 ☰ 菜单选择阵营加入游戏</small>' : '自由观战（WASD 移动，空格/Ctrl 升降）<small>按 M 选择阵营加入游戏</small>';
     if (g.frameN % 2 === 0) this.drawRadar();
     if (this.sbOpen && now > this.sbT) { this.sbT = now + 0.5; this.renderScoreboard(); }
@@ -380,6 +382,7 @@ export class Hud {
   }
 
   hitmarker(hs, kill = false) {
+    if (settings.hitmarker === false) return;
     const el = $('hitmarker');
     this.hitT = this.g.now + (kill ? 0.45 : hs ? 0.25 : 0.15);
     el.classList.toggle('hs', !!hs && !kill);
@@ -512,8 +515,13 @@ export class Hud {
         const team = w.team ? (w.team === 'CT' ? '仅 CT' : '仅 T') : '';
         let stat = '';
         if (w.dmg) stat = `伤害 ${w.dmg}${w.pellets ? '×' + w.pellets : ''} · ${w.mag} 发`;
-        b.innerHTML = `<kbd>${ii + 1}</kbd><b>${w.name}</b><span>$${w.price}</span><small>${team} ${stat}</small>`;
-        b.addEventListener('click', () => this.g.buy(id));
+        b.innerHTML = `<kbd>${ii + 1}</kbd><b>${w.name}</b><span>$${w.price}</span><small>${team} ${stat}</small><i class="buy-rf" title="原价退回">↩ 退款</i>`;
+        b.addEventListener('click', (e) => {
+          if (e.target.closest('.buy-rf')) { this.g.refund(id); return; }
+          this.g.buy(id);
+        });
+        // 电脑：右键退款（和 CS2 一样）
+        b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (b.classList.contains('rf')) this.g.refund(id); });
         div.appendChild(b);
       });
       grid.appendChild(div);
@@ -547,14 +555,16 @@ export class Hud {
     const g = this.g, me = g.me;
     const free = g.round.ph === 'warmup' || g.round.ph === 'dm';
     const svNow = g.serverNow();
-    const state = [me.money, me.team, me.armor, me.helmet, me.kit, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), free, Math.ceil((g.round.be - svNow) / 1000)].join('|');
+    const rfs = me.rf || [];
+    const state = [me.money, me.team, me.armor, me.helmet, me.kit, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), free, Math.ceil((g.round.be - svNow) / 1000), rfs.join(), g.inBuyZone()].join('|');
     if (this.cache._buyState === state) return;
     this.cache._buyState = state;
     this.set('buy-money', '$' + me.money);
     let tip = free ? '热身/死斗：免费购买' : '';
+    if (!free && rfs.length && g.canBuy()) tip = (g.isTouch ? '点“↩ 退款”' : '右键或点“↩ 退款”') + '可以原价退回这回合买的东西 · ';
     if (!free) {
-      if (g.round.ph === 'freeze') tip = '购买阶段';
-      else if (g.round.ph === 'live' && svNow < g.round.be) tip = `购买时间剩余 ${Math.ceil((g.round.be - svNow) / 1000)} 秒`;
+      if (g.round.ph === 'freeze') tip += '购买阶段';
+      else if (g.round.ph === 'live' && svNow < g.round.be) tip += `购买时间剩余 ${Math.ceil((g.round.be - svNow) / 1000)} 秒`;
       else tip = '购买时间已结束';
       if (!g.inBuyZone()) tip += ' · 不在购买区';
     }
@@ -566,8 +576,10 @@ export class Hud {
       if (id === 'vesthelm' && me.armor >= 100) price = 350;
       const teamBad = w.team && w.team !== me.team && g.mode === 'bomb';
       const owned = (me.inv[1] && me.inv[1].w === id) || (me.inv[2] && me.inv[2].w === id) || (id === 'kit' && me.kit) || (id === 'vest' && me.armor >= 100) || (id === 'vesthelm' && me.armor >= 100 && me.helmet);
-      b.disabled = teamBad || (!free && price > me.money) || (g.mode === 'dm' && WEAPONS[id] && WEAPONS[id].slot === 4);
+      const canRf = !free && rfs.includes(id) && g.canBuy();
+      b.disabled = !canRf && (teamBad || (!free && price > me.money) || (g.mode === 'dm' && WEAPONS[id] && WEAPONS[id].slot === 4));
       b.classList.toggle('owned', !!owned);
+      b.classList.toggle('rf', canRf);
       b.querySelector('span').textContent = free ? '免费' : '$' + price;
     }
   }

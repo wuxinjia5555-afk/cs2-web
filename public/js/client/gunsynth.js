@@ -293,3 +293,46 @@ export function synthFx(kind, sr, opts = {}) {
   for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / (peak || 1)) * dr) / Math.tanh(dr)) * 0.92 * (i > n - fade ? (n - i) / fade : 1);
   return out;
 }
+
+// 刀的花式动作声：kn_swish 甩刀的风声，kn_tick 金属轻碰，kn_clack 蝴蝶刀刀柄拍合（“咔-嗒”两下），kn_catch 一把握住刀柄
+export function synthKnife(kind, sr, seed = 9) {
+  const R = rng(seed);
+  const len = { kn_swish: 0.24, kn_tick: 0.09, kn_clack: 0.22, kn_catch: 0.2 }[kind] || 0.2;
+  const n = Math.ceil(len * sr);
+  const out = new Float32Array(n);
+  const bp = (f, q) => new Biquad(sr).set('bp', f, q);
+  const ring = (f0, ratios, amps, decs) => ratios.map((r, i) => ({ f: f0 * r, a: amps[i], d: decs[i], ph: R() * 6.28 }));
+  let parts = [], hits = [];
+  // hits：[开始时间, 音量, 滤波器, 衰减]，一次撞击的瞬态
+  if (kind === 'kn_tick') {
+    parts = ring(4300, [1, 1.38, 2.05], [0.7, 0.45, 0.25], [0.022, 0.016, 0.01]);
+    hits = [[0, 1, bp(5200, 1.2), 0.0025]];
+  } else if (kind === 'kn_clack') {
+    parts = ring(2650, [1, 1.53, 2.31, 3.1], [0.8, 0.55, 0.4, 0.22], [0.05, 0.04, 0.026, 0.018]);
+    hits = [[0, 1, bp(1700, 0.9), 0.006], [0, 0.8, bp(4800, 1.1), 0.0025], [0.012, 0.6, bp(6200, 1.4), 0.002], [0.012, 0.3, bp(2400, 1.2), 0.004]];
+  } else if (kind === 'kn_catch') {
+    parts = ring(3100, [1, 1.47, 2.2], [0.35, 0.22, 0.12], [0.045, 0.03, 0.02]);
+    hits = [[0, 1, bp(420, 0.8), 0.018], [0, 0.6, bp(1500, 0.9), 0.006], [0.004, 0.4, bp(5000, 1.2), 0.002]];
+  }
+  const sw = bp(1200, 1.6);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = R() * 2 - 1;
+    let s = 0;
+    if (kind === 'kn_swish') {
+      const q = Math.min(1, t / 0.2);
+      if ((i & 15) === 0) sw.set('bp', 800 + 1900 * Math.sin(q * Math.PI), 1.5);
+      s += sw.p(w) * Math.pow(Math.sin(q * Math.PI), 2);
+    }
+    for (const [t0, g, f, d] of hits) if (t >= t0) s += f.p(w) * g * 3 * Math.exp(-(t - t0) / d);
+    for (const p of parts) {
+      p.ph += (2 * Math.PI * p.f) / sr;
+      s += Math.sin(p.ph) * p.a * env(t, 0.0005, p.d);
+    }
+    out[i] = s;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const fade = Math.round(0.015 * sr);
+  for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / (peak || 1)) * 1.3) / Math.tanh(1.3)) * 0.9 * (i > n - fade ? (n - i) / fade : 1);
+  return out;
+}

@@ -1,7 +1,9 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife } from './gunsynth.js';
+
+const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
 
 const STEP_RANGE = 32; // 脚步声最远能听到的距离（米），和 CS 差不多
 
@@ -88,7 +90,7 @@ class AudioSys {
     let b = this.fxBufs[key];
     if (!b) {
       const sr = this.ctx.sampleRate;
-      const data = synthFx(kind, sr, { streak, seed: 5 + streak });
+      const data = kind.startsWith('kn_') ? synthKnife(kind, sr) : synthFx(kind, sr, { streak, seed: 5 + streak });
       b = this.fxBufs[key] = this.ctx.createBuffer(1, data.length, sr);
       b.getChannelData(0).set(data);
     }
@@ -106,7 +108,7 @@ class AudioSys {
 
   warmGuns() {
     for (const s of ['hard', 'sand', 'metal']) for (let i = 0; i < 6; i++) this._stepBuf(s);
-    for (const k of ['hit', 'hs_helmet', 'hs_nohelm', 'kill', 'kill_hs']) this._fxBuf(k, 1);
+    for (const k of ['hit', 'hs_helmet', 'hs_nohelm', 'kill', 'kill_hs', ...Object.keys(KNIFE_GAIN)]) this._fxBuf(k, 1);
     const keys = Object.keys(GUN_PROFILES);
     let k = 0;
     const step = () => {
@@ -251,6 +253,7 @@ class AudioSys {
     let o;
     switch (name) {
       case 'hit': this._playFx('hit', 0.5 * vol); break;
+      case 'kn_swish': case 'kn_tick': case 'kn_clack': case 'kn_catch': this._playFx(name, KNIFE_GAIN[name] * vol); break;
       case 'headshot': this._playFx('hs_helmet', 0.62 * vol); break;
       case 'headshot_nohelm': this._playFx('hs_nohelm', 0.66 * vol); break;
       case 'killconfirm':
