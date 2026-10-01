@@ -16,15 +16,41 @@ const MAX_FRIENDS = 100;
 const scrypt = (pw, salt) => new Promise((resolve, reject) => crypto.scrypt(pw, salt, 32, (err, key) => (err ? reject(err) : resolve(key))));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 环境变量是在网页上粘贴的：可能带引号、空格、换行，甚至把整行「KEY="值"」都粘进去了，统统去掉
+const envVal = (k) => String(process.env[k] || '').trim().replace(/^[A-Z_]+\s*=\s*/, '').replace(/^["']+|["']+$/g, '').trim();
+
+// 云端出错时给一句看得懂的提示
+function cloudHint(msg) {
+  if (/noperm|read.?only/i.test(msg)) return '这是只读令牌，要用 Read-Only Token 没勾选时的那串';
+  if (/unauthorized|wrongpass|invalid.*token|401/i.test(msg)) return '令牌不对：检查 UPSTASH_REDIS_REST_TOKEN，要整串复制、不带引号';
+  if (/enotfound|getaddrinfo|invalid url|fetch failed|econn|timeout|aborted/i.test(msg)) return '连不上这个地址：检查 UPSTASH_REDIS_REST_URL';
+  return '';
+}
+
 // 账号数据存哪：环境变量里有 Upstash 的地址和令牌就存云端（整份数据存成一个键），否则存本机文件
 function makeStore(file) {
-  const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
+  const url = envVal('UPSTASH_REDIS_REST_URL'), token = envVal('UPSTASH_REDIS_REST_TOKEN');
+  if (url || token) {
     const KEY = process.env.ACCOUNTS_KEY || 'defuse:accounts';
+    // 只填了一个、或者填反了：直接说清楚（不能退回存本机文件，Render 上的文件一休眠就没了）
+    let bad = '';
+    if (!url || !token) bad = 'UPSTASH_REDIS_REST_URL 和 UPSTASH_REDIS_REST_TOKEN 要两个都填';
+    else if (!/^https?:\/\//i.test(url)) bad = /^https?:\/\//i.test(token) ? 'UPSTASH_REDIS_REST_URL 和 UPSTASH_REDIS_REST_TOKEN 好像填反了' : 'UPSTASH_REDIS_REST_URL 应该以 https:// 开头';
     const cmd = async (args) => {
-      const r = await fetch(url.replace(/\/$/, ''), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(args) });
+      if (bad) throw new Error(bad);
+      let r;
+      try {
+        r = await fetch(url.replace(/\/$/, ''), { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(args), signal: AbortSignal.timeout(15000) });
+      } catch (e) {
+        const m = (e.cause && (e.cause.code || e.cause.message)) || e.message;
+        throw new Error(`${m}（${cloudHint(m) || '连不上 Upstash，检查 UPSTASH_REDIS_REST_URL'}）`);
+      }
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) throw new Error(j.error || 'HTTP ' + r.status);
+      if (!r.ok || j.error) {
+        const m = j.error || 'HTTP ' + r.status;
+        const h = cloudHint(m + ' ' + r.status);
+        throw new Error(h ? `${m}（${h}）` : m);
+      }
       return j.result;
     };
     return {
@@ -66,26 +92,38 @@ export async function createAccounts(file, devFile) {
   // 开发者密码：server/data/dev.json（每次用到时再读，改了密码不用重启）；
   // 部署到云上时也可以用环境变量 DEV_PASSWORD（启动时算成加盐哈希，明文马上从环境变量里删掉）
   let envDev = null;
-  if (process.env.DEV_PASSWORD) {
+  const envPw = String(process.env.DEV_PASSWORD || '').trim();
+  if (envPw) {
     const salt = crypto.randomBytes(16).toString('hex');
-    envDev = { salt, hash: crypto.scryptSync(process.env.DEV_PASSWORD, salt, 32).toString('hex') };
-    delete process.env.DEV_PASSWORD;
+    envDev = { salt, hash: crypto.scryptSync(envPw, salt, 32).toString('hex') };
   }
+  delete process.env.DEV_PASSWORD;
   const devCfg = () => { try { return JSON.parse(fs.readFileSync(devFile, 'utf8')); } catch { return envDev; } };
 
-  // 读账号数据。云端读失败就多试几次，还不行就别启动——千万不能当成空数据，再把云端的数据覆盖掉
+  // 读账号数据。读不出来时千万不能当成空数据（会把云端的数据覆盖掉）：
+  // 游戏照常能玩，账号功能先停用，后台每 15 秒再试一次，读到了就恢复
   const store = makeStore(file);
-  let db;
-  for (let i = 0; ; i++) {
-    try { db = (await store.load()) || { users: {}, tokens: {} }; break; } catch (e) {
-      if (i >= 4) throw new Error('账号数据读不出来（' + store.where + '）：' + e.message);
-      console.error(`[账号] 读取失败（${e.message}），2 秒后重试`);
-      await sleep(2000);
+  let db = null, loadErr = '';
+  async function load(tries) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const d = (await store.load()) || { users: {}, tokens: {} };
+        if (!d.users) d.users = {};
+        if (!d.tokens) d.tokens = {};
+        db = d;
+        loadErr = '';
+        console.log(`[账号] ${Object.keys(db.users).length} 个账号，存在 ${store.where}`);
+        return;
+      } catch (e) {
+        loadErr = e.message;
+        console.error(`[账号] 读取账号数据失败（${store.where}）：${e.message}`);
+        if (i < tries - 1) await sleep(2000);
+      }
     }
+    console.error('[账号] 先不用账号功能（游戏照常能玩），15 秒后再试');
+    setTimeout(() => load(1), 15000);
   }
-  if (!db.users) db.users = {};
-  if (!db.tokens) db.tokens = {};
-  console.log(`[账号] ${Object.keys(db.users).length} 个账号，存在 ${store.where}`);
+  await load(3);
   const startedAt = Date.now();
 
   // 保存：改完等一会儿一起存（云端 1.5 秒）；存失败了过几秒再试
@@ -97,6 +135,7 @@ export async function createAccounts(file, devFile) {
   async function flush() {
     clearTimeout(timer);
     timer = null;
+    if (!db) return;
     if (inflight) { again = true; return inflight; } // 正在存：存完再存一次最新的
     inflight = store.save(JSON.stringify(db)).catch((e) => {
       console.error('[账号] 保存失败，5 秒后重试：', e.message);
@@ -141,8 +180,10 @@ export async function createAccounts(file, devFile) {
   const touch = (k) => { db.users[k].seen = Date.now(); };
   const skinName = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀' };
 
-  return {
-    count: () => Object.keys(db.users).length,
+  const api = {
+    count: () => (db ? Object.keys(db.users).length : 0),
+    // 账号功能现在能不能用（给 /api/info 看，方便查问题；不含任何密钥）
+    status: () => ({ ok: !!db, where: store.cloud ? 'cloud' : 'file', err: db ? '' : loadErr }),
     // 关服务器前把还没存的数据马上存掉
     async flush() {
       if (inflight) await inflight;
@@ -349,4 +390,13 @@ export async function createAccounts(file, devFile) {
       return { ok: true };
     },
   };
+  // 账号数据还没读出来：所有账号接口先返回「暂时不可用」（联机时只能用默认匕首）
+  for (const [name, fn] of Object.entries(api)) {
+    if (['count', 'status', 'flush'].includes(name)) continue;
+    api[name] = (...args) => {
+      if (!db) return name === 'canUse' ? !args[1] || args[1] === 'default' : { error: '账号服务暂时连不上，请稍后再试' };
+      return fn(...args);
+    };
+  }
+  return api;
 }

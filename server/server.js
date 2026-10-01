@@ -120,7 +120,8 @@ const handler = (req, res) => {
     // 网址公告页（隧道每换一次地址就发到这里），见 tools/tunnel.mjs
     let board = '';
     try { const n = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'notify.json'), 'utf8')); if (n.ntfy) board = 'https://ntfy.sh/' + encodeURIComponent(n.ntfy); } catch {}
-    return json(res, local ? { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [], public: pub, board } : { public: pub, board });
+    const acct = accounts.status();
+    return json(res, local ? { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [], public: pub, board, acct } : { public: pub, board, acct });
   }
   if (pathname.startsWith('/lib/three/')) return serveFile(req, res, path.join(THREE_DIR, path.basename(pathname)));
   if (pathname === '/') pathname = '/index.html';
