@@ -8,17 +8,23 @@ export const BOT_NAMES = ['Albert', 'Allen', 'Bert', 'Bob', 'Cecil', 'Clarence',
   'Frank', 'Frasier', 'Fred', 'George', 'Graham', 'Harvey', 'Irwin', 'Larry', 'Lester', 'Marvin', 'Neil', 'Niles', 'Oliver', 'Opie',
   'Quinn', 'Ringo', 'Rex', 'Sam', 'Steve', 'Toby', 'Ulric', 'Vitaliy', 'Vladimir', 'Wade', 'Xander', 'Yanni', 'Yuri', 'Zach'];
 
+// 机器人难度（6 档）：react 反应时间、turn 转向速度、aimErr 初始瞄准偏差、errDecay 偏差收敛速度、head 瞄头概率、
+// burst 每次连发几枪、comp 压枪程度、range 交战距离、fovCos 视野（越大越窄）、strafe 会不会左右晃、pause 两次连发的间隔
 export const BOT_DIFF = [
-  { name: '简单', react: 0.6, turn: 5, aimErr: 0.1, errDecay: 1.4, head: 0.08, burst: [2, 4], comp: 0.25, range: 45, fovCos: 0.35, strafe: false, pause: 0.45 },
-  { name: '普通', react: 0.36, turn: 8, aimErr: 0.06, errDecay: 2.4, head: 0.2, burst: [3, 5], comp: 0.55, range: 65, fovCos: 0.2, strafe: true, pause: 0.3 },
+  { name: '新手', react: 1.1, turn: 2.6, aimErr: 0.2, errDecay: 0.7, head: 0.02, burst: [1, 2], comp: 0.05, range: 28, fovCos: 0.6, strafe: false, pause: 0.9 },
+  { name: '简单', react: 0.85, turn: 3.6, aimErr: 0.15, errDecay: 1.0, head: 0.05, burst: [1, 3], comp: 0.15, range: 36, fovCos: 0.45, strafe: false, pause: 0.65 },
+  { name: '普通', react: 0.6, turn: 5, aimErr: 0.1, errDecay: 1.4, head: 0.08, burst: [2, 4], comp: 0.25, range: 45, fovCos: 0.35, strafe: false, pause: 0.45 },
+  { name: '中等', react: 0.36, turn: 8, aimErr: 0.06, errDecay: 2.4, head: 0.2, burst: [3, 5], comp: 0.55, range: 65, fovCos: 0.2, strafe: true, pause: 0.3 },
   { name: '困难', react: 0.2, turn: 13, aimErr: 0.03, errDecay: 4, head: 0.45, burst: [4, 7], comp: 0.8, range: 90, fovCos: 0.0, strafe: true, pause: 0.2 },
+  { name: '专家', react: 0.14, turn: 18, aimErr: 0.02, errDecay: 5.5, head: 0.6, burst: [5, 8], comp: 0.9, range: 110, fovCos: -0.2, strafe: true, pause: 0.12 },
 ];
+export const BOT_DIFF_DEFAULT = 2;
 
 export class BotBrain {
   constructor(room, p) {
     this.room = room;
     this.p = p;
-    this.d = BOT_DIFF[room.opts.botDiff] || BOT_DIFF[1];
+    this.d = BOT_DIFF[room.opts.botDiff] || BOT_DIFF[BOT_DIFF_DEFAULT];
     this.cmd = { fwd: 0, side: 0, jump: false, crouch: false, walk: false, yaw: 0, speed: 6, frozen: false };
     this.tmpC = {};
     this.reset();

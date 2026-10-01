@@ -223,7 +223,7 @@
       <div class="map-cards" id="off-maps"></div>
       <div class="grid2">
         <label class="field"><span>模式</span><select id="off-mode"><option value="bomb">爆破模式</option><option value="dm">死斗</option></select></label>
-        <label class="field"><span>机器人难度</span><select id="off-diff"><option value="0">简单</option><option value="1" selected>普通</option><option value="2">困难</option></select></label>
+        <label class="field"><span>机器人难度</span><select id="off-diff"><option value="0">新手</option><option value="1">简单</option><option value="2" selected>普通</option><option value="3">中等</option><option value="4">困难</option><option value="5">专家</option></select></label>
         <label class="field"><span>每队人数</span><select id="off-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
         <label class="field"><span>回合数</span><select id="off-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
       </div>
@@ -252,7 +252,7 @@
           <label class="field"><span>房间名</span><input id="on-name" maxlength="24" placeholder="我的房间"></label>
           <label class="field"><span>模式</span><select id="on-mode"><option value="bomb">爆破模式</option><option value="dm">死斗</option></select></label>
           <label class="field"><span>机器人补位</span><select id="on-bots"><option value="1">开启</option><option value="0">关闭</option></select></label>
-          <label class="field"><span>机器人难度</span><select id="on-diff"><option value="0">简单</option><option value="1" selected>普通</option><option value="2">困难</option></select></label>
+          <label class="field"><span>机器人难度</span><select id="on-diff"><option value="0">新手</option><option value="1">简单</option><option value="2" selected>普通</option><option value="3">中等</option><option value="4">困难</option><option value="5">专家</option></select></label>
           <label class="field"><span>每队人数</span><select id="on-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
           <label class="field"><span>回合数</span><select id="on-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
         </div>
@@ -293,8 +293,8 @@
         <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
         <label class="field"><span>滑屏横向（左右）灵敏度 <b id="v-tsx"></b></span><input type="range" id="s-tsx" min="0.3" max="2.5" step="0.05"></label>
         <label class="field"><span>滑屏纵向（上下）灵敏度 <b id="v-tsy"></b></span><input type="range" id="s-tsy" min="0.3" max="2.5" step="0.05"></label>
-        <label class="field"><span>陀螺仪横向（左右）灵敏度 <b id="v-gsx"></b></span><input type="range" id="s-gsx" min="0.3" max="2.5" step="0.05"></label>
-        <label class="field"><span>陀螺仪纵向（上下）灵敏度 <b id="v-gsy"></b></span><input type="range" id="s-gsy" min="0.3" max="2.5" step="0.05"></label>
+        <label class="field"><span>陀螺仪横向（左右）灵敏度 <b id="v-gsx"></b></span><input type="range" id="s-gsx" min="0.3" max="4" step="0.05"></label>
+        <label class="field"><span>陀螺仪纵向（上下）灵敏度 <b id="v-gsy"></b></span><input type="range" id="s-gsy" min="0.3" max="4" step="0.05"></label>
         <label class="field"><span>蹲键方式</span><select id="s-crouchmode"><option value="toggle">点按切换（点一下蹲、再点站起）</option><option value="hold">按住蹲（松手站起）</option><option value="mixed">混合（点按切换，长按为按住蹲）</option></select></label>
         <label class="field"><span>开镜方式</span><select id="s-scopemode"><option value="toggle">点按切换</option><option value="hold">按住开镜（松手关镜）</option><option value="mixed">混合（点按切换，长按为按住开镜）</option></select></label>
         <label class="field"><span>开镜灵敏度 <b id="v-tzoom"></b></span><input type="range" id="s-tzoom" min="0.3" max="2" step="0.05"></label>

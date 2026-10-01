@@ -608,6 +608,13 @@ export class TouchControls {
     else if (ang === 180) { yawRate = -gm; pitchRate = -b; }
     else { yawRate = gm; pitchRate = b; }
     if (settings.gyroSwap) { const t = yawRate; yawRate = pitchRate; pitchRate = t; }
+    // 手机往后仰着拿时，左右转身有一部分变成了绕屏幕法线的转动，上面读到的左右转速只剩 cos(仰角) 那么多。
+    // 用重力方向算出仰角，把左右转速补回来（最多补到 2.5 倍，手机平放时不至于乱跳）
+    const ag = e.accelerationIncludingGravity;
+    if (ag && ag.x != null && ag.z != null) {
+      const gx = ag.x || 0, gy = ag.y || 0, gz = ag.z || 0, gl = Math.hypot(gx, gy, gz);
+      if (gl > 4) yawRate /= Math.max(0.4, Math.hypot(gx, gy) / gl);
+    }
     if (settings.gyroInvX) yawRate = -yawRate;
     if (settings.gyroInvY) pitchRate = -pitchRate;
     const k = DEG * dt * settings.gyroSens;

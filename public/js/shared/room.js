@@ -21,7 +21,7 @@ export class Room {
       map: typeof opts.map === 'string' ? opts.map : 'sandstorm',
       mode: ['dm', 'range'].includes(opts.mode) ? opts.mode : 'bomb',
       bots: opts.bots !== false,
-      botDiff: isNum(opts.botDiff) ? clamp(opts.botDiff | 0, 0, 2) : 1,
+      botDiff: isNum(opts.botDiff) ? clamp(opts.botDiff | 0, 0, 5) : 2,
       teamSize: isNum(opts.teamSize) ? clamp(opts.teamSize | 0, 1, 5) : 5,
       maxRounds: [8, 16, 24].includes(opts.maxRounds) ? opts.maxRounds : 16,
       ff: !!opts.ff,
