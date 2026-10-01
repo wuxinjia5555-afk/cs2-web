@@ -59,7 +59,14 @@ const handler = (req, res) => {
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); res.end(); return; }
   if (pathname === '/api/rooms') return json(res, { rooms: roomList(), online: conns.size });
   if (pathname === '/healthz') { res.writeHead(200); res.end('ok'); return; }
-  if (pathname === '/api/info') return json(res, { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [] });
+  if (pathname === '/api/info') {
+    // 公网地址（隧道 / 部署）写在 server/public-url.txt 或环境变量 PUBLIC_URL；公网访客不返回局域网 IP
+    let pub = process.env.PUBLIC_URL || '';
+    try { pub = fs.readFileSync(path.join(__dirname, 'public-url.txt'), 'utf8').trim() || pub; } catch {}
+    const host = String(req.headers.host || '').replace(/:\d+$/, '');
+    const local = /^(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(host);
+    return json(res, local ? { lan: lanUrls('http', PORT), lanHttps: httpsServer ? lanUrls('https', HTTPS_PORT) : [], public: pub } : { public: pub });
+  }
   if (pathname.startsWith('/lib/three/')) return serveFile(req, res, path.join(THREE_DIR, path.basename(pathname)));
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(PUBLIC, pathname));
