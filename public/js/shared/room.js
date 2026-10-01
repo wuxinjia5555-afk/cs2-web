@@ -305,6 +305,8 @@ export class Room {
     for (const p of this.players.values()) {
       if (p.team !== 'T' && p.team !== 'CT') continue;
       if (!p.alive) { p.inv = this.defaultInv(p.team); p.armor = 0; p.helmet = false; p.kit = false; }
+      // 活下来的人：枪留着，但弹匣和备弹补满（不继承上回合打掉的子弹）
+      for (const s of [1, 2]) if (p.inv[s]) { const w = WEAPONS[p.inv[s].w]; p.inv[s].clip = w.mag; p.inv[s].res = w.res; }
       p.inv[5] = false;
       p.alive = false;
       const sp = p.team === 'T' ? spT[iT++ % spT.length] : spCT[iC++ % spCT.length];

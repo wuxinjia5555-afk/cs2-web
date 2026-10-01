@@ -559,6 +559,7 @@ export class Game {
     const W = this.w;
     W.punchP = W.punchY = W.spray = W.fireAcc = 0;
     W.reloadEnd = 0; W.scope = 0; W.rescopeAt = 0; W.nadeHold = null; W.planting = false; W.defusing = false;
+    W.lastShot = -10; // 让随后到达的服务器弹药数（新回合补满）一定生效
     W.drawEnd = this.now + 0.3;
     this.flashUntil = 0;
     this.hud.hideDeath();
