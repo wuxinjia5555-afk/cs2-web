@@ -1,6 +1,18 @@
-// 网络层：WsNet 连接真实服务器；LocalNet 在浏览器里直接运行房间逻辑（离线练习）
+// 网络层：WsNet 连接真实服务器（支持断线重连）；LocalNet 在浏览器里直接运行房间逻辑（离线练习）
 import { Room } from '../shared/room.js';
 import { TICK_RATE } from '../shared/constants.js';
+
+// 每个浏览器标签页一个会话 ID，断线重连时服务器靠它找回原来的角色
+function sessionId() {
+  const make = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('') + Date.now().toString(36);
+  try {
+    let s = sessionStorage.getItem('defuse.sid');
+    if (!s) { s = make(); sessionStorage.setItem('defuse.sid', s); }
+    return s;
+  } catch {
+    return make();
+  }
+}
 
 export class WsNet {
   constructor(url) {
@@ -9,16 +21,21 @@ export class WsNet {
     this.onmessage = null;
     this.onclose = null;
     this.isLocal = false;
+    this.sid = sessionId();
   }
   connect(timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
-      let done = false;
+      let done = false, opened = false;
+      if (this.ws) { this.ws.onclose = null; this.ws.onmessage = null; try { this.ws.close(); } catch {} }
       const ws = new WebSocket(this.url);
       this.ws = ws;
       const timer = setTimeout(() => { if (!done) { done = true; try { ws.close(); } catch {} reject(new Error('连接超时')); } }, timeoutMs);
-      ws.onopen = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
+      ws.onopen = () => { opened = true; if (done) return; done = true; clearTimeout(timer); resolve(); };
       ws.onerror = () => { if (done) return; done = true; clearTimeout(timer); reject(new Error('无法连接服务器')); };
-      ws.onclose = () => { if (this.onclose) this.onclose(); };
+      ws.onclose = () => {
+        if (!done) { done = true; clearTimeout(timer); reject(new Error('无法连接服务器')); }
+        if (opened && this.ws === ws && this.onclose) this.onclose();
+      };
       ws.onmessage = (ev) => {
         let m;
         try { m = JSON.parse(ev.data); } catch { return; }

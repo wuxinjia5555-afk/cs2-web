@@ -299,7 +299,7 @@ html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent
 .t-sm { height: 34px; min-width: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(10, 14, 20, .62);
   color: #fff; font-size: 14px; touch-action: none; }
 .t-sm.on { background: rgba(232, 180, 60, .5); }
-.t-buy { background: rgba(40, 120, 60, .75); }
+.t-buy { position: absolute; left: calc(118px + env(safe-area-inset-left)); top: 114px; background: rgba(40, 120, 60, .8); }
 .t-spec { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--tb) * .35 + env(safe-area-inset-bottom)); display: flex; gap: 12px; }
 .t-spec .t-sm { height: 42px; font-size: 15px; }
 #touch-ui.dead .t-btn, #touch-ui.dead .t-weapons { display: none; }
@@ -410,3 +410,29 @@ body.touch #buymenu .panel-head { margin-bottom: 6px; gap: 8px; }
 body.touch #buymenu .panel-head h2 { font-size: 16px; }
 body.touch .panel-head #buy-money { font-size: 18px; }
 body.touch #buymenu .btn.small { padding: 8px 14px; font-size: 14px; }
+
+/* 手机扫码 */
+#qrbox { z-index: 45; }
+.qr-panel { text-align: center; }
+#qr-canvas { width: min(240px, 52vh); height: min(240px, 52vh); image-rendering: pixelated; border-radius: 8px; display: block; margin: 4px auto 10px; background: #fff; }
+#qr-url { font-size: 15px; font-weight: 700; color: var(--acc); word-break: break-all; margin-bottom: 6px; user-select: text; }
+#qr-tip { font-size: 12.5px; color: var(--dim); line-height: 1.6; margin-bottom: 8px; }
+@media (max-height: 540px) {
+  #qrbox .panel { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; text-align: left; width: min(560px, 100%); }
+  #qrbox h2, #qr-url, #qr-tip, #qrbox .btn { grid-column: 2; }
+  #qr-canvas { grid-column: 1; grid-row: 1 / span 5; width: min(200px, 70vh); height: min(200px, 70vh); margin: 0; }
+}
+
+/* 全屏说明 / 断线重连 */
+#fshelp, #reconnect { z-index: 46; }
+.fs-text { font-size: 14px; line-height: 1.7; color: #dfe4ea; }
+.fs-text p { margin: 6px 0; }
+.fs-text .dim { color: var(--dim); font-size: 12.5px; }
+.rc-panel { text-align: center; }
+.rc-panel .spinner { margin: 4px auto 10px; width: 36px; height: 36px; }
+#rc-text { color: #dfe4ea; font-size: 14px; line-height: 1.6; }
+.t-fs { background: rgba(232, 180, 60, .35); }
+@media (max-height: 540px) {
+  #fshelp .panel { width: min(640px, 100%); }
+  .fs-text { font-size: 12.5px; line-height: 1.55; }
+}

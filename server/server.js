@@ -54,6 +54,7 @@ const server = http.createServer((req, res) => {
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); res.end(); return; }
   if (pathname === '/api/rooms') return json(res, { rooms: roomList(), online: conns.size });
   if (pathname === '/healthz') { res.writeHead(200); res.end('ok'); return; }
+  if (pathname === '/api/info') return json(res, { lan: lanUrls() });
   if (pathname.startsWith('/lib/three/')) return serveFile(req, res, path.join(THREE_DIR, path.basename(pathname)));
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(PUBLIC, pathname));
@@ -64,7 +65,50 @@ const server = http.createServer((req, res) => {
 // ---------------- 房间 ----------------
 const rooms = new Map();
 const conns = new Set();
+const sessions = new Map(); // 断线等待重连：sid -> { entry, pid, timer }
+const RESUME_MS = 90000;
 let nextConn = 1;
+
+const cleanSid = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{8,40}$/.test(v) ? v : null);
+
+// 断线：保留玩家位置一段时间，等他重连
+function holdForResume(conn) {
+  const e = conn.entry, pid = conn.pid;
+  e.clients.delete(pid);
+  const p = e.room.players.get(pid);
+  if (p) p.away = true;
+  const old = sessions.get(conn.sid);
+  if (old) clearTimeout(old.timer);
+  const timer = setTimeout(() => {
+    sessions.delete(conn.sid);
+    if (!e.room.players.has(pid)) return;
+    try { e.room.removePlayer(pid); } catch (err) { console.error('removePlayer', err); }
+    if (!e.clients.size) e.emptySince = Date.now();
+  }, RESUME_MS);
+  sessions.set(conn.sid, { entry: e, pid, timer });
+  if (!e.clients.size) e.emptySince = Date.now();
+  conn.entry = null;
+  conn.pid = null;
+}
+
+// 重连：回到原房间、原角色
+function tryResume(conn) {
+  const ss = sessions.get(conn.sid);
+  if (!ss) return false;
+  sessions.delete(conn.sid);
+  clearTimeout(ss.timer);
+  const e = ss.entry;
+  const p = rooms.get(e.code) === e ? e.room.players.get(ss.pid) : null;
+  if (!p) return false;
+  if (conn.entry) leaveRoom(conn);
+  conn.entry = e;
+  conn.pid = ss.pid;
+  e.clients.set(ss.pid, conn);
+  p.away = false;
+  e.room.sendInit(p);
+  console.log(`[room ${e.code}] ${p.name} 重新连接`);
+  return true;
+}
 
 function makeCode() {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -138,7 +182,9 @@ function handleMsg(conn, m) {
   switch (m.t) {
     case 'hello':
       conn.name = cleanText(m.name, 16) || '玩家';
+      conn.sid = cleanSid(m.sid);
       conn.sendObj({ t: 'welcome', id: conn.id, maps: MAP_LIST });
+      if (conn.sid && !conn.entry) tryResume(conn);
       return;
     case 'ping':
       conn.sendObj({ t: 'pong', c: m.c });
@@ -195,8 +241,9 @@ server.on('upgrade', (req, socket, head) => {
       handleMsg(conn, m);
     });
     ws.on('close', () => {
-      leaveRoom(conn);
       conns.delete(conn);
+      if (conn.entry && conn.sid && conn.pid != null && rooms.get(conn.entry.code) === conn.entry) holdForResume(conn);
+      else leaveRoom(conn);
     });
   });
 });
@@ -231,17 +278,23 @@ setInterval(() => {
   }
 }, 15000);
 
-server.listen(PORT, () => {
-  const hasThree = fs.existsSync(path.join(THREE_DIR, 'three.module.js'));
-  console.log(`DEFUSE 服务器已启动: http://localhost:${PORT}  (three.js 本地托管: ${hasThree ? '是' : '否，将使用 CDN'})`);
+function lanUrls() {
   const lan = [];
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
     if (/vmware|virtualbox|vethernet|loopback|docker|wsl|tailscale|zerotier/i.test(name)) continue;
     for (const a of list || []) {
       if (a.family !== 'IPv4' || a.internal) continue;
       if (!/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) continue;
-      lan.push(`http://${a.address}:${PORT}`);
+      const rank = (/wlan|wi-?fi|wireless|无线/i.test(name) ? 2 : 0) + (a.address.startsWith('192.168.') ? 1 : 0);
+      lan.push({ url: `http://${a.address}:${PORT}`, rank });
     }
   }
-  if (lan.length) console.log('同一局域网（同一个 Wi-Fi）的朋友可以打开：' + lan.join('  '));
+  return lan.sort((x, y) => y.rank - x.rank).map((x) => x.url);
+}
+
+server.listen(PORT, () => {
+  const hasThree = fs.existsSync(path.join(THREE_DIR, 'three.module.js'));
+  console.log(`DEFUSE 服务器已启动: http://localhost:${PORT}  (three.js 本地托管: ${hasThree ? '是' : '否，将使用 CDN'})`);
+  const lan = lanUrls();
+  if (lan.length) console.log('手机 / 同一 Wi-Fi 的朋友打开：' + lan.join('  ') + '  （主菜单「手机扫码」可直接扫码）');
 });

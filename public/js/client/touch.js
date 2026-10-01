@@ -6,6 +6,8 @@ import { audio } from './audio.js';
 
 const SLOT_SHORT = { 3: '刀', 5: 'C4' };
 
+export const isStandalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+
 const HTML = `
 <div class="t-joy"><div class="t-knob"></div></div>
 <button class="t-btn t-fire" data-act="fire"><span>开火</span></button>
@@ -16,10 +18,11 @@ const HTML = `
 <button class="t-btn t-alt" data-act="alt"><span>开镜</span></button>
 <button class="t-btn t-use" data-act="use"><span>拆弹</span></button>
 <div class="t-weapons"></div>
+<button class="t-sm t-buy" data-act="buy">🛒 购买</button>
 <div class="t-top">
-  <button class="t-sm t-buy" data-act="buy">🛒 购买</button>
   <button class="t-sm" data-act="score">📋</button>
   <button class="t-sm" data-act="chat">💬</button>
+  <button class="t-sm t-fs" data-act="fs" title="全屏">⛶</button>
   <button class="t-sm" data-act="menu">☰</button>
 </div>
 <div class="t-spec"><button class="t-sm" data-act="specPrev">◀ 上一个</button><button class="t-sm" data-act="specNext">下一个 ▶</button></div>
@@ -155,6 +158,7 @@ export class TouchControls {
       case 'score': if (down) { if (g.hud.sbOpen) g.hud.closeScoreboard(); else g.hud.openScoreboard(); } break;
       case 'chat': if (down) g.openChat(false); break;
       case 'menu': if (down) g.openPauseMenu(); break;
+      case 'fs': if (down) g.toggleFullscreen(); break;
       case 'specPrev': if (down) g.cycleSpec(-1); break;
       case 'specNext': if (down) g.cycleSpec(1); break;
       default:
@@ -198,6 +202,8 @@ export class TouchControls {
     const use = g.useContext();
     this.set('.t-use', 'use', use, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-buy', 'buy', g.canBuy(), (el, v) => el.classList.toggle('off', !v));
+    const full = !!(document.fullscreenElement || document.webkitFullscreenElement) || isStandalone();
+    this.set('.t-fs', 'fs', full, (el, v) => el.classList.toggle('off', v));
     this.set('.t-crouch', 'crouch', this.crouchOn, (el, v) => el.classList.toggle('lit', v));
     this.set('.t-spec', 'spec', !alive, (el, v) => el.classList.toggle('off', !v));
     const key = [me.slot, me.nade, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), me.inv[5], alive].join('|');

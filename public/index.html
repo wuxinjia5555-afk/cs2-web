@@ -123,8 +123,48 @@
     <button class="btn wide-btn host-only hidden" id="btn-startmatch">开始比赛（结束热身）</button>
     <button class="btn wide-btn" id="btn-team">选择阵营</button>
     <button class="btn wide-btn" id="btn-copylink">复制邀请链接</button>
+    <button class="btn wide-btn" id="btn-qr-room">📱 手机扫码加入本房间</button>
     <button class="btn wide-btn" id="btn-settings-ig">设置</button>
     <button class="btn wide-btn danger" id="btn-quit">退出到主菜单</button>
+  </div>
+</div>
+
+<!-- 手机扫码 -->
+<div id="qrbox" class="overlay hidden">
+  <div class="panel narrow qr-panel">
+    <h2 id="qr-title">手机扫码游玩</h2>
+    <canvas id="qr-canvas"></canvas>
+    <div id="qr-url"></div>
+    <div id="qr-tip"></div>
+    <button class="btn wide-btn" id="qr-copy">复制网址</button>
+    <button class="btn wide-btn ghost" id="qr-close">关闭</button>
+  </div>
+</div>
+
+<!-- 全屏说明（iPhone） -->
+<div id="fshelp" class="overlay hidden">
+  <div class="panel">
+    <h2>让画面占满整个屏幕</h2>
+    <div class="fs-text">
+      <p>iPhone 的 Safari 不允许网页自己全屏，有两个办法：</p>
+      <p><b>① 推荐：添加到主屏幕</b><br>点 Safari 的「分享」按钮 → 「添加到主屏幕」，以后从桌面上的 <b>DEFUSE</b> 图标打开，就是没有任何浏览器边框的真全屏。</p>
+      <p><b>② 临时隐藏工具栏</b><br>点地址栏左边的「aA」或「页面菜单」图标 → 「隐藏工具栏」。</p>
+      <p class="dim">另外可以在 手机设置 → Safari 里关闭「横排标签栏」，横屏时顶部少一排标签。</p>
+    </div>
+    <button class="btn wide-btn accent" id="fs-ok">知道了</button>
+  </div>
+</div>
+
+<!-- 断线重连 -->
+<div id="reconnect" class="overlay hidden">
+  <div class="panel narrow rc-panel">
+    <div class="spinner" id="rc-spin"></div>
+    <h2 id="rc-title">连接中断</h2>
+    <div id="rc-text">正在重新连接…</div>
+    <div class="row center hidden" id="rc-btns">
+      <button class="btn accent" id="rc-retry">重试</button>
+      <button class="btn ghost" id="rc-lobby">返回大厅</button>
+    </div>
   </div>
 </div>
 
@@ -149,6 +189,7 @@
       <div class="row">
         <button class="btn" id="btn-settings">⚙ 设置</button>
         <button class="btn" id="btn-help">⌨ 操作说明</button>
+        <button class="btn" id="btn-qr">📱 手机扫码</button>
       </div>
     </div>
     <div class="foot">地图、模型、音效均为原创程序生成 · 玩法规则参考 CS2</div>

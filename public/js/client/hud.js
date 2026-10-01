@@ -192,7 +192,7 @@ export class Hud {
       }
       // 阶段提示
       let banner = '';
-      if (r.ph === 'freeze') banner = g.isTouch ? '购买阶段 · 点右上角「购买」' : '购买阶段 · 按 B 打开购买菜单';
+      if (r.ph === 'freeze') banner = g.isTouch ? '购买阶段 · 点左上角「购买」' : '购买阶段 · 按 B 打开购买菜单';
       else if (r.ph === 'live' && svNow < r.be && g.canBuy()) banner = `购买时间剩余 ${Math.ceil((r.be - svNow) / 1000)} 秒`;
       this.set('phase-banner', banner);
       this.toggle('phase-banner', !!banner);

@@ -21,10 +21,11 @@ const $ = (id) => document.getElementById(id);
 const tmp3 = [0, 0, 0];
 
 export class Game {
-  constructor({ renderer, net, init, pending = [], onExit }) {
+  constructor({ renderer, net, init, pending = [], onExit, onNetLost }) {
     this.renderer = renderer;
     this.net = net;
     this.onExit = onExit;
+    this.onNetLost = onNetLost;
     this.myId = init.you;
     this.code = init.code;
     this.roomName = init.name;
@@ -107,6 +108,21 @@ export class Game {
     this.initUI();
     this.fc = { x: this.map.bounds.x1 / 2, y: 30, z: this.map.bounds.z1 * 0.85 };
     this.pitch = -0.6;
+    const meInit = init.me;
+    if (meInit && (meInit.tm === 'T' || meInit.tm === 'CT')) {
+      this.me.team = meInit.tm;
+      this.vm.setTeam(meInit.tm);
+      if (meInit.al) {
+        this.sim.x = this.prev.x = meInit.p[0];
+        this.sim.y = this.prev.y = meInit.p[1];
+        this.sim.z = this.prev.z = meInit.p[2];
+        this.sim.onGround = true;
+        this.yaw = meInit.yaw;
+        this.pitch = 0;
+        this.me.alive = true;
+        this.adoptSlot = true;
+      }
+    }
 
     this.net.onmessage = (m) => {
       this.inbox.push(m);
@@ -126,7 +142,7 @@ export class Game {
     this.running = true;
     this.frameBound = (t) => this.frame(t);
     this.raf = requestAnimationFrame(this.frameBound);
-    if (this.mode !== 'dm') this.showTeamSelect();
+    if (this.mode !== 'dm' && this.me.team === 'SPEC') this.showTeamSelect();
     else this.input.lock();
   }
 
@@ -155,6 +171,7 @@ export class Game {
       window.__openSettings && window.__openSettings(() => { this.settingsOpen = false; this.hud.refreshCrosshair(); audio.setVolume(settings.volume); this.resize(); this.showPause(); });
     });
     on($('btn-quit'), 'click', () => this.exit());
+    on($('btn-qr-room'), 'click', () => { $('pause').classList.add('hidden'); if (window.__showQR) window.__showQR(this.code); });
     on($('scoreboard'), 'pointerdown', () => { if (this.isTouch) this.hud.closeScoreboard(); });
     on($('buymenu'), 'pointerdown', (e) => { if (e.target.id === 'buymenu') this.closeBuy(); });
     for (const b of document.querySelectorAll('[data-close="buymenu"]')) on(b, 'click', () => this.closeBuy());
@@ -173,7 +190,7 @@ export class Game {
   }
 
   anyOverlay() {
-    return ['buymenu', 'teamselect', 'pause', 'menu-settings'].some((id) => !$(id).classList.contains('hidden')) || this.chatOpen;
+    return ['buymenu', 'teamselect', 'pause', 'menu-settings', 'qrbox', 'fshelp', 'reconnect'].some((id) => !$(id).classList.contains('hidden')) || this.chatOpen;
   }
 
   toast(text) {
@@ -197,6 +214,7 @@ export class Game {
     const host = this.isHost() && this.round.ph === 'warmup';
     $('btn-startmatch').classList.toggle('hidden', !host);
     $('btn-copylink').classList.toggle('hidden', this.net.isLocal);
+    $('btn-qr-room').classList.toggle('hidden', this.net.isLocal);
     $('pause-room').innerHTML = this.net.isLocal
       ? `单机练习 · ${this.map.name}`
       : `房间码 <b>${this.code}</b> · ${this.map.name}<br>把房间码或邀请链接发给朋友即可加入`;
@@ -653,8 +671,30 @@ export class Game {
 
   onDisconnect() {
     if (!this.running) return;
-    this.toast('与服务器断开连接');
-    this.hud.center('与服务器断开连接，请返回主菜单重新加入', 60);
+    this.input.releaseAll();
+    if (this.onNetLost) this.onNetLost();
+    else this.hud.center('与服务器断开连接，请返回主菜单重新加入', 60);
+  }
+
+  // 全屏：安卓等支持的浏览器直接全屏；iPhone Safari 不支持，弹出说明
+  toggleFullscreen() {
+    const d = document, el = d.documentElement;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+      const ex = d.exitFullscreen || d.webkitExitFullscreen;
+      if (ex) ex.call(d);
+      return;
+    }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req && (d.fullscreenEnabled || d.webkitFullscreenEnabled)) {
+      try {
+        const p = req.call(el, { navigationUI: 'hide' });
+        const lock = () => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); };
+        if (p && p.then) p.then(lock).catch(() => window.__showFsHelp && window.__showFsHelp());
+        else lock();
+      } catch {
+        if (window.__showFsHelp) window.__showFsHelp();
+      }
+    } else if (window.__showFsHelp) window.__showFsHelp();
   }
 
   // ---------------- 射击相关消息 ----------------
@@ -1486,7 +1526,12 @@ export class Game {
       this.net.update(dt);
       const box = this.inbox;
       this.inbox = [];
-      for (const m of box) {
+      for (let i = 0; i < box.length; i++) {
+        const m = box[i];
+        if (m.t === 'init') {
+          this.exit({ silent: true, init: m, rest: box.slice(i + 1) });
+          return;
+        }
         try { this.onMsg(m); } catch (e) { console.error('处理消息出错', m.t, e); }
       }
       this.handleKeys();
@@ -1515,7 +1560,7 @@ export class Game {
     this.input.endFrame();
   }
 
-  exit() {
+  exit(opts = {}) {
     if (!this.running) return;
     this.running = false;
     cancelAnimationFrame(this.raf);
@@ -1533,8 +1578,10 @@ export class Game {
     this.scene.traverse((o) => {
       if (o.isMesh && o.parent === this.mapMesh) { o.geometry.dispose(); }
     });
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
-    if (this.onExit) this.onExit();
+    if (!opts.init) {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+    }
+    if (this.onExit) this.onExit(opts);
   }
 }

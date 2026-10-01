@@ -1304,6 +1304,7 @@ export class Room {
       smokes: this.smokes.map((s) => ({ id: s.id, p: [r2(s.x), r2(s.y), r2(s.z)], left: s.until - this.time })),
       fires: this.fires.map((f) => ({ id: f.id, p: [r2(f.x), r2(f.y), r2(f.z)], left: f.until - this.time })),
       drops: this.drops.map((d) => [d.id, d.w, r2(d.pr.x), r2(d.pr.y), r2(d.pr.z), 0, 0, 0]),
+      me: { p: [r2(p.x), r2(p.y), r2(p.z)], yaw: r3(p.yaw), al: p.alive ? 1 : 0, tm: p.team },
     });
     p.dirty = true;
   }

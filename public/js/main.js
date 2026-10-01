@@ -8,6 +8,7 @@ import { MAP_LIST, getMap } from './shared/maps.js';
 import { mapImage } from './client/mapimg.js';
 import { buildMapMeshes, setupEnvironment } from './client/world.js';
 import { setMaxAnisotropy } from './client/textures.js';
+import { drawQR } from './client/qr.js';
 
 window.__gameReady = true;
 const $ = (id) => document.getElementById(id);
@@ -166,8 +167,9 @@ function mapCards(containerId, onPick) {
 }
 
 // ---------------- 开始游戏 ----------------
-function startGame(net, init) {
-  starting = { pending: [] };
+function startGame(net, init, extra = []) {
+  starting = { pending: extra.slice() };
+  if (!net.isLocal) net.onmessage = (m) => { if (starting) starting.pending.push(m); };
   menuScene.stop();
   hideMenus();
   loading(true, `正在加载地图：${getMap(init.map).name}…`);
@@ -178,8 +180,16 @@ function startGame(net, init) {
       starting = null;
       game = window.__game = new Game({
         renderer, net, init, pending,
-        onExit: () => {
+        onNetLost: () => reconnect(net),
+        onExit: (opts = {}) => {
           game = window.__game = null;
+          if (opts.init) {
+            // 断线重连成功：用服务器发来的最新状态重新进入对局
+            hideReconnect();
+            startGame(net, opts.init, opts.rest || []);
+            return;
+          }
+          hideReconnect();
           checkOrientation();
           resize();
           if (net.isLocal) { showMenu('menu-main'); }
@@ -194,6 +204,7 @@ function startGame(net, init) {
           menuScene.start();
         },
       });
+      maybeFsHelp();
     } catch (e) {
       console.error(e);
       toast('启动游戏失败：' + e.message, 6000);
@@ -202,6 +213,66 @@ function startGame(net, init) {
     }
     loading(false);
   }, 30);
+}
+
+// ---------------- 断线重连 ----------------
+let reconnecting = false;
+let initWait = null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function showReconnect(text, final = false) {
+  $('reconnect').classList.remove('hidden');
+  $('rc-title').textContent = final ? '无法重新连接' : '连接中断';
+  $('rc-text').textContent = text;
+  $('rc-spin').classList.toggle('hidden', final);
+  $('rc-btns').classList.toggle('hidden', !final);
+}
+function hideReconnect() {
+  $('reconnect').classList.add('hidden');
+  clearTimeout(initWait);
+}
+
+async function reconnect(net) {
+  if (reconnecting || !net || net.isLocal || !game) return;
+  reconnecting = true;
+  clearTimeout(initWait);
+  showReconnect('网络断开了，正在重新连接…');
+  const delays = [300, 800, 1500, 2500, 4000, 5000, 6000, 8000, 10000, 12000];
+  for (let i = 0; i < delays.length && game; i++) {
+    try {
+      await net.connect(8000);
+      net.send({ t: 'hello', name: settings.name || playerName(), sid: net.sid });
+      reconnecting = false;
+      showReconnect('已连上服务器，正在回到房间…');
+      initWait = setTimeout(() => {
+        if (game) showReconnect('回不到原来的房间了（房间已关闭，或者服务器重启过）。请返回大厅重新加入。', true);
+      }, 6000);
+      return;
+    } catch {
+      showReconnect(`网络断开了，正在重新连接…（第 ${i + 1} 次）`);
+      await sleep(delays[i]);
+    }
+  }
+  reconnecting = false;
+  if (game) showReconnect('连接不上服务器。请检查手机网络 / Wi-Fi，然后点「重试」。', true);
+}
+
+$('rc-retry').addEventListener('click', () => { if (game) reconnect(game.net); });
+$('rc-lobby').addEventListener('click', () => { hideReconnect(); if (game) game.exit(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && game && !game.net.isLocal && !game.net.open) reconnect(game.net);
+});
+
+// ---------------- iPhone 全屏说明 ----------------
+const IOS = /iPhone|iPod/i.test(navigator.userAgent);
+const standalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+window.__showFsHelp = () => { $('fshelp').classList.remove('hidden'); if (game) game.input.releaseAll(); };
+$('fs-ok').addEventListener('click', () => $('fshelp').classList.add('hidden'));
+function maybeFsHelp() {
+  if (!TOUCH || !IOS || standalone()) return;
+  let seen = false;
+  try { seen = localStorage.getItem('defuse.fshelp') === '1'; localStorage.setItem('defuse.fshelp', '1'); } catch {}
+  if (!seen) setTimeout(() => { if (game) window.__showFsHelp(); }, 1200);
 }
 
 // ---------------- 单机 ----------------
@@ -272,7 +343,7 @@ async function openOnline(autoJoin) {
     lobby.net = net;
     net.onmessage = lobbyMsg;
     net.onclose = lobbyClosed;
-    net.send({ t: 'hello', name: playerName() });
+    net.send({ t: 'hello', name: playerName(), sid: net.sid });
   }
   lobby.net.send({ t: 'rooms' });
   if (!lobby.timer) lobby.timer = setInterval(() => { if (lobby.net && lobby.net.open && !game) lobby.net.send({ t: 'rooms' }); }, 3000);
@@ -387,6 +458,45 @@ $('btn-settings-back').addEventListener('click', () => {
 });
 $('btn-settings-reset').addEventListener('click', () => { resetSettings(); bindSettings(); audio.setVolume(settings.volume); toast('已恢复默认设置'); });
 $('btn-help').addEventListener('click', () => { audio.init(); showMenu('menu-help'); });
+
+// ---------------- 手机扫码 ----------------
+async function playUrl() {
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  if (!local) return { url: location.origin + location.pathname, local: false };
+  try {
+    const r = await fetch('/api/info', { cache: 'no-store' });
+    const j = await r.json();
+    if (j.lan && j.lan.length) return { url: j.lan[0] + '/', local: true, all: j.lan };
+  } catch {}
+  return { url: null, local: true };
+}
+
+async function showQR(roomCode) {
+  const info = await playUrl();
+  const box = $('qrbox');
+  $('qr-title').textContent = roomCode ? `扫码加入房间 ${roomCode}` : '手机扫码游玩';
+  if (!info.url) {
+    $('qr-canvas').classList.add('hidden');
+    $('qr-url').textContent = '没有找到局域网地址';
+    $('qr-tip').textContent = '请确认这台电脑已连接 Wi-Fi / 网线，然后重试。';
+  } else {
+    const url = info.url + (roomCode ? `?room=${roomCode}` : '');
+    $('qr-canvas').classList.remove('hidden');
+    drawQR($('qr-canvas'), url, 8);
+    $('qr-url').textContent = url;
+    $('qr-tip').innerHTML = info.local
+      ? '手机和这台电脑连<b>同一个 Wi-Fi</b>，用手机相机或浏览器扫一扫即可打开。<br>请横屏游玩；进入后点「联机对战」可以和电脑上的玩家一起玩。'
+      : '用手机相机或浏览器扫一扫即可打开（横屏游玩）。';
+    $('qr-copy').onclick = () => navigator.clipboard?.writeText(url).then(() => toast('已复制：' + url), () => toast(url));
+  }
+  box.classList.remove('hidden');
+}
+window.__showQR = showQR;
+$('btn-qr').addEventListener('click', () => { audio.init(); showQR(null); });
+$('qr-close').addEventListener('click', () => {
+  $('qrbox').classList.add('hidden');
+  if (game && game.paused) game.showPause();
+});
 for (const b of document.querySelectorAll('[data-back]')) b.addEventListener('click', () => { audio.play('click'); showMenu('menu-main'); });
 
 $('name-input').value = settings.name || '';
