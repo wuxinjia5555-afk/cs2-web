@@ -1,7 +1,7 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun, synthStep } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx } from './gunsynth.js';
 
 const STEP_RANGE = 32; // 脚步声最远能听到的距离（米），和 CS 差不多
 
@@ -12,6 +12,7 @@ class AudioSys {
     this.lastVoice = 0;
     this.gunBufs = {};
     this.stepBufs = {};
+    this.fxBufs = {};
   }
 
   init() {
@@ -81,8 +82,31 @@ class AudioSys {
     return arr[(Math.random() * arr.length) | 0];
   }
 
+  // 命中 / 爆头 / 击杀反馈音（预先合成好的缓冲区）
+  _fxBuf(kind, streak = 1) {
+    const key = kind + streak;
+    let b = this.fxBufs[key];
+    if (!b) {
+      const sr = this.ctx.sampleRate;
+      const data = synthFx(kind, sr, { streak, seed: 5 + streak });
+      b = this.fxBufs[key] = this.ctx.createBuffer(1, data.length, sr);
+      b.getChannelData(0).set(data);
+    }
+    return b;
+  }
+
+  _playFx(kind, gain, streak = 1) {
+    const o = this._out(null, 1, gain, 0.06);
+    if (!o) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this._fxBuf(kind, streak);
+    src.connect(o.input);
+    src.start();
+  }
+
   warmGuns() {
     for (const s of ['hard', 'sand', 'metal']) for (let i = 0; i < 6; i++) this._stepBuf(s);
+    for (const k of ['hit', 'hs_helmet', 'hs_nohelm', 'kill', 'kill_hs']) this._fxBuf(k, 1);
     const keys = Object.keys(GUN_PROFILES);
     let k = 0;
     const step = () => {
@@ -226,39 +250,13 @@ class AudioSys {
     const t = this.ctx.currentTime;
     let o;
     switch (name) {
-      case 'hit':
-        o = this._out(null, 1, 0.35 * vol, 0);
-        this._tone(o.input, t, { f: 1500, f2: 900, dec: 0.05, vol: 0.6, type: 'triangle' });
+      case 'hit': this._playFx('hit', 0.5 * vol); break;
+      case 'headshot': this._playFx('hs_helmet', 0.62 * vol); break;
+      case 'headshot_nohelm': this._playFx('hs_nohelm', 0.66 * vol); break;
+      case 'killconfirm':
+        // 击杀：低音冲击 + 碎裂声 + 金属“锵”，连杀越多音越高；爆头击杀多一层清脆的“叮”
+        this._playFx(opts.hs ? 'kill_hs' : 'kill', 0.85 * vol, Math.max(1, Math.min(5, opts.streak || 1)));
         break;
-      case 'headshot':
-        o = this._out(null, 1, 0.5 * vol, 0.1);
-        this._tone(o.input, t, { f: 3100, dec: 0.35, vol: 0.5 });
-        this._tone(o.input, t, { f: 4650, dec: 0.25, vol: 0.3 });
-        this._noise(o.input, t, { type: 'highpass', f: 3000, dec: 0.05, vol: 0.5 });
-        break;
-      case 'headshot_nohelm':
-        o = this._out(null, 1, 0.55 * vol, 0);
-        this._noise(o.input, t, { f: 900, dec: 0.12, vol: 1 });
-        this._tone(o.input, t, { f: 120, f2: 60, dec: 0.1, vol: 0.8 });
-        break;
-      case 'killconfirm': {
-        // 击杀确认：一记闷响 + 上扬的提示音，连杀越多音越高；爆头多一声金属“叮”
-        const n = Math.max(1, Math.min(6, opts.streak || 1));
-        o = this._out(null, 1, 0.55 * vol, 0.15);
-        const base = 620 * Math.pow(1.122, n - 1);
-        this._tone(o.input, t, { f: 150, f2: 50, dec: 0.18, vol: 0.9 });
-        this._noise(o.input, t, { type: 'bandpass', f: 1600, q: 1.2, dec: 0.06, vol: 0.45 });
-        this._tone(o.input, t + 0.02, { f: base, dec: 0.2, vol: 0.45, type: 'triangle' });
-        this._tone(o.input, t + 0.09, { f: base * 1.5, dec: 0.3, vol: 0.45, type: 'triangle' });
-        if (n >= 2) this._tone(o.input, t + 0.16, { f: base * 2, dec: 0.38, vol: 0.4, type: 'triangle' });
-        if (n >= 4) this._tone(o.input, t + 0.23, { f: base * 2.5, dec: 0.45, vol: 0.36, type: 'triangle' });
-        if (opts.hs) {
-          this._tone(o.input, t, { f: 3100, dec: 0.5, vol: 0.32 });
-          this._tone(o.input, t, { f: 4650, dec: 0.32, vol: 0.2 });
-          this._noise(o.input, t, { type: 'highpass', f: 3000, dec: 0.05, vol: 0.45 });
-        }
-        break;
-      }
       case 'kill':
         o = this._out(null, 1, 0.25 * vol, 0);
         this._tone(o.input, t, { f: 880, dec: 0.09, vol: 0.5, type: 'triangle' });
@@ -378,6 +376,46 @@ class AudioSys {
         if (o) { this._tone(o.input, t, { f: 90, f2: 45, dec: 0.2, vol: 0.9 }); this._noise(o.input, t, { f: 500, dec: 0.15, vol: 0.5 }); }
         break;
     }
+  }
+
+  // 一串持续的音效（下包时的按键声 / 拆包声），返回句柄，stop() 可以中途停下
+  seq(kind, pos, opts = {}) {
+    const h = { timers: [], stopped: false, stop() { this.stopped = true; for (const t of this.timers) clearTimeout(t); this.timers.length = 0; } };
+    if (!this.ctx) return h;
+    if (pos && Math.hypot(pos[0] - this.lx, pos[1] - this.ly, pos[2] - this.lz) > 45) return h;
+    const vol = opts.vol == null ? 1 : opts.vol;
+    const at = (sec, fn) => h.timers.push(setTimeout(() => { if (!h.stopped && this.ctx) fn(this.ctx.currentTime); }, sec * 1000));
+    if (kind === 'plant') {
+      // C4 键盘输入 7355608：每个数字是一对 DTMF 双音
+      const DTMF = { 7: [852, 1209], 3: [697, 1477], 5: [770, 1336], 6: [770, 1477], 0: [941, 1336], 8: [852, 1336] };
+      [7, 3, 5, 5, 6, 0, 8].forEach((d, i) => at(0.18 + i * 0.36, (t) => {
+        const o = this._out(pos, 12, 0.42 * vol, 0.05);
+        if (!o) return;
+        this._tone(o.input, t, { f: DTMF[d][0], dec: 0.09, vol: 0.4, att: 0.004 });
+        this._tone(o.input, t, { f: DTMF[d][1], dec: 0.09, vol: 0.32, att: 0.004 });
+        this._noise(o.input, t, { type: 'bandpass', f: 2600, q: 2, dec: 0.012, vol: 0.35 });
+      }));
+    } else if (kind === 'defuse') {
+      const dur = opts.dur || 10;
+      // 开始：拆弹工具卡上去的“咔哒”两声
+      at(0, (t) => {
+        const o = this._out(pos, 10, 0.5 * vol, 0.05);
+        if (!o) return;
+        this._noise(o.input, t, { type: 'bandpass', f: 2300, q: 3, dec: 0.035, vol: 0.9 });
+        this._tone(o.input, t, { f: 190, f2: 95, dec: 0.07, vol: 0.5 });
+        this._noise(o.input, t + 0.13, { type: 'bandpass', f: 3100, q: 3, dec: 0.03, vol: 0.7 });
+      });
+      // 拆的过程：每隔半秒左右一小串棘轮/剪线的细响
+      for (let s = 0.65; s < dur - 0.15; s += 0.5 + Math.random() * 0.15) {
+        at(s, (t) => {
+          const o = this._out(pos, 8, 0.32 * vol, 0.03);
+          if (!o) return;
+          const n = 2 + ((Math.random() * 2) | 0);
+          for (let k = 0; k < n; k++) this._noise(o.input, t + k * 0.035, { type: 'bandpass', f: 2600 + Math.random() * 1200, q: 4, dec: 0.012, vol: 0.8 });
+        });
+      }
+    }
+    return h;
   }
 
   // 换弹声：几次咔哒声按时间排好

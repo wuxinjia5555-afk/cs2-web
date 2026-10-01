@@ -708,7 +708,13 @@ export class Game {
     }
   }
 
+  stopAllSeq() {
+    this.stopMySeq();
+    for (const p of this.players.values()) if (p.bombSeq) { p.bombSeq.stop(); p.bombSeq = null; }
+  }
+
   onReset() {
+    this.stopAllSeq();
     for (const n of this.nades.values()) this.scene.remove(n.mesh);
     this.nades.clear();
     for (const d of this.drops.values()) this.scene.remove(d.mesh);
@@ -882,21 +888,44 @@ export class Game {
 
   onPlanting(m) {
     if (m.id === this.myId) {
-      if (!m.on) this.w.planting = false;
+      if (!m.on) { this.w.planting = false; this.stopMySeq(); }
       return;
     }
     const p = this.players.get(m.id);
-    if (m.on && p && p.rp) audio.play('plant', [p.rp.x, p.rp.y + 0.5, p.rp.z], 0.6);
+    if (!p) return;
+    if (p.bombSeq) { p.bombSeq.stop(); p.bombSeq = null; }
+    if (m.on && p.rp) {
+      p.bombSeq = audio.seq('plant', [p.rp.x, p.rp.y + 0.5, p.rp.z]);
+      if (this.isEnemyId(p.id)) this.bombPing(p);
+    }
+  }
+
+  stopMySeq() {
+    if (this.mySeq) { this.mySeq.stop(); this.mySeq = null; }
+  }
+
+  // 声纹：敌人开始下包 / 拆包
+  bombPing(p) {
+    const d = Math.hypot(p.rp.x - this.camera.position.x, p.rp.z - this.camera.position.z);
+    if (d < 45) this.soundPing(p.rp.x, p.rp.z, d / 45, 'bomb');
   }
 
   onDefusing(m) {
     if (m.id === this.myId) {
-      if (m.on) { this.w.defusing = true; this.w.defuseStart = this.now; this.w.defuseDur = m.kit ? 5 : 10; }
-      else this.w.defusing = false;
+      this.stopMySeq();
+      if (m.on) {
+        this.w.defusing = true; this.w.defuseStart = this.now; this.w.defuseDur = m.kit ? 5 : 10;
+        this.mySeq = audio.seq('defuse', null, { vol: 0.6, dur: this.w.defuseDur });
+      } else this.w.defusing = false;
       return;
     }
     const p = this.players.get(m.id);
-    if (m.on && p && p.rp) audio.play('defuse', [p.rp.x, p.rp.y + 0.5, p.rp.z]);
+    if (!p) return;
+    if (p.bombSeq) { p.bombSeq.stop(); p.bombSeq = null; }
+    if (m.on && p.rp) {
+      p.bombSeq = audio.seq('defuse', [p.rp.x, p.rp.y + 0.5, p.rp.z], { dur: m.kit ? 5 : 10 });
+      if (this.isEnemyId(p.id)) this.bombPing(p);
+    }
   }
 
   addDrop(d, rest) {
@@ -1245,11 +1274,13 @@ export class Game {
           W.planting = true;
           W.plantStart = now;
           this.net.send({ t: 'plant', on: true });
-          audio.play('plant', null, 0.5);
+          this.stopMySeq();
+          this.mySeq = audio.seq('plant', null, { vol: 0.55 });
         }
       } else if (W.planting) {
         W.planting = false;
         this.net.send({ t: 'plant', on: false });
+        this.stopMySeq();
       }
       if (inp.mDown[0] && !can && canAct) this.hud.center(ph !== 'live' ? '现在不能安放炸弹' : '必须在包点内安放炸弹', 1.5);
     }
@@ -1674,6 +1705,7 @@ export class Game {
     if (!this.running) return;
     this.running = false;
     cancelAnimationFrame(this.raf);
+    this.stopAllSeq();
     if (this.touch) { this.touch.destroy(); this.touch = null; }
     this.input.detach();
     window.removeEventListener('resize', this.onResizeBound);

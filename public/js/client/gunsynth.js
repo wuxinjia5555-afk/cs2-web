@@ -236,3 +236,60 @@ export function synthStep(surface, sr, seed = 1) {
   for (let i = 0; i < n; i++) out[i] = Math.tanh((out[i] / (peak || 1)) * 1.3) / Math.tanh(1.3) * 0.8 * (i > n - fade ? (n - i) / fade : 1);
   return out;
 }
+
+// 命中 / 爆头 / 击杀的反馈音（opts.streak 连杀数会让击杀声的金属音逐级升高）
+export function synthFx(kind, sr, opts = {}) {
+  const R = rng(opts.seed || 5);
+  const len = { hit: 0.12, hs_helmet: 0.35, hs_nohelm: 0.2, kill: 0.75, kill_hs: 0.9 }[kind] || 0.5;
+  const n = Math.ceil(len * sr);
+  const out = new Float32Array(n);
+  const streak = Math.max(1, Math.min(5, opts.streak || 1));
+  const up = Math.pow(1.122, streak - 1); // 每多一杀升高约一个全音
+  const bp = (f, q) => new Biquad(sr).set('bp', f, q), lpf = (f) => new Biquad(sr).set('lp', f, 0.7);
+  // 金属部件：一组非整数倍的泛音（像敲击金属片）
+  const metal = (f0, ratios, amps, decs, glide = 0) => ratios.map((r, i) => ({ f: f0 * r, a: amps[i], d: decs[i], ph: R() * 6.28, g: glide }));
+  let parts = [];
+  if (kind === 'hs_helmet') parts = metal(2250, [1, 1.47, 2.09, 2.76], [1, 0.55, 0.35, 0.2], [0.18, 0.12, 0.08, 0.05]);
+  if (kind === 'kill') parts = metal(1180 * up, [1, 1.52, 2.21, 2.93, 3.67], [1, 0.62, 0.45, 0.3, 0.2], [0.42, 0.3, 0.22, 0.16, 0.11], 0.04);
+  if (kind === 'kill_hs') parts = [...metal(1180 * up, [1, 1.52, 2.21, 2.93], [0.9, 0.55, 0.4, 0.26], [0.45, 0.32, 0.22, 0.15], 0.04),
+    ...metal(3300 * up, [1, 1.41, 2.03], [0.85, 0.5, 0.3], [0.5, 0.32, 0.2])];
+  const nf1 = kind === 'hit' ? bp(1100, 0.9) : kind === 'hs_nohelm' ? bp(900, 0.8) : bp(2000, 0.8);
+  const nf2 = kind === 'kill_hs' ? bp(4200, 1.2) : kind === 'hs_nohelm' ? bp(2600, 1.2) : bp(3500, 1.5);
+  const sw = bp(6000, 4); // “锵”的扫频摩擦声
+  let phSub = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = R() * 2 - 1;
+    let s = 0;
+    if (kind === 'hit') {
+      s += nf1.p(w) * 2.6 * env(t, 0.0008, 0.02);
+      phSub += (2 * Math.PI * (200 + 120 * Math.exp(-t / 0.01))) / sr;
+      s += Math.sin(phSub) * 0.35 * env(t, 0.001, 0.025);
+    } else if (kind === 'hs_nohelm') {
+      s += nf1.p(w) * 2.8 * env(t, 0.0008, 0.035);
+      s += nf2.p(w) * 1.0 * env(t, 0.0005, 0.012);
+      phSub += (2 * Math.PI * (180 + 140 * Math.exp(-t / 0.012))) / sr;
+      s += Math.sin(phSub) * 0.5 * env(t, 0.001, 0.04);
+    } else if (kind === 'hs_helmet') {
+      s += nf2.p(w) * 0.9 * env(t, 0.0003, 0.005); // 撞击的一下
+    } else {
+      // 击杀：低音冲击 + 碎裂声 + 一闪而过的扫频“锵”
+      phSub += (2 * Math.PI * (62 + 150 * Math.exp(-t / 0.03))) / sr;
+      s += Math.sin(phSub) * 0.7 * env(t, 0.0015, 0.1);
+      s += nf1.p(w) * 1.6 * env(t, 0.0005, 0.022);
+      if ((i & 15) === 0) sw.set('bp', 7000 - 4200 * Math.min(1, t / 0.09), 4);
+      s += sw.p(w) * (kind === 'kill_hs' ? 1.5 : 1.1) * env(t, 0.004, 0.06);
+      if (kind === 'kill_hs') s += nf2.p(w) * 1.2 * env(t, 0.0004, 0.012);
+    }
+    for (const p of parts) {
+      const f = p.f * (1 + p.g * (1 - Math.exp(-t / 0.05)));
+      p.ph += (2 * Math.PI * f) / sr;
+      s += Math.sin(p.ph) * p.a * (kind === 'hs_helmet' ? 0.5 : 0.75) * env(t, 0.0015, p.d);
+    }
+    out[i] = s;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const fade = Math.round(0.02 * sr), dr = kind === 'kill' || kind === 'kill_hs' ? 1.8 : 1.4;
+  for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / (peak || 1)) * dr) / Math.tanh(dr)) * 0.92 * (i > n - fade ? (n - i) / fade : 1);
+  return out;
+}

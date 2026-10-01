@@ -100,11 +100,11 @@ export class Hud {
     ctx.shadowColor = 'rgba(0,0,0,0.55)';
     ctx.shadowBlur = 3;
     for (let i = this.pings.length - 1; i >= 0; i--) {
-      const p = this.pings[i], life = p.kind === 'shot' ? 1.2 : 0.9, age = now - p.t;
+      const p = this.pings[i], life = p.kind === 'shot' ? 1.2 : p.kind === 'bomb' ? 2 : 0.9, age = now - p.t;
       if (age > life || age < 0) { this.pings.splice(i, 1); continue; }
       const al = (1 - age / life) * p.s;
       const base = p.a - Math.PI / 2;
-      const col = p.kind === 'shot' ? '255,170,40' : '255,72,60';
+      const col = p.kind === 'shot' ? '255,170,40' : p.kind === 'bomb' ? '255,230,60' : '255,72,60';
       for (let k = 0; k < 3; k++) {
         const r = R + k * 9 + age * 16;
         const span = (p.kind === 'shot' ? 0.26 : 0.2) - k * 0.03;
@@ -114,7 +114,7 @@ export class Hud {
         ctx.lineWidth = p.kind === 'shot' ? 5 : 4;
         ctx.stroke();
       }
-      if (p.kind === 'shot') {
+      if (p.kind === 'shot' || p.kind === 'bomb') {
         // 枪声：外圈再加一个小三角箭头
         const r = R + 34 + age * 16, ax = cx + Math.cos(base) * r, ay = cy + Math.sin(base) * r;
         ctx.save();
