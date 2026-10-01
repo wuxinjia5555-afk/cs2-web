@@ -570,12 +570,17 @@ export class TouchControls {
     this.lastMotion = now;
     if (!rr || !dt || !this.g.me.alive || !this.inp.locked) return;
     if (settings.gyroScope && !(this.g.w && this.g.w.scope > 0)) return;
-    const ang = (screen.orientation && screen.orientation.angle) ?? (typeof window.orientation === 'number' ? window.orientation : 0);
+    // 屏幕方向：iPhone 上 window.orientation 最可靠；都读不到但画面是横的，就按横屏算
+    let ang = typeof window.orientation === 'number' ? window.orientation : screen.orientation ? screen.orientation.angle : 0;
+    ang = ((Math.round(ang / 90) * 90) % 360 + 360) % 360;
+    if ((ang === 0 || ang === 180) && innerWidth > innerHeight) ang = 90;
     const b = rr.beta || 0, gm = rr.gamma || 0;
     let yawRate, pitchRate;
     if (ang === 90) { yawRate = b; pitchRate = -gm; }
-    else if (ang === 270 || ang === -90) { yawRate = -b; pitchRate = gm; }
+    else if (ang === 270) { yawRate = -b; pitchRate = gm; }
+    else if (ang === 180) { yawRate = -gm; pitchRate = -b; }
     else { yawRate = gm; pitchRate = b; }
+    if (settings.gyroSwap) { const t = yawRate; yawRate = pitchRate; pitchRate = t; }
     if (settings.gyroInvX) yawRate = -yawRate;
     if (settings.gyroInvY) pitchRate = -pitchRate;
     const k = DEG * dt * settings.gyroSens;

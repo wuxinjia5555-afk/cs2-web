@@ -511,6 +511,7 @@ function bindSettings() {
   chk('s-gyroscope', 'gyroScope', settings);
   chk('s-gyroinvx', 'gyroInvX', settings);
   chk('s-gyroinvy', 'gyroInvY', settings);
+  chk('s-gyroswap', 'gyroSwap', settings);
   renderBinds();
   updateGyroStatus();
   chk('s-assist', 'aimAssist', settings);
