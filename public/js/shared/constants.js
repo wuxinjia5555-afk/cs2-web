@@ -23,7 +23,7 @@ export const P = {
   airCap: 0.76,
   maxFall: 40,
   walkMul: 0.52,
-  crouchMul: 0.34,
+  crouchMul: 0.46, // 蹲走速度（CS2 原版 0.34，玩家反馈太慢）
 };
 
 // 命中部位
