@@ -271,7 +271,9 @@ export class Hud {
 
   updateCrosshair() {
     const g = this.g;
-    const show = g.me.alive && g.w.scope === 0 && !g.paused;
+    // 大狙、鸟狙不开镜时没有准星（和 CS2 一样）
+    const sniper = g.curWeapon().type === 'sniper';
+    const show = g.me.alive && g.w.scope === 0 && !g.paused && !sniper;
     this.cls('crosshair', 'hidden', !show);
     if (!show) return;
     const x = settings.xhair;
