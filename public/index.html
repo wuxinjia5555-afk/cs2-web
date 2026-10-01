@@ -209,6 +209,7 @@
         <button class="btn" id="btn-settings">⚙ 设置</button>
         <button class="btn" id="btn-help">⌨ 操作说明</button>
         <button class="btn" id="btn-qr">📱 手机扫码</button>
+        <button class="btn" id="btn-inv">🎒 背包</button>
       </div>
     </div>
     <div class="foot">地图、模型、音效均为原创程序生成 · 玩法规则参考 CS2</div>
@@ -316,6 +317,27 @@
       </div>
       <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
       <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
+    </div>
+  </div>
+
+  <div id="menu-inventory" class="menu hidden">
+    <div class="menu-box wide inv-box">
+      <h2>背包</h2>
+      <div class="inv-wrap">
+        <div class="inv-list">
+          <div class="inv-cat">刀具</div>
+          <div class="inv-items" id="inv-knives"></div>
+          <div class="inv-tip">更多武器皮肤以后会陆续加入</div>
+        </div>
+        <div class="inv-preview">
+          <canvas id="inv-canvas"></canvas>
+          <div class="inv-name" id="inv-name"></div>
+          <div class="inv-desc" id="inv-desc"></div>
+          <div class="row"><button class="btn" id="inv-draw">▶ 播放切刀动作</button><button class="btn" id="inv-inspect">🔍 检视</button></div>
+          <button class="btn big accent" id="inv-equip">装备</button>
+        </div>
+      </div>
+      <div class="row"><button class="btn ghost" data-back>返回</button></div>
     </div>
   </div>
 

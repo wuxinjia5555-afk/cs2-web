@@ -47,8 +47,11 @@ export class Game {
     this.isTouch = useTouch();
     this.fx = new Effects(this.scene, { low: this.isTouch });
     this.vm = new ViewModel();
+    this.vm.knifeSkin = (settings.skins && settings.skins.knife) || 'default';
     this.input = new Input(renderer.domElement, this.isTouch);
     this.input.setBinds(settings.binds);
+    // 告诉服务器我的刀皮肤（别人看到的第三人称模型）
+    if (settings.skins && settings.skins.knife === 'butterfly') this.net.send({ t: 'skin', k: 'butterfly' });
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;
@@ -450,6 +453,7 @@ export class Game {
     p.name = pi.n;
     p.team = pi.tm;
     p.bot = !!pi.b;
+    p.skin = pi.sk || null;
     if (pi.k != null) { p.k = pi.k; p.d = pi.d; p.a = pi.a; p.sc = pi.sc; p.mv = pi.mv; }
     if (pi.id === this.myId) this.me.team = pi.tm;
     return p;
@@ -493,6 +497,7 @@ export class Game {
         if (this.specId === m.id) this.specId = null;
         break;
       }
+      case 'pskin': { const p = this.players.get(m.id); if (p) p.skin = m.k || null; break; }
       case 'pteam': {
         const p = this.players.get(m.id);
         if (p) {
@@ -1526,7 +1531,7 @@ export class Game {
         if (p.seenAlive) this.bloodPoolAt(x, y, z, dx, dz);
       }
       m.root.rotation.y = alive ? yaw : p.deadYaw;
-      m.setWeapon(alive ? a.w : null);
+      m.setWeapon(alive ? a.w : null, p.skin);
       m.update(dt, { speed: p.speed, crouch: !!(f & F.CROUCH), pitch, alive, bomb: !!(f & F.BOMB), now: this.now });
       // 还没出生过的玩家不显示（否则会在地图原点躺着）
       m.root.visible = alive || !!p.seenAlive;

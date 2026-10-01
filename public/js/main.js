@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { settings, saveSettings, resetSettings, applyCrosshair, useTouch, BIND_ACTIONS, defaultBinds } from './client/settings.js';
 import { TouchControls } from './client/touch.js';
+import { ViewModel } from './client/viewmodel.js';
 import { audio } from './client/audio.js';
 import { WsNet, LocalNet, defaultServerUrl } from './client/net.js';
 import { Game } from './client/game.js';
@@ -621,6 +622,77 @@ $('btn-settings-back').addEventListener('click', () => {
 });
 $('btn-settings-reset').addEventListener('click', () => { resetSettings(); bindSettings(); audio.setVolume(settings.volume); toast('已恢复默认设置'); });
 $('btn-help').addEventListener('click', () => { audio.init(); showMenu('menu-help'); });
+
+// ---------------- 背包（皮肤） ----------------
+const KNIVES = [
+  { id: 'default', name: '默认匕首', rarity: '普通', cls: 'r-common', desc: '警察和匪徒的默认刀具。' },
+  { id: 'butterfly', name: '★ 蝴蝶刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时会翻刀（切刀动作），按 F 检视也会翻刀。联机时别人看到的也是蝴蝶刀。' },
+];
+let inv = null;
+
+function invNow() { return performance.now() / 1000; }
+
+function renderInv() {
+  const cur = settings.skins.knife || 'default';
+  $('inv-knives').innerHTML = KNIVES.map((k) => `<button class="inv-item ${k.cls}${inv.sel === k.id ? ' sel' : ''}" data-k="${k.id}">
+    <span class="inv-n">${esc(k.name)}</span><span class="inv-r">${esc(k.rarity)}</span>${cur === k.id ? '<span class="inv-eq">已装备</span>' : ''}</button>`).join('');
+  const k = KNIVES.find((x) => x.id === inv.sel);
+  $('inv-name').textContent = k.name;
+  $('inv-name').className = 'inv-name ' + k.cls;
+  $('inv-desc').textContent = k.desc;
+  $('inv-equip').textContent = cur === k.id ? '✓ 已装备' : '装备';
+  $('inv-equip').disabled = cur === k.id;
+}
+
+function invShow(id) {
+  inv.sel = id;
+  inv.vm.knifeSkin = id;
+  inv.vm.wid = null;
+  inv.vm.setWeapon('knife', 0.5, invNow());
+  renderInv();
+}
+
+function invLoop() {
+  if (!inv || $('menu-inventory').classList.contains('hidden')) { if (inv) inv.running = false; return; }
+  const c = $('inv-canvas');
+  const w = c.clientWidth, h = c.clientHeight;
+  if (w && h && (inv.w !== w || inv.h !== h)) { inv.w = w; inv.h = h; inv.r.setSize(w, h, false); inv.vm.resize(w / h); }
+  const now = invNow(), dt = Math.min(0.05, now - (inv.last || now));
+  inv.last = now;
+  inv.vm.update(dt, { now, speed: 0, onGround: true, crouch: false, mdx: Math.sin(now * 0.7) * 30, mdy: Math.cos(now * 0.5) * 12, scoped: false, hidden: false, silenced: false });
+  inv.r.render(inv.vm.scene, inv.vm.camera);
+  requestAnimationFrame(invLoop);
+}
+
+function openInventory() {
+  audio.init();
+  showMenu('menu-inventory');
+  if (!inv) {
+    const r = new THREE.WebGLRenderer({ canvas: $('inv-canvas'), antialias: true, alpha: true });
+    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    const vm = new ViewModel();
+    vm.setTeam('CT');
+    vm.root.position.set(-0.13, 0.13, 0.2); // 把刀挪到画面中间、拉近一点
+    inv = { r, vm, sel: 'default' };
+  }
+  invShow(settings.skins.knife || 'default');
+  if (!inv.running) { inv.running = true; inv.last = 0; requestAnimationFrame(invLoop); }
+}
+
+$('btn-inv').addEventListener('click', openInventory);
+$('inv-knives').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-k]');
+  if (b) { audio.play('click'); invShow(b.dataset.k); }
+});
+$('inv-draw').addEventListener('click', () => { inv.vm.wid = null; inv.vm.setWeapon('knife', 0.5, invNow()); audio.play('deploy'); });
+$('inv-inspect').addEventListener('click', () => { inv.vm.drawDur = 0; inv.vm.onInspect(invNow()); });
+$('inv-equip').addEventListener('click', () => {
+  settings.skins.knife = inv.sel;
+  saveSettings();
+  audio.play('buy');
+  toast('已装备：' + KNIVES.find((k) => k.id === inv.sel).name.replace('★ ', ''));
+  renderInv();
+});
 
 // ---------------- 手机扫码 ----------------
 async function playUrl() {

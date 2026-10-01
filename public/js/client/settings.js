@@ -62,6 +62,7 @@ export const DEFAULTS = {
   // 自定义按钮布局：{ 按钮: { x, y（占屏幕宽高的比例，按钮中心）, s（大小倍数） } }
   touchLayout: {},
   binds: defaultBinds(),
+  skins: { knife: 'default' }, // 背包里选的皮肤
 };
 
 function load() {
@@ -73,7 +74,7 @@ function load() {
     if (deviceIsTouch()) { base.shadows = false; base.res = 0.75; base.xhair.len = 7; base.xhair.thick = 2; }
     return base;
   }
-  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) }, binds: { ...base.binds, ...(s.binds || {}) }, touchLayout: s.touchLayout || {} };
+  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) }, binds: { ...base.binds, ...(s.binds || {}) }, touchLayout: s.touchLayout || {}, skins: { ...base.skins, ...(s.skins || {}) } };
 }
 
 export const settings = load();

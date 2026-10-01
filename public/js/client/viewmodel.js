@@ -28,6 +28,7 @@ export class ViewModel {
     this.root = new THREE.Group();
     this.camera.add(this.root);
     this.team = 'T';
+    this.knifeSkin = 'default'; // 刀的皮肤（背包里选）
     this.cache = new Map();
     this.cur = null;
     this.wid = null;
@@ -64,7 +65,7 @@ export class ViewModel {
     const type = w ? (w.type === 'grenade' ? 'grenade' : w.type) : 'knife';
     const lay = LAYOUT[type] || LAYOUT.rifle;
     const g = new THREE.Group();
-    const gun = makeWeapon(wid);
+    const gun = makeWeapon(wid, false, wid === 'knife' ? this.knifeSkin : null);
     g.add(gun);
     const col = armColors(this.team);
     // 右手握把 + 前臂
@@ -94,8 +95,11 @@ export class ViewModel {
     if (this.wid === wid) return;
     this.wid = wid;
     if (this.cur) this.cur.visible = false;
-    let g = this.cache.get(wid);
-    if (!g) { g = this.build(wid); this.cache.set(wid, g); }
+    const key = wid === 'knife' ? 'knife:' + this.knifeSkin : wid;
+    let g = this.cache.get(key);
+    if (!g) { g = this.build(wid); this.cache.set(key, g); }
+    // 蝴蝶刀的切刀动作比别的武器长一点（只是动画，拔刀后照样可以马上挥刀）
+    if (g.userData.gun.userData.bfly) deploy = Math.max(deploy, 0.95);
     this.cur = g;
     g.visible = true;
     if (this.flash.parent) this.flash.parent.remove(this.flash);
@@ -207,6 +211,31 @@ export class ViewModel {
         px -= s * 0.05;
         py += s * 0.03;
       }
+    }
+    // 蝴蝶刀：切刀时刀身连转两圈、一片刀柄甩开再合上；检视时再翻两下
+    const bf = g.userData.gun.userData.bfly;
+    if (bf) {
+      let phi = 0, psi = 0;
+      if (this.knifeT < 0 && this.drawDur > 0 && now - this.drawStart < this.drawDur) {
+        const p = clamp((now - this.drawStart) / this.drawDur, 0, 1);
+        const e = 1 - Math.pow(1 - p, 2.4);
+        phi = (1 - e) * Math.PI * 4;
+        psi = Math.pow(Math.sin(Math.min(1, p / 0.82) * Math.PI), 0.7) * Math.PI * 0.96;
+        rz += Math.sin(p * Math.PI) * 0.9;
+        ry -= Math.sin(p * Math.PI) * 0.35;
+      }
+      if (this.inspectT >= 0) {
+        const p = (now - this.inspectT) / 2.6;
+        const q = clamp((p - 0.12) / 0.62, 0, 1);
+        if (q > 0 && q < 1) {
+          const e = q * q * (3 - 2 * q);
+          phi += e * Math.PI * 4;
+          psi += Math.pow(Math.sin(q * Math.PI * 2), 2) * Math.PI * 0.95;
+          rz += Math.sin(q * Math.PI) * 0.6;
+        }
+      }
+      bf.blade.rotation.x = phi;
+      bf.hB.rotation.x = psi;
     }
     g.position.set(px, py, pz);
     g.rotation.set(rx, ry, rz);

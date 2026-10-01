@@ -20,6 +20,7 @@ class Builder {
     this.roofs = []; this.doors = []; this.extra = [];
     this.sites = {}; this.spawns = { T: null, CT: null }; this.buy = { T: [], CT: [] };
     this.dummies = [];
+    this.blocked = new Set();
   }
   rect(c0, r0, c1, r1, fn) {
     for (let r = Math.max(0, r0); r <= Math.min(this.H - 1, r1); r++)
@@ -134,6 +135,8 @@ class Builder {
   // 靶场假人：kind = static 站着 / strafe 左右来回（w 为来回半宽，格） / crouch 蹲着
   dummy(c, r, kind = 'static', w = 0, walk = false) { this.dummies.push({ c, r, kind, w, walk }); }
   box(x0, y0, z0, x1, y1, z1, mat, kind = 'wall') { this.extra.push({ min: [x0, y0, z0], max: [x1, y1, z1], mat, kind }); }
+  // 只对寻路生效的“不可走”格子（用于自由尺寸的方块，比如门扇）
+  noWalk(c0, r0, c1, r1) { this.rect(c0, r0, c1, r1, (i) => { this.blocked.add(i); }); }
 }
 
 // 贪心合并矩形
@@ -255,7 +258,7 @@ export function buildMap(id) {
   const dummies = B.dummies.map((d) => ({ ...cellPos(d.c, d.r), yaw: Math.PI, kind: d.kind, crouch: d.kind === 'crouch', w: d.w * S, walk: d.walk }));
 
   const walk = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) walk[i] = B.type[i] === CELL.FLOOR ? 1 : 0;
+  for (let i = 0; i < W * H; i++) walk[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) ? 1 : 0;
   // 屋顶下的格子也可走；门梁不影响
   const nav = new Nav(W, H, S, walk, B.level);
 
@@ -287,11 +290,13 @@ export const MAPS = {
     build(b) {
       b.ascii(decodeRows(DUST2_ROWS));
       b.cleanBoxes();
-      // 中门：两扇门基本关着，只在东侧留一条能过人的窄缝（经典的中门对狙）
-      b.wall(47, 32, 52, 32, 'wood', 3.8);
-      b.wall(54, 32, 54, 32, 'wood', 3.8);
+      // 中门：两扇大木门，中间留 1.9 米能过人的口子；门扇和门框之间各有一条 12 厘米的细缝（能看穿、不能过人）
+      const dy = 0.4, dTop = 3.8, z0 = 32.35, z1 = 32.65;
+      b.box(47.12, dy, z0, 50.3, dTop, z1, 'wood');
+      b.box(52.2, dy, z0, 54.88, dTop, z1, 'wood');
       b.door(47, 32, 54, 32, 3.4); // 门楣：门上方是石墙
-      b.wall(53, 30, 54, 30, 'wood', 4.0); // 朝 CT 那边斜开的门板（比门洞高）：远处看不穿门缝
+      b.noWalk(47, 32, 50, 32);
+      b.noWalk(52, 32, 54, 32);
       b.floorMat(58, 16, 84, 32, 'tiles');      // CT 出生点
       b.floorMat(45, 30, 57, 97, 'road');       // 中路
       b.floorMat(8, 37, 31, 76, 'concrete');    // 地道

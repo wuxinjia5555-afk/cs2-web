@@ -223,6 +223,30 @@ function knife(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
 }
 
+// 蝴蝶刀：刀身 + 两片刀柄，都绕刀根的销轴（x 轴）转动；刀身朝 -z，刀柄朝 +z（握在手里）
+function butterfly(g) {
+  const K = { blade: 0xc9cfd6, edge: 0xf3f5f7, h1: 0x1f2227, h2: 0x30353c, pin: 0xc2a46a, hole: 0x111214 };
+  const pivot = new THREE.Group();
+  pivot.position.set(0, 0.016, -0.04);
+  g.add(pivot);
+  const blade = new THREE.Group();
+  blade.add(box(0.0036, 0.026, 0.125, K.blade, 0, 0.003, -0.07));
+  blade.add(box(0.0038, 0.007, 0.115, K.edge, 0, -0.012, -0.066));
+  blade.add(box(0.0036, 0.017, 0.036, K.blade, 0, -0.001, -0.146, 0.48));
+  blade.add(box(0.0052, 0.024, 0.022, K.h2, 0, 0.0, -0.004));
+  pivot.add(blade);
+  const hA = new THREE.Group(), hB = new THREE.Group();
+  for (const [h, x, col] of [[hA, -0.0058, K.h1], [hB, 0.0058, K.h2]]) {
+    h.add(box(0.0056, 0.021, 0.126, col, x, -0.001, 0.063));
+    for (let k = 0; k < 4; k++) h.add(box(0.0058, 0.006, 0.014, K.hole, x, -0.001, 0.024 + k * 0.024));
+    h.add(box(0.0072, 0.0072, 0.0072, K.pin, x, 0, 0));
+    h.add(box(0.0066, 0.012, 0.016, K.pin, x, -0.002, 0.124));
+    pivot.add(h);
+  }
+  g.userData.bfly = { pivot, blade, hA, hB };
+  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
+}
+
 function grenade(g, type) {
   if (type === 'he') {
     g.add(new THREE.Mesh(sphGeo(0.035), mat(C.olive)));
@@ -253,8 +277,15 @@ function c4(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0, 0);
 }
 
-export function makeWeapon(id, merged = false) {
+export function makeWeapon(id, merged = false, skin = null) {
   const g = new THREE.Group();
+  if (id === 'knife' && skin === 'butterfly') {
+    butterfly(g);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.id = id;
+    if (merged) collapse(g, 'w:knife:butterfly');
+    return g;
+  }
   switch (id) {
     case 'ak47': rifleAK(g); break;
     case 'galil': rifleAK(g, C.olive, C.dark, C.dark); break;
@@ -370,11 +401,13 @@ export class PlayerModel {
     this.root.add(this.tag);
   }
 
-  setWeapon(wid) {
-    if (this.wid === wid) return;
+  setWeapon(wid, skin = null) {
+    const key = wid + (wid === 'knife' && skin ? ':' + skin : '');
+    if (this.wkey === key) return;
+    this.wkey = key;
     this.wid = wid;
     while (this.gunHolder.children.length) this.gunHolder.remove(this.gunHolder.children[0]);
-    if (wid) this.gunHolder.add(makeWeapon(wid, true));
+    if (wid) this.gunHolder.add(makeWeapon(wid, true, wid === 'knife' ? skin : null));
   }
 
   // 记录倒下的方向（世界坐标里“被推开”的方向），yaw 是尸体的朝向

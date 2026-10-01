@@ -9,6 +9,8 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const WNAME = { world: '摔落', c4: 'C4 爆炸', he: '手雷', molotov: '燃烧', incgrenade: '燃烧', knife: '匕首' };
 export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || (EQUIP[w] && EQUIP[w].name) || w;
+export const SKIN_NAME = { butterfly: '蝴蝶刀' };
+const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
 const REASON = { elim: '全歼敌人', time: '时间耗尽', bomb: '目标已被摧毁', defuse: '炸弹已被拆除' };
 
 export class Hud {
@@ -147,7 +149,7 @@ export class Hud {
     // 弹药
     const w = g.curWeapon();
     const item = me.inv[me.slot];
-    this.set('weapon-name', specP ? weaponName(specP.wid || 'knife') : weaponName(w.id));
+    this.set('weapon-name', specP ? weaponName(specP.wid || 'knife') : w.id === 'knife' ? knifeLabel(g.vm.knifeSkin) : weaponName(w.id));
     if (!specP && item && (me.slot === 1 || me.slot === 2)) {
       this.set('clip', String(item.clip));
       this.set('reserve', '/ ' + item.res);
@@ -436,7 +438,7 @@ export class Hud {
     let html = '';
     if (k && m.k !== m.v) html += `<span class="${this.teamCls(k.team)}">${esc(k.name)}</span>`;
     if (a) html += `<span class="as">+ ${esc(a.name)}</span>`;
-    html += `<span class="w">${esc(weaponName(m.w))}</span>`;
+    html += `<span class="w">${esc(m.w === 'knife' && k && k.skin ? knifeLabel(k.skin) : weaponName(m.w))}</span>`;
     if (m.hs) html += '<span class="hs">⌖ 爆头</span>';
     if (v) html += `<span class="${this.teamCls(v.team)}">${esc(v.name)}</span>`;
     el.innerHTML = html;
@@ -486,7 +488,7 @@ export class Hud {
     const add = (s, name) => rows.push(`<div class="${me.slot === s ? 'cur' : ''}"><kbd>${s}</kbd>${esc(name)}</div>`);
     if (me.inv[1]) add(1, weaponName(me.inv[1].w));
     if (me.inv[2]) add(2, weaponName(me.inv[2].w));
-    add(3, '匕首');
+    add(3, knifeLabel(g.vm.knifeSkin));
     if (me.inv[4].length) add(4, [...new Set(me.inv[4])].map(weaponName).join(' / '));
     if (me.inv[5]) add(5, 'C4 炸弹');
     $('weapon-list').innerHTML = rows.join('');

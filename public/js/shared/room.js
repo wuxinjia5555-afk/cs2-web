@@ -101,7 +101,7 @@ export class Room {
   }
 
   pubInfo(q) {
-    return { id: q.id, n: q.name, tm: q.team, b: q.isBot ? 1 : 0, k: q.kills, d: q.deaths, a: q.assists, sc: q.score, mv: q.mvps };
+    return { id: q.id, n: q.name, tm: q.team, b: q.isBot ? 1 : 0, k: q.kills, d: q.deaths, a: q.assists, sc: q.score, mv: q.mvps, sk: q.skin || undefined };
   }
 
   countTeam(team, humansOnly = false) {
@@ -755,6 +755,11 @@ export class Room {
       case 'team': this.setTeam(p, String(m.team)); break;
       case 'start': if (p.id === this.hostId && this.phase === 'warmup') this.startMatch(); break;
       case 'range': if (this.opts.mode === 'range') this.setRangeOpts(m.o); break;
+      case 'skin': {
+        const k = m.k === 'butterfly' ? 'butterfly' : null;
+        if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }
+        break;
+      }
     }
   }
 
