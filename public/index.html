@@ -201,6 +201,7 @@
   <div id="menu-main" class="menu">
     <div class="logo"><span>DEFUSE</span><small>爆破行动 · 网页版 CS2 风格战术射击</small></div>
     <div class="menu-box">
+      <div class="acct-bar"><span id="acct-status">未登录 · 设置只存在这台设备上</span><button class="btn small" id="btn-account">登录 / 注册</button></div>
       <label class="field"><span>昵称</span><input id="name-input" maxlength="16" placeholder="输入你的昵称"></label>
       <button class="btn big" id="btn-offline">🎯 单机练习（人机对战）</button>
       <button class="btn big" id="btn-online">🌐 联机对战</button>
@@ -319,6 +320,28 @@
       </div>
       <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
       <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
+    </div>
+  </div>
+
+  <div id="menu-account" class="menu hidden">
+    <div class="menu-box acct-box">
+      <h2>账号</h2>
+      <div id="acct-out">
+        <div class="acct-tabs"><button class="btn small on" data-tab="login">登录</button><button class="btn small" data-tab="reg">注册</button></div>
+        <label class="field"><span>账号名称</span><input id="acct-name" maxlength="16" autocomplete="username" placeholder="2~16 个字，也是你在游戏里的名字"></label>
+        <label class="field"><span>密码</span><input id="acct-pw" type="password" maxlength="64" autocomplete="current-password" placeholder="至少 4 位"></label>
+        <label class="field acct-reg hidden"><span>确认密码</span><input id="acct-pw2" type="password" maxlength="64" autocomplete="new-password" placeholder="再输一遍密码"></label>
+        <div class="acct-msg" id="acct-msg"></div>
+        <button class="btn big accent" id="acct-submit">登录</button>
+        <div class="acct-tip acct-reg hidden">注册后，这台设备现在的设置（灵敏度、手机按键布局、键位、刀皮肤等）会存进账号，以后在别的手机 / 电脑上登录就能直接用。</div>
+        <div class="acct-tip acct-login">登录后会换成账号里存的设置（画质设置每台设备单独保存）。</div>
+      </div>
+      <div id="acct-in" class="hidden">
+        <div class="acct-me">👤 <b id="acct-me-name"></b></div>
+        <div class="acct-tip" id="acct-sync"></div>
+        <div class="row"><button class="btn" id="acct-sync-now">☁ 立即同步</button><button class="btn danger" id="acct-logout">退出登录</button></div>
+      </div>
+      <div class="row"><button class="btn ghost" data-back>返回</button></div>
     </div>
   </div>
 

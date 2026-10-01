@@ -1632,7 +1632,8 @@ export class Game {
       const p = this.players.get(res.id);
       if (p) {
         const enemy = this.isEnemyId(p.id);
-        this.targetName = p.name + (enemy ? '' : ' (队友)') + (this.mode === 'range' ? `  ·  ${Math.round(res.t)} 米` : '');
+        // 瞄到敌人不显示名字（和 CS2 一样只显示队友的名字）；训练场显示距离
+        this.targetName = enemy ? (this.mode === 'range' ? `${Math.round(res.t)} 米` : '') : p.name + ' (队友)';
         this.aimEnemy = enemy && !(p.rp && p.rp.f & F.PROTECT);
       }
     }

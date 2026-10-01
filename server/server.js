@@ -11,6 +11,7 @@ import { Room } from '../public/js/shared/room.js';
 import { MAP_LIST } from '../public/js/shared/maps.js';
 import { TICK_RATE } from '../public/js/shared/constants.js';
 import { cleanText } from '../public/js/shared/util.js';
+import { createAccounts } from './accounts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -54,9 +55,45 @@ function json(res, obj) {
   res.end(s);
 }
 
+// ---------------- 账号（设置云同步） ----------------
+const accounts = createAccounts(path.join(__dirname, 'data', 'accounts.json'));
+
+function readJson(req, limit = 200000) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > limit) { resolve(null); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch { resolve(null); } });
+    req.on('error', () => resolve(null));
+  });
+}
+
+async function accountApi(req, res, what) {
+  const auth = String(req.headers.authorization || '');
+  const tkHeader = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  try {
+    if (what === 'me') return json(res, accounts.me(tkHeader));
+    if (req.method !== 'POST') return json(res, { error: '请求方式不对' });
+    const body = await readJson(req);
+    if (!body || typeof body !== 'object') return json(res, { error: '数据太大或格式不对' });
+    const tk = tkHeader || body.tk; // 关页面时用 sendBeacon 发的请求带不了请求头，令牌放在内容里
+    switch (what) {
+      case 'register': return json(res, await accounts.register(body.name, body.password, body.settings));
+      case 'login': return json(res, await accounts.login(body.name, body.password));
+      case 'settings': return json(res, accounts.saveSettings(tk, body.settings));
+      case 'logout': return json(res, accounts.logout(tk));
+    }
+    json(res, { error: '没有这个接口' });
+  } catch (e) {
+    console.error('[账号]', e);
+    json(res, { error: '服务器出错了' });
+  }
+}
+
 const handler = (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); res.end(); return; }
+  if (pathname.startsWith('/api/account/')) { accountApi(req, res, pathname.slice('/api/account/'.length)); return; }
   if (pathname === '/api/rooms') return json(res, { rooms: roomList(), online: conns.size });
   if (pathname === '/healthz') { res.writeHead(200); res.end('ok'); return; }
   if (pathname === '/api/info') {

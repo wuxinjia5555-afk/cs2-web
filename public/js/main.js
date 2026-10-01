@@ -11,16 +11,19 @@ import { mapImage } from './client/mapimg.js';
 import { buildMapMeshes, setupEnvironment } from './client/world.js';
 import { setMaxAnisotropy } from './client/textures.js';
 import { drawQR } from './client/qr.js';
+import { account, initAccount, login, register, logout, uploadNow, adoptToken } from './client/account.js';
 
 window.__gameReady = true;
 
 // 从 http 切到 https 时带过来的设置（两个地址的浏览器存储是分开的）
 {
   const q = new URLSearchParams(location.search);
-  const imp = q.get('import');
-  if (imp) {
-    try { Object.assign(settings, JSON.parse(decodeURIComponent(escape(atob(imp))))); saveSettings(); } catch {}
+  const imp = q.get('import'), tk = q.get('tk');
+  if (imp || tk) {
+    if (imp) try { Object.assign(settings, JSON.parse(decodeURIComponent(escape(atob(imp))))); saveSettings(); } catch {}
+    if (tk) adoptToken(tk); // 换公网地址时带过来的登录状态
     q.delete('import');
+    q.delete('tk');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : ''));
   }
 }
@@ -318,6 +321,7 @@ let followTip = false;
 function moveToPublic() {
   const q = new URLSearchParams(location.search);
   q.set('import', btoa(unescape(encodeURIComponent(JSON.stringify(settings)))));
+  if (account.token) q.set('tk', account.token);
   location.replace(`${newestPublic}${location.pathname}?${q}`);
 }
 async function followPublic() {
@@ -788,6 +792,67 @@ for (const b of document.querySelectorAll('[data-back]')) b.addEventListener('cl
 
 $('name-input').value = settings.name || '';
 $('name-input').addEventListener('change', () => { settings.name = $('name-input').value.trim(); saveSettings(); });
+
+// ---------------- 账号 ----------------
+let acctTab = 'login';
+function syncText() {
+  switch (account.state) {
+    case 'loading': return '登录中…';
+    case 'pending': case 'saving': return '设置同步中…';
+    case 'error': return '同步失败（网络不好，会自动重试）';
+    case 'ok': return '设置已同步到账号';
+    default: return '';
+  }
+}
+function renderAccount() {
+  const on = !!account.name;
+  $('acct-status').innerHTML = on ? `👤 <b>${esc(account.name)}</b> · ${esc(syncText())}` : account.state === 'loading' ? '登录中…' : '未登录 · 设置只存在这台设备上';
+  $('btn-account').textContent = on ? '账号' : '登录 / 注册';
+  $('name-input').disabled = on;
+  $('name-input').value = on ? account.name : settings.name || '';
+  $('name-input').title = on ? '登录后昵称就是账号名称' : '';
+  $('acct-out').classList.toggle('hidden', on);
+  $('acct-in').classList.toggle('hidden', !on);
+  $('acct-me-name').textContent = account.name;
+  const t = account.lastSync ? new Date(account.lastSync).toTimeString().slice(0, 5) : '';
+  $('acct-sync').textContent = on ? `${syncText()}${t && account.state === 'ok' ? `（${t}）` : ''}。在别的手机 / 电脑上用这个账号登录，就能用同一套设置。` : '';
+}
+function setAcctTab(tab) {
+  acctTab = tab;
+  for (const b of document.querySelectorAll('.acct-tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
+  for (const el of document.querySelectorAll('.acct-reg')) el.classList.toggle('hidden', tab !== 'reg');
+  for (const el of document.querySelectorAll('.acct-login')) el.classList.toggle('hidden', tab !== 'login');
+  $('acct-submit').textContent = tab === 'reg' ? '注册并登录' : '登录';
+  $('acct-pw').autocomplete = tab === 'reg' ? 'new-password' : 'current-password';
+  $('acct-msg').textContent = '';
+}
+async function acctSubmit() {
+  const name = $('acct-name').value.trim(), pw = $('acct-pw').value, pw2 = $('acct-pw2').value;
+  const msg = (t) => { $('acct-msg').textContent = t; };
+  if (name.length < 2) return msg('名称至少 2 个字');
+  if (pw.length < 4) return msg('密码至少 4 位');
+  if (acctTab === 'reg' && pw !== pw2) return msg('两次输入的密码不一样');
+  $('acct-submit').disabled = true;
+  msg(acctTab === 'reg' ? '正在注册…' : '正在登录…');
+  const r = acctTab === 'reg' ? await register(name, pw) : await login(name, pw);
+  $('acct-submit').disabled = false;
+  if (r.error) return msg(r.error);
+  $('acct-pw').value = '';
+  $('acct-pw2').value = '';
+  msg('');
+  audio.setVolume(settings.volume);
+  toast(acctTab === 'reg' ? `注册成功，欢迎 ${r.name}！设置已存进账号` : `欢迎回来，${r.name}！已换成账号里的设置`);
+  showMenu('menu-main');
+}
+account.onChange = renderAccount;
+$('btn-account').addEventListener('click', () => { audio.init(); audio.play('click'); renderAccount(); setAcctTab(acctTab); showMenu('menu-account'); });
+for (const b of document.querySelectorAll('.acct-tabs [data-tab]')) b.addEventListener('click', () => { audio.play('click'); setAcctTab(b.dataset.tab); });
+$('acct-submit').addEventListener('click', acctSubmit);
+for (const id of ['acct-name', 'acct-pw', 'acct-pw2']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') acctSubmit(); });
+$('acct-logout').addEventListener('click', async () => { await logout(); toast('已退出登录（这台设备上的设置还在）'); renderAccount(); });
+$('acct-sync-now').addEventListener('click', () => uploadNow());
+renderAccount();
+initAccount().then(() => audio.setVolume(settings.volume));
 
 window.addEventListener('error', (e) => { if (e && e.message) console.error(e.message); });
 

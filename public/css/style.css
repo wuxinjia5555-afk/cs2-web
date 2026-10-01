@@ -582,3 +582,23 @@ body.touch .buy-item .buy-rf { font-size: 13px; padding: 4px 10px; }
 
 /* 手机：丢弃按钮 */
 .t-dropbtn { width: calc(var(--tb) * .66); height: calc(var(--tb) * .66); right: calc(var(--tb) * 4.1 + env(safe-area-inset-right)); bottom: calc(var(--tb) * 2.2); font-size: 12px; }
+
+/* 账号 */
+.acct-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; padding: 7px 10px; border-radius: 8px;
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-size: 13px; color: var(--dim); }
+.acct-bar b { color: #fff; }
+.btn.small { padding: 5px 10px; font-size: 13px; min-height: 0; }
+.acct-box { display: flex; flex-direction: column; gap: 10px; }
+.acct-box h2 { margin: 0; }
+.acct-tabs { display: flex; gap: 6px; }
+.acct-tabs .btn { flex: 1; }
+.acct-tabs .btn.on { background: var(--acc); color: #111; border-color: var(--acc); }
+.acct-msg { min-height: 18px; font-size: 13px; color: #ff8a7a; }
+.acct-tip { font-size: 12px; color: var(--dim); line-height: 1.5; }
+.acct-me { font-size: 18px; }
+#name-input:disabled { opacity: .75; }
+@media (max-height: 540px) {
+  .acct-box { gap: 6px; }
+  .acct-tip { display: none; }
+  #acct-sync { display: block; }
+}

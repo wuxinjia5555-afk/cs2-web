@@ -4,3 +4,4 @@ node_modules/
 server/cert/
 server/public-url.txt
 公网二维码.png
+server/data/

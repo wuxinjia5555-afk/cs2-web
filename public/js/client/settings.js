@@ -67,6 +67,11 @@ export const DEFAULTS = {
   skins: { knife: 'default' }, // 背包里选的皮肤
 };
 
+// 默认值 + 保存的值（嵌套的对象逐项合并，新版本加的设置项也有默认值）
+function merge(base, s) {
+  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) }, binds: { ...base.binds, ...(s.binds || {}) }, touchLayout: s.touchLayout || {}, skins: { ...base.skins, ...(s.skins || {}) } };
+}
+
 function load() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { s = null; }
@@ -76,13 +81,26 @@ function load() {
     if (deviceIsTouch()) { base.shadows = false; base.res = 0.75; base.xhair.len = 7; base.xhair.thick = 2; }
     return base;
   }
-  return { ...base, ...s, xhair: { ...base.xhair, ...(s.xhair || {}) }, binds: { ...base.binds, ...(s.binds || {}) }, touchLayout: s.touchLayout || {}, skins: { ...base.skins, ...(s.skins || {}) } };
+  return merge(base, s);
 }
 
 export const settings = load();
 
+// saved：每次保存设置后调用（账号模块用它把设置同步到服务器）
+export const settingsHooks = { saved: null };
+
 export function saveSettings() {
   try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch {}
+  if (settingsHooks.saved) settingsHooks.saved();
+}
+
+// 用账号里的设置整个替换本地设置；keep 里的键保留这台设备自己的值（画质等）
+export function replaceSettings(remote, keep = []) {
+  const local = {};
+  for (const k of keep) if (k in settings) local[k] = settings[k];
+  const next = merge(JSON.parse(JSON.stringify(DEFAULTS)), { ...remote, ...local });
+  for (const k of Object.keys(settings)) delete settings[k];
+  Object.assign(settings, next);
 }
 
 export function resetSettings() {
