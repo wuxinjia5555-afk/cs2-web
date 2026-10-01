@@ -145,6 +145,20 @@
   </div>
 </div>
 
+<!-- 靶场设置 -->
+<div id="rangepanel" class="overlay hidden">
+  <div class="panel narrow">
+    <h2>靶场设置</h2>
+    <label class="field"><span>假人数量 <b id="rp-count-v"></b></span><input type="range" id="rp-count" min="0" max="18" step="1"></label>
+    <label class="field"><span>假人移动</span><select id="rp-move"><option value="default">默认（有的站着、有的左右走）</option><option value="static">全部站着不动</option><option value="moving">全部左右移动</option></select></label>
+    <label class="field"><span>假人护甲</span><select id="rp-armor"><option value="mixed">防弹衣（一半带头盔）</option><option value="helmet">防弹衣 + 头盔</option><option value="vest">只有防弹衣</option><option value="none">没有护甲</option></select></label>
+    <label class="field"><span>子弹</span><select id="rp-ammo"><option value="reserve">无限备弹（需要换弹）</option><option value="mag">无限子弹（不用换弹）</option><option value="off">正常（会打光）</option></select></label>
+    <label class="check"><input type="checkbox" id="rp-regen"> 假人 3 秒没挨打自动回满血</label>
+    <label class="check"><input type="checkbox" id="rp-dmg"> 显示伤害数字</label>
+    <div class="row"><button class="btn ghost" id="rp-reset">清零统计</button><button class="btn" id="rp-close">关闭（0 键）</button></div>
+  </div>
+</div>
+
 <!-- 全屏说明（iPhone） -->
 <div id="fshelp" class="overlay hidden">
   <div class="panel">
@@ -273,6 +287,8 @@
         <label class="field"><span>滑屏灵敏度 <b id="v-tsens"></b></span><input type="range" id="s-tsens" min="0.3" max="3" step="0.05"></label>
         <label class="field"><span>按钮大小 <b id="v-bscale"></b></span><input type="range" id="s-bscale" min="0.7" max="1.4" step="0.05"></label>
         <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
+        <label class="field"><span>蹲键方式</span><select id="s-crouchmode"><option value="toggle">点按切换（点一下蹲、再点站起）</option><option value="hold">按住蹲（松手站起）</option><option value="mixed">混合（点按切换，长按为按住蹲）</option></select></label>
+        <label class="field"><span>开镜方式</span><select id="s-scopemode"><option value="toggle">点按切换</option><option value="hold">按住开镜（松手关镜）</option><option value="mixed">混合（点按切换，长按为按住开镜）</option></select></label>
         <label class="field"><span>开镜灵敏度 <b id="v-tzoom"></b></span><input type="range" id="s-tzoom" min="0.3" max="2" step="0.05"></label>
         <label class="field"><span>陀螺仪灵敏度 <b id="v-gsens"></b></span><input type="range" id="s-gsens" min="0.2" max="3" step="0.1"></label>
         <label class="check"><input type="checkbox" id="s-assist"> 辅助瞄准（准星靠近敌人时减速+轻微吸附）</label>

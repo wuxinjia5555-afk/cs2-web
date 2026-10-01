@@ -17,9 +17,15 @@ const HTML = `
 <button class="t-btn t-reload" data-act="reload"><span>换弹</span></button>
 <button class="t-btn t-alt" data-act="alt"><span>开镜</span></button>
 <button class="t-btn t-use" data-act="use"><span>拆弹</span></button>
+<button class="t-btn t-knife" data-act="knife"><span>刀</span></button>
+<button class="t-btn t-nade" data-act="nade"><span>道具</span></button>
+<button class="t-btn t-inspect" data-act="inspect"><span>检视</span></button>
+<div class="t-radar-proxy"><span>小地图</span></div>
+<div class="t-wheel"></div>
 <div class="t-weapons"></div>
 <button class="t-sm t-buy" data-act="buy">🛒 购买</button>
 <div class="t-top">
+  <button class="t-sm t-rangebtn off" data-act="rangepanel">🎯 靶场</button>
   <button class="t-sm" data-act="score">📋</button>
   <button class="t-sm" data-act="chat">💬</button>
   <button class="t-sm t-fs" data-act="fs" title="全屏">⛶</button>
@@ -30,7 +36,16 @@ const HTML = `
 
 // 可以自定义位置和大小的按钮
 const CUSTOM = [['fire', '.t-fire', '开火'], ['firel', '.t-fire-l', '左开火'], ['jump', '.t-jump', '跳'], ['crouch', '.t-crouch', '蹲'],
-  ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏']];
+  ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏'],
+  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['radar', '.t-radar-proxy', '小地图']];
+const NADE_SHORT = { he: '手雷', flash: '闪光', smoke: '烟雾', molotov: '燃烧', incgrenade: '燃烧' };
+
+// 小地图的位置（不在游戏里时 HUD 是隐藏的，用默认尺寸估算）
+function radarRect(rw) {
+  const r = rw ? rw.getBoundingClientRect() : null;
+  if (r && r.width) return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, size: rw.offsetWidth };
+  return { cx: 6 + 56, cy: 6 + 56, size: 112 };
+}
 
 let gyroTipShown = '';
 function gyroTip(text) {
@@ -89,21 +104,35 @@ export class TouchControls {
 
   applyCustom(layout) {
     for (const [key, sel] of CUSTOM) {
-      const e = this.q(sel);
-      if (!e) continue;
+      const els = [this.q(sel)];
+      if (key === 'radar') els.push(document.getElementById('radar-wrap'));
       const c = layout && layout[key];
-      if (c) {
-        e.classList.add('cl');
-        e.style.left = (c.x * 100).toFixed(2) + '%';
-        e.style.top = (c.y * 100).toFixed(2) + '%';
-        e.style.setProperty('--ts', String(c.s || 1));
-      } else {
-        e.classList.remove('cl');
-        e.style.left = '';
-        e.style.top = '';
-        e.style.removeProperty('--ts');
+      for (const e of els) {
+        if (!e) continue;
+        if (c) {
+          e.classList.add('cl');
+          e.style.left = (c.x * 100).toFixed(2) + '%';
+          e.style.top = (c.y * 100).toFixed(2) + '%';
+          e.style.setProperty('--ts', String(c.s || 1));
+        } else {
+          e.classList.remove('cl');
+          e.style.left = '';
+          e.style.top = '';
+          e.style.removeProperty('--ts');
+        }
       }
     }
+    this.syncRadarProxy();
+  }
+
+  // 编辑布局时，小地图上盖一个可以拖动的框
+  syncRadarProxy() {
+    const px = this.q('.t-radar-proxy'), rw = document.getElementById('radar-wrap');
+    if (!px || !rw || !this.editing) return;
+    const r = radarRect(rw);
+    px.style.width = r.size + 'px';
+    px.style.height = r.size + 'px';
+    if (!px.classList.contains('cl')) { px.style.left = r.cx + 'px'; px.style.top = r.cy + 'px'; }
   }
 
   // ---------------- 自定义按钮布局 ----------------
@@ -116,6 +145,7 @@ export class TouchControls {
     this.sel = null;
     this.el.classList.remove('hidden');
     this.el.classList.add('editing');
+    this.syncRadarProxy();
     const bar = this.q('.t-weapons');
     this.savedBar = bar.innerHTML;
     if (!bar.children.length) bar.innerHTML = '<button class="t-slot cur">主武器</button><button class="t-slot">手枪</button><button class="t-slot">刀</button>';
@@ -162,6 +192,7 @@ export class TouchControls {
 
   centerOf(key) {
     const sel = CUSTOM.find((c) => c[0] === key)[1];
+    if (key === 'radar') { const rr = radarRect(document.getElementById('radar-wrap')); return { x: rr.cx / innerWidth, y: rr.cy / innerHeight, s: 1 }; }
     const r = this.q(sel).getBoundingClientRect();
     return { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight, s: 1 };
   }
@@ -206,6 +237,7 @@ export class TouchControls {
     e.preventDefault();
     audio.init();
     const btn = e.target.closest('[data-act]');
+    if (this.wheelOpen && !(btn && (btn.dataset.act.startsWith('pick:') || btn.dataset.act === 'nade'))) this.closeWheel();
     try { this.el.setPointerCapture(e.pointerId); } catch {}
     const p = { kind: 'look', x: e.clientX, y: e.clientY, act: null, btn: null };
     if (btn) {
@@ -253,6 +285,8 @@ export class TouchControls {
       if (Math.hypot(mx, my) < 0.14) { mx = 0; my = 0; }
       this.inp.moveX = mx;
       this.inp.moveY = my;
+    } else if (p.kind === 'btn' && p.act === 'nade' && this.wheelOpen) {
+      this.wheelMove(e.clientX, e.clientY);
     } else if (p.kind === 'look' || (p.kind === 'btn' && p.act === 'fire')) {
       this.inp.tdx += dx;
       this.inp.tdy += dy;
@@ -281,15 +315,35 @@ export class TouchControls {
   press(act, down) {
     const inp = this.inp, g = this.g;
     switch (act) {
-      case 'fire': inp.vMouse(0, down); break;
-      case 'alt': inp.vMouse(2, down); break;
+      case 'fire': {
+        // 拿着投掷物、选了“近抛”时，开火键用右键的轻抛
+        if (down) { const w = g.curWeapon(); this.fireBtn = w.type === 'grenade' && this.throwShort ? 2 : 0; }
+        inp.vMouse(this.fireBtn || 0, down);
+        break;
+      }
+      case 'alt': {
+        const w = g.curWeapon();
+        if (w.type === 'grenade') { if (down) this.throwShort = !this.throwShort; break; }
+        this.scopePress(down, w);
+        break;
+      }
+      case 'inspect': inp.vKey('KeyF', down); break;
+      case 'knife': if (down) this.knifeToggle(); break;
+      case 'nade':
+        // 短按：依次切换；长按：中间弹出轮盘，往哪边滑就选哪个
+        if (down) { clearTimeout(this.wheelTimer); this.wheelTimer = setTimeout(() => this.openWheel(), 330); }
+        else {
+          clearTimeout(this.wheelTimer);
+          if (this.wheelOpen) { if (this.wheelSel) { this.pickNade(this.wheelSel); this.closeWheel(); } }
+          else this.nadeCycle();
+        }
+        break;
+      case 'rangepanel': if (down) g.openRangePanel(); break;
       case 'jump': inp.vKey('Space', down); break;
       case 'reload': inp.vKey('KeyR', down); break;
       case 'use': inp.vKey('KeyE', down); break;
       case 'drop': inp.vKey('KeyG', down); break;
-      case 'crouch':
-        if (down) { this.crouchOn = !this.crouchOn; inp.vKey('ControlLeft', this.crouchOn); }
-        break;
+      case 'crouch': this.crouchPress(down); break;
       case 'buy': if (down) g.openBuy(); break;
       case 'score': if (down) { if (g.hud.sbOpen) g.hud.closeScoreboard(); else g.hud.openScoreboard(); } break;
       case 'chat': if (down) g.openChat(false); break;
@@ -298,8 +352,97 @@ export class TouchControls {
       case 'specPrev': if (down) g.cycleSpec(-1); break;
       case 'specNext': if (down) g.cycleSpec(1); break;
       default:
-        if (down && act.startsWith('slot')) g.switchSlot(+act.slice(4));
+        if (down && act.startsWith('pick:')) { this.pickNade(act.slice(5)); this.closeWheel(); }
+        else if (down && act.startsWith('slot')) g.switchSlot(+act.slice(4));
     }
+  }
+
+  // 蹲：点按切换 / 按住蹲 / 混合（点一下切换，按住超过 0.35 秒就是按住蹲）
+  crouchPress(down) {
+    const mode = settings.crouchMode || 'toggle';
+    const set = (on) => { this.crouchOn = on; this.inp.vKey('ControlLeft', on); };
+    if (mode === 'hold') { set(down); return; }
+    if (mode === 'toggle') { if (down) set(!this.crouchOn); return; }
+    if (down) {
+      this.crouchT = performance.now();
+      this.standOnUp = this.crouchOn;
+      if (!this.crouchOn) set(true);
+    } else if (this.standOnUp || performance.now() - this.crouchT > 350) set(false);
+  }
+
+  // 开镜：点按切换 / 按住开镜 / 混合
+  scopePress(down, w) {
+    const mode = settings.scopeMode || 'toggle', g = this.g, inp = this.inp;
+    if (mode === 'toggle' || !w.scope) { inp.vMouse(2, down); return; }
+    if (down) {
+      this.altT = performance.now();
+      this.unscopeOnUp = mode === 'mixed' && g.w.scope > 0;
+      if (!g.w.scope) { inp.vMouse(2, true); inp.vMouse(2, false); }
+    } else if (mode === 'hold' || this.unscopeOnUp || performance.now() - this.altT > 350) g.unscope();
+  }
+
+  // 切刀：按一下拿刀，再按一下切回原来的武器
+  knifeToggle() {
+    const g = this.g, me = g.me;
+    if (!me.alive) return;
+    if (me.slot === 3) g.switchSlot(g.slotValid(this.knifeBack) && this.knifeBack !== 3 ? this.knifeBack : g.bestSlot());
+    else { this.knifeBack = me.slot; g.switchSlot(3); }
+  }
+
+  openWheel() {
+    const me = this.g.me;
+    const types = [...new Set(me.inv[4] || [])];
+    if (!me.alive || !types.length) return;
+    const ICON = { he: '💥', flash: '⚡', smoke: '☁', molotov: '🔥', incgrenade: '🔥' };
+    const R = Math.min(110, Math.min(innerWidth, innerHeight) * 0.24);
+    const wheel = this.q('.t-wheel');
+    wheel.innerHTML = '<div class="t-wheel-bg"></div>' + types.map((t, i) => {
+      const a = -Math.PI / 2 + (i * Math.PI * 2) / types.length;
+      const n = me.inv[4].filter((x) => x === t).length;
+      return `<button class="t-wheel-item${me.slot === 4 && me.nade === t ? ' cur' : ''}" data-act="pick:${t}" data-a="${a}" style="left:${(Math.cos(a) * R).toFixed(1)}px;top:${(Math.sin(a) * R).toFixed(1)}px">${ICON[t] || '●'}<span>${NADE_SHORT[t] || t}${n > 1 ? ' ×' + n : ''}</span></button>`;
+    }).join('');
+    wheel.classList.add('on');
+    this.wheelOpen = true;
+    this.wheelSel = null;
+    const p = [...this.ptrs.values()].find((q) => q.act === 'nade');
+    this.wheelOrigin = p ? { x: p.x, y: p.y } : null;
+  }
+
+  wheelMove(x, y) {
+    if (!this.wheelOpen || !this.wheelOrigin) return;
+    const dx = x - this.wheelOrigin.x, dy = y - this.wheelOrigin.y;
+    let best = null;
+    if (Math.hypot(dx, dy) > 24) {
+      const ang = Math.atan2(dy, dx);
+      let bd = Infinity;
+      for (const el of this.q('.t-wheel').querySelectorAll('.t-wheel-item')) {
+        const d = Math.abs(Math.atan2(Math.sin(ang - +el.dataset.a), Math.cos(ang - +el.dataset.a)));
+        if (d < bd) { bd = d; best = el; }
+      }
+    }
+    for (const el of this.q('.t-wheel').querySelectorAll('.t-wheel-item')) el.classList.toggle('sel', el === best);
+    this.wheelSel = best ? best.dataset.act.slice(5) : null;
+  }
+
+  closeWheel() {
+    this.wheelOpen = false;
+    this.wheelSel = null;
+    this.q('.t-wheel').classList.remove('on');
+  }
+
+  pickNade(type) {
+    const g = this.g;
+    if (!g.me.alive || !(g.me.inv[4] || []).includes(type)) return;
+    g.me.nade = type;
+    g.switchSlot(4, true);
+  }
+
+  // 投掷物：按一下切到投掷物，已经拿着时再按切换下一种
+  nadeCycle() {
+    const g = this.g;
+    if (!g.me.alive) return;
+    if (!g.me.inv[4].length) { g.hud.center('没有投掷物', 1.2); return; }
+    g.switchSlot(4);
   }
 
   // 所有触点松开（打开菜单时）
@@ -333,9 +476,18 @@ export class TouchControls {
     const w = g.curWeapon();
     const fire = w.type === 'grenade' ? '投掷' : w.type === 'c4' ? '安放' : w.type === 'knife' ? '挥刀' : '开火';
     this.set('.t-fire span', 'fire', fire, (el, v) => { el.textContent = v; this.q('.t-fire-l span').textContent = v; });
-    const alt = w.type === 'sniper' ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? '轻抛' : '';
+    const alt = w.type === 'sniper' ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? (this.throwShort ? '近抛' : '远抛') : '';
     this.set('.t-alt', 'alt', alt, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-reload', 'reload', isGun(w), (el, v) => el.classList.toggle('off', !v));
+    this.set('.t-alt', 'altLit', w.type === 'grenade' && !!this.throwShort, (el, v) => el.classList.toggle('lit', v));
+    this.set('.t-knife span', 'knife', me.slot === 3 ? '切回' : '刀', (el, v) => { el.textContent = v; });
+    const nades = me.inv[4] || [];
+    const nadeLabel = me.slot === 4 && me.nade ? NADE_SHORT[me.nade] || '道具' : '道具';
+    this.set('.t-nade', 'nadeOff', !nades.length, (el, v) => el.classList.toggle('off', v));
+    this.set('.t-nade span', 'nade', nadeLabel, (el, v) => { el.textContent = v; });
+    this.set('.t-rangebtn', 'range', g.mode === 'range', (el, v) => el.classList.toggle('off', !v));
+    if (this.wheelOpen && !alive) this.closeWheel();
+    this.set('.t-nade', 'nadeLit', me.slot === 4, (el, v) => el.classList.toggle('lit', v));
     const use = g.useContext();
     this.set('.t-use', 'use', use, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-buy', 'buy', g.canBuy(), (el, v) => el.classList.toggle('off', !v));

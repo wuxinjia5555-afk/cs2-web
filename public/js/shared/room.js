@@ -56,6 +56,8 @@ export class Room {
     this.roundPlanted = false;
     this.plan = { T: 'A', ct: 0 };
     this.intel = { T: new Map(), CT: new Map() };
+    // 靶场设置：假人数量 / 移动 / 护甲、子弹、假人回血
+    this.rangeOpts = { count: 18, move: 'default', armor: 'mixed', ammo: 'reserve', regen: true };
     if (o.mode === 'dm' || o.mode === 'range') this.startMatch();
     else if (o.warmup) this.startWarmup();
   }
@@ -297,15 +299,19 @@ export class Room {
   // 靶场：按地图上的位置放假人
   spawnDummies() {
     for (const p of [...this.players.values()]) if (p.dummy) this.removePlayer(p.id);
-    (this.map.dummies || []).forEach((d, i) => {
+    const r = this.rangeOpts;
+    (this.map.dummies || []).slice(0, r.count).forEach((d0, i) => {
+      const d = { ...d0 };
+      if (r.move === 'static') d.kind = d0.kind === 'crouch' ? 'crouch' : 'static';
+      else if (r.move === 'moving') { d.kind = 'strafe'; d.crouch = false; d.w = Math.max(d0.w, 4); }
       const p = this.newPlayer('假人 ' + (i + 1), true);
       p.team = 'T';
       p.inv = { 1: this.item(i % 4 === 3 ? 'awp' : 'ak47'), 2: this.item('glock'), 4: [], 5: false };
       p.slot = 1;
       p.dummy = d;
       p.bot = new DummyBrain(this, p, d);
-      p.armor = 100;
-      p.helmet = i % 2 === 0;
+      p.armor = r.armor === 'none' ? 0 : 100;
+      p.helmet = r.armor === 'helmet' || (r.armor === 'mixed' && i % 2 === 0);
       this.players.set(p.id, p);
       this.bcast({ t: 'pjoin', p: this.pubInfo(p) });
       this.spawnPlayer(p, d);
@@ -316,14 +322,19 @@ export class Room {
   rangeTick() {
     const sec = this.tickN % TICK_RATE === 0;
     for (const p of this.players.values()) {
+      const r = this.rangeOpts;
       if (p.dummy) {
-        if (p.alive && (p.hp < 100 || p.armor < 100) && this.time - (p.lastHurtT || 0) > 3) { p.hp = 100; p.armor = 100; p.dirty = true; }
-      } else if (sec && p.alive) {
+        const ar = r.armor === 'none' ? 0 : 100;
+        if (r.regen && p.alive && (p.hp < 100 || p.armor < ar) && this.time - (p.lastHurtT || 0) > 3) { p.hp = 100; p.armor = ar; p.dirty = true; }
+      } else if (p.alive) {
         for (const s of [1, 2]) {
           const it = p.inv[s];
-          if (it && it.res < WEAPONS[it.w].res) { it.res = WEAPONS[it.w].res; p.dirty = true; }
+          if (!it) continue;
+          const w = WEAPONS[it.w];
+          if (r.ammo === 'mag' && it.clip < w.mag) { it.clip = w.mag; p.dirty = true; }
+          if (sec && r.ammo !== 'off' && it.res < w.res) { it.res = w.res; p.dirty = true; }
         }
-        if (p.money < ECON.max) { p.money = ECON.max; p.dirty = true; }
+        if (sec && p.money < ECON.max) { p.money = ECON.max; p.dirty = true; }
       }
     }
   }
@@ -521,7 +532,7 @@ export class Room {
   respawnDead() {
     for (const p of this.players.values()) {
       if (p.alive || (p.team !== 'T' && p.team !== 'CT') || !p.respawnAt || this.time < p.respawnAt) continue;
-      if (p.dummy) { p.armor = 100; this.spawnPlayer(p, p.dummy); continue; }
+      if (p.dummy) { p.armor = this.rangeOpts.armor === 'none' ? 0 : 100; this.spawnPlayer(p, p.dummy); continue; }
       if (this.phase === 'dm') p.inv = this.dmInv(p);
       else {
         if (!p.inv[1] && !p.inv[2]) p.inv = this.defaultInv(p.team);
@@ -743,7 +754,20 @@ export class Room {
       case 'chat': this.onChat(p, m); break;
       case 'team': this.setTeam(p, String(m.team)); break;
       case 'start': if (p.id === this.hostId && this.phase === 'warmup') this.startMatch(); break;
+      case 'range': if (this.opts.mode === 'range') this.setRangeOpts(m.o); break;
     }
+  }
+
+  setRangeOpts(o) {
+    if (!o || typeof o !== 'object') return;
+    const r = this.rangeOpts, before = [r.count, r.move, r.armor].join();
+    if (isNum(o.count)) r.count = clamp(o.count | 0, 0, (this.map.dummies || []).length);
+    if (['default', 'static', 'moving'].includes(o.move)) r.move = o.move;
+    if (['mixed', 'helmet', 'vest', 'none'].includes(o.armor)) r.armor = o.armor;
+    if (['reserve', 'mag', 'off'].includes(o.ammo)) r.ammo = o.ammo;
+    if (typeof o.regen === 'boolean') r.regen = o.regen;
+    if ([r.count, r.move, r.armor].join() !== before) this.spawnDummies();
+    this.bcast({ t: 'rangeopts', o: r });
   }
 
   onState(p, m) {
@@ -1351,6 +1375,7 @@ export class Room {
       fires: this.fires.map((f) => ({ id: f.id, p: [r2(f.x), r2(f.y), r2(f.z)], left: f.until - this.time })),
       drops: this.drops.map((d) => [d.id, d.w, r2(d.pr.x), r2(d.pr.y), r2(d.pr.z), 0, 0, 0]),
       me: { p: [r2(p.x), r2(p.y), r2(p.z)], yaw: r3(p.yaw), al: p.alive ? 1 : 0, tm: p.team },
+      ro: this.opts.mode === 'range' ? this.rangeOpts : undefined,
     });
     p.dirty = true;
   }

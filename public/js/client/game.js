@@ -13,7 +13,7 @@ import { Effects } from './effects.js';
 import { Hud, weaponName } from './hud.js';
 import { Input } from './input.js';
 import { audio } from './audio.js';
-import { settings, useTouch } from './settings.js';
+import { settings, saveSettings, useTouch } from './settings.js';
 import { TouchControls } from './touch.js';
 
 const BASE_FOV = 73.74;
@@ -51,6 +51,7 @@ export class Game {
     this.input.setBinds(settings.binds);
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
+    this.rangeOpts = init.ro || null;
     this.assist = null;
     this.aimEnemy = false;
 
@@ -180,6 +181,10 @@ export class Game {
     });
     on($('btn-quit'), 'click', () => this.exit());
     on($('btn-qr-room'), 'click', () => { $('pause').classList.add('hidden'); if (window.__showQR) window.__showQR(this.code); });
+    for (const id of ['rp-count', 'rp-move', 'rp-armor', 'rp-ammo', 'rp-regen']) on($(id), id === 'rp-count' ? 'input' : 'change', () => this.sendRangeOpts());
+    on($('rp-dmg'), 'change', () => { settings.rangeDmg = $('rp-dmg').checked; saveSettings(); });
+    on($('rp-reset'), 'click', () => { if (this.rangeStats) { Object.assign(this.rangeStats, { shots: 0, hits: 0, hs: 0, kills: 0 }); this.hud.rangeStats(this.rangeStats); } });
+    on($('rp-close'), 'click', () => this.closeRangePanel());
     on($('scoreboard'), 'pointerdown', () => { if (this.isTouch) this.hud.closeScoreboard(); });
     on($('buymenu'), 'pointerdown', (e) => { if (e.target.id === 'buymenu') this.closeBuy(); });
     for (const b of document.querySelectorAll('[data-close="buymenu"]')) on(b, 'click', () => this.closeBuy());
@@ -198,7 +203,7 @@ export class Game {
   }
 
   anyOverlay() {
-    return ['buymenu', 'teamselect', 'pause', 'menu-settings', 'qrbox', 'fshelp', 'reconnect'].some((id) => !$(id).classList.contains('hidden')) || this.chatOpen;
+    return ['buymenu', 'teamselect', 'pause', 'menu-settings', 'qrbox', 'fshelp', 'reconnect', 'rangepanel'].some((id) => !$(id).classList.contains('hidden')) || this.chatOpen;
   }
 
   toast(text) {
@@ -238,6 +243,40 @@ export class Game {
     this.suppressPause = true;
     this.input.unlock();
     $('teamselect').classList.remove('hidden');
+  }
+
+  // ---------------- 靶场设置面板 ----------------
+  openRangePanel() {
+    if (this.mode !== 'range') return;
+    this.suppressPause = true;
+    this.input.unlock();
+    this.syncRangePanel();
+    $('rangepanel').classList.remove('hidden');
+    if (this.touch) this.touch.reset();
+  }
+
+  closeRangePanel() {
+    $('rangepanel').classList.add('hidden');
+    if (!this.anyOverlay()) this.input.lock();
+  }
+
+  syncRangePanel() {
+    const o = this.rangeOpts;
+    if (!o) return;
+    $('rp-count').max = String(this.map.dummies.length);
+    $('rp-count').value = String(o.count);
+    $('rp-count-v').textContent = String(o.count);
+    $('rp-move').value = o.move;
+    $('rp-armor').value = o.armor;
+    $('rp-ammo').value = o.ammo;
+    $('rp-regen').checked = !!o.regen;
+    $('rp-dmg').checked = settings.rangeDmg !== false;
+  }
+
+  sendRangeOpts() {
+    const o = { count: +$('rp-count').value, move: $('rp-move').value, armor: $('rp-armor').value, ammo: $('rp-ammo').value, regen: $('rp-regen').checked };
+    $('rp-count-v').textContent = String(o.count);
+    this.net.send({ t: 'range', o });
   }
 
   openBuy() {
@@ -428,6 +467,7 @@ export class Game {
       case 'hurt': this.onHurt(m); break;
       case 'hit': this.onHit(m); break;
       case 'shot': this.onShot(m); break;
+      case 'rangeopts': this.rangeOpts = m.o; if (!$('rangepanel').classList.contains('hidden')) this.syncRangePanel(); break;
       case 'rl': { const p = this.players.get(m.id); if (p && p.rp) audio.reloadAt([p.rp.x, p.rp.y + 1.2, p.rp.z]); break; }
       case 'gthrow': this.onNadeThrow(m); break;
       case 'gdet': this.onNadeDet(m); break;
@@ -544,6 +584,15 @@ export class Game {
   }
   bestSlot() { return this.me.inv[1] ? 1 : this.me.inv[2] ? 2 : 3; }
 
+  unscope() {
+    const W = this.w;
+    if (!W.scope) return;
+    W.scope = 0;
+    W.rescopeAt = 0;
+    W.resume = 0;
+    audio.play('scope');
+  }
+
   onSpawn(m) {
     const s = this.sim;
     s.x = m.p[0]; s.y = m.p[1]; s.z = m.p[2];
@@ -618,7 +667,7 @@ export class Game {
   onHit(m) {
     const kill = !!m.k, head = m.g === HG.HEAD;
     if (this.mode === 'range') {
-      this.hud.damagePop(m.d, head, kill);
+      if (settings.rangeDmg !== false) this.hud.damagePop(m.d, head, kill);
       const st = this.rangeStats;
       st.hits++;
       if (head) st.hs++;
@@ -974,9 +1023,14 @@ export class Game {
       if (inp.hit('KeyB') || inp.hit('Escape')) this.closeBuy();
       return;
     }
+    if (!$('rangepanel').classList.contains('hidden')) {
+      if (inp.hit('Digit0') || inp.hit('Escape')) this.closeRangePanel();
+      return;
+    }
     if (inp.hit('Escape') && inp.locked) { inp.unlock(); return; }
     if (this.paused) return;
     if (inp.hit('KeyB')) { this.openBuy(); return; }
+    if (inp.hit('Digit0') && this.mode === 'range') { this.openRangePanel(); return; }
     if (inp.hit('KeyY')) { this.openChat(false); return; }
     if (inp.hit('KeyU')) { this.openChat(true); return; }
     if (inp.hit('KeyM') && this.mode === 'bomb') { this.showTeamSelect(); return; }
@@ -1305,7 +1359,7 @@ export class Game {
 
   fireOnce(w, it) {
     const W = this.w, now = this.now;
-    it.clip--;
+    if (!(this.rangeOpts && this.rangeOpts.ammo === 'mag')) it.clip--;
     W.nextFire = now + 60 / w.rpm;
     W.lastShot = now;
     const inacc = this.currentInacc(w);

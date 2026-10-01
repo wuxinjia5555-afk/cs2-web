@@ -517,3 +517,23 @@ body.touch #kill-icons { display: none; }
 #range-stats b { color: var(--acc); }
 #range-stats button { margin-top: 4px; height: 26px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .08); color: #fff; font-family: inherit; cursor: pointer; }
 body.touch #range-stats { top: auto; bottom: calc(var(--tb, 60px) * 1.3); left: calc(8px + env(safe-area-inset-left)); font-size: 11px; padding: 5px 8px; }
+
+/* 切刀 / 投掷物 / 检视按钮（默认位置，可在布局编辑里改） */
+.t-knife { width: calc(var(--tb) * .78); height: calc(var(--tb) * .78); right: calc(var(--tb) * 1.55 + env(safe-area-inset-right)); bottom: calc(var(--tb) * 2.85); }
+.t-nade { width: calc(var(--tb) * .8); height: calc(var(--tb) * .8); right: calc(var(--tb) * .3 + env(safe-area-inset-right)); bottom: calc(var(--tb) * 2.75); }
+.t-inspect { width: calc(var(--tb) * .66); height: calc(var(--tb) * .66); right: calc(var(--tb) * 4.05 + env(safe-area-inset-right)); bottom: calc(var(--tb) * 1.35); font-size: 12px; }
+.t-radar-proxy { display: none; position: absolute; transform: translate(-50%, -50%); border: 2px dashed rgba(255, 255, 255, .75); border-radius: 6px;
+  align-items: center; justify-content: center; color: #fff; font-size: 13px; background: rgba(60, 120, 200, .25); }
+#touch-ui.editing .t-radar-proxy { display: flex; }
+#radar-wrap.cl { right: auto !important; bottom: auto !important; margin: 0 !important; transform: translate(-50%, -50%) scale(var(--ts, 1)); }
+#touch-ui.editing .t-radar-proxy.cl { transform: translate(-50%, -50%) scale(var(--ts, 1)) !important; }
+
+/* 投掷物轮盘 */
+.t-wheel { position: absolute; left: 50%; top: 50%; width: 0; height: 0; display: none; z-index: 3; }
+.t-wheel.on { display: block; }
+.t-wheel-bg { position: absolute; left: -150px; top: -150px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(rgba(0, 0, 0, .55), rgba(0, 0, 0, 0) 70%); pointer-events: none; }
+.t-wheel-item { position: absolute; transform: translate(-50%, -50%); width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .45);
+  background: rgba(12, 16, 24, .82); color: #fff; font-size: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.t-wheel-item span { font-size: 12px; }
+.t-wheel-item.cur { border-color: var(--acc); }
+.t-wheel-item.sel { background: rgba(232, 180, 60, .9); color: #111; transform: translate(-50%, -50%) scale(1.15); }

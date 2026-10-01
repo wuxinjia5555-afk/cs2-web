@@ -463,6 +463,11 @@ function bindSettings() {
   rng('s-bop', 'btnOpacity', settings, (v) => Math.round(v * 100) + '%', relayout);
   rng('s-gsens', 'gyroSens', settings, (v) => v.toFixed(1));
   rng('s-tzoom', 'touchZoomSens', settings, (v) => v.toFixed(2));
+  for (const [id, key] of [['s-crouchmode', 'crouchMode'], ['s-scopemode', 'scopeMode']]) {
+    const el = $(id);
+    el.value = settings[key];
+    el.onchange = () => { settings[key] = el.value; saveSettings(); };
+  }
   chk('s-gyroscope', 'gyroScope', settings);
   chk('s-gyroinvx', 'gyroInvX', settings);
   chk('s-gyroinvy', 'gyroInvY', settings);

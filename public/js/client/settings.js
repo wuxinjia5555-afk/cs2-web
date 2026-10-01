@@ -47,6 +47,9 @@ export const DEFAULTS = {
   leftFire: true,
   vibrate: true,
   touchZoomSens: 0.8,
+  crouchMode: 'toggle', // toggle 点按切换 / hold 按住 / mixed 混合
+  rangeDmg: true,
+  scopeMode: 'toggle',
   gyroScope: false,
   gyroInvX: false,
   gyroInvY: false,
