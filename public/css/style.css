@@ -611,3 +611,30 @@ body.touch .buy-item .buy-rf { font-size: 13px; padding: 4px 10px; }
 /* 死斗击杀补满子弹：子弹数闪一下绿色 */
 #ammo-box.refill #ammo b, #ammo-box.refill #ammo small { animation: ammoRefill .7s ease-out; }
 @keyframes ammoRefill { 0% { color: #7dff7a; text-shadow: 0 0 12px rgba(125, 255, 122, .9); } 100% { color: inherit; text-shadow: none; } }
+
+/* 设置：分栏 */
+.set-box { display: flex; flex-direction: column; gap: 10px; overflow: hidden !important; }
+.set-box > * { flex-shrink: 0; }
+.set-box h2 { margin: 0; }
+.set-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.set-tabs button { flex: 1 1 auto; min-width: 92px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05);
+  color: #cfd6df; font-family: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.set-tabs button.on { background: var(--acc); border-color: var(--acc); color: #141414; font-weight: 700; }
+.set-body { min-height: 260px; flex: 1 1 auto !important; flex-shrink: 1 !important; overflow-y: auto; padding-right: 4px; }
+.set-tab { display: none; }
+.set-tab.on { display: block; }
+.set-tab h3 { margin: 14px 0 8px; font-size: 14px; color: var(--acc); }
+.set-tab h3:first-child { margin-top: 2px; }
+.set-tab > .row:first-child { margin-top: 0; margin-bottom: 4px; }
+.set-tip { margin-top: 12px; font-size: 12px; color: var(--dim); }
+.set-foot { border-top: 1px solid var(--line); padding-top: 10px; }
+.xh-wrap { display: flex; gap: 18px; align-items: center; }
+.xh-wrap .grid2 { flex: 1; }
+@media (max-width: 760px) {
+  .set-tabs button { min-width: 0; font-size: 13px; padding: 6px 8px; }
+  .xh-wrap { flex-direction: column; align-items: stretch; }
+}
+@media (max-height: 540px) {
+  .set-body { min-height: 120px; }
+  .set-tabs { padding-bottom: 6px; }
+}

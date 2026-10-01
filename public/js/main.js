@@ -540,6 +540,11 @@ function bindSettings() {
   chk('s-voice', 'voice', settings);
   chk('s-full', 'fullscreen', settings);
   chk('s-fps', 'showFps', settings);
+  {
+    const el = $('s-fpscap');
+    el.value = String(settings.fpsCap || 0);
+    el.onchange = () => { settings.fpsCap = +el.value; saveSettings(); };
+  }
   const relayout = () => { if (game && game.touch) game.touch.applyLayout(); };
   rng('s-tsens', 'touchSens', settings, (v) => v.toFixed(2));
   rng('s-bscale', 'btnScale', settings, (v) => Math.round(v * 100) + '%', relayout);
@@ -647,9 +652,20 @@ $('btn-touch-layout').addEventListener('click', () => {
   }
 });
 
+// 设置分栏：记住上次看的那一栏（手机默认「手机操作」，电脑默认「电脑操作」）
+function setTab(tab) {
+  for (const b of document.querySelectorAll('#set-tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
+  for (const sec of document.querySelectorAll('.set-tab')) sec.classList.toggle('on', sec.dataset.tab === tab);
+  try { localStorage.setItem('defuse.setTab', tab); } catch {}
+}
+for (const b of document.querySelectorAll('#set-tabs [data-tab]')) b.addEventListener('click', () => { audio.play('click'); setTab(b.dataset.tab); });
+
 function openSettings(onClose) {
   settingsReturn = onClose || null;
   bindSettings();
+  let tab = null;
+  try { tab = localStorage.getItem('defuse.setTab'); } catch {}
+  setTab(tab && document.querySelector(`.set-tab[data-tab="${tab}"]`) ? tab : TOUCH ? 'touch' : 'ctl');
   $('menus').classList.remove('hidden');
   for (const m of document.querySelectorAll('.menu')) m.classList.toggle('hidden', m.id !== 'menu-settings');
   $('menu-settings').style.background = game ? 'rgba(5,8,12,0.75)' : '';

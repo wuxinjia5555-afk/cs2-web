@@ -1114,10 +1114,7 @@ export class Room {
       p.inv[slot] = null;
       wid = it.w; clip = it.clip; res = it.res;
     } else return null;
-    const dir = dirFromAngles(p.yaw, clamp(p.pitch, -0.3, 0.6));
-    const sp = throwIt ? 4 : 1.2;
-    const o = [r2(p.x), r2(eyeOf(p) - 0.25), r2(p.z)];
-    const v = [r2(dir[0] * sp + p.vx * 0.5), r2(dir[1] * sp + 1.5), r2(dir[2] * sp + p.vz * 0.5)];
+    const { o, v } = this.throwStart(p, throwIt);
     const d = { id: this.eid++, w: wid, clip, res, by: p.id, t: this.time, pr: makeProjectile(o, v, 0.25) };
     this.drops.push(d);
     if (this.drops.length > 40) {
@@ -1135,16 +1132,47 @@ export class Room {
     return d;
   }
 
+  // 扔东西的起点和速度：主动扔的从画面中心（眼睛正前方半米）沿准星方向扔出去（前面贴着墙就别往前放，免得卡进墙里）；
+  // 死亡掉落的就在身上往前掉
+  throwStart(p, throwIt) {
+    const dir = dirFromAngles(p.yaw, clamp(p.pitch, -0.3, 0.6));
+    const sp = throwIt ? 4 : 1.2;
+    let o = [r2(p.x), r2(eyeOf(p) - 0.25), r2(p.z)];
+    if (throwIt) {
+      const ey = eyeOf(p), ad = dirFromAngles(p.yaw, p.pitch);
+      const hit = this.world.raycast(p.x, ey, p.z, ad[0], ad[1], ad[2], 0.8);
+      const f = hit ? Math.max(0, hit.t - 0.3) : 0.5;
+      o = [r2(p.x + ad[0] * f), r2(ey - 0.08 + ad[1] * f), r2(p.z + ad[2] * f)];
+    }
+    const v = [r2(dir[0] * sp + p.vx * 0.5), r2(dir[1] * sp + 1.5), r2(dir[2] * sp + p.vz * 0.5)];
+    return { o, v };
+  }
+
   onDrop(p) {
     if (!p.alive) return;
     if (p.slot === 1 || p.slot === 2 || p.slot === 5) this.dropItem(p, p.slot, true);
+    else if (p.slot === 3) this.dropKnife(p);
+  }
+
+  // 丢刀：扔出去一把（带皮肤，只是装饰，谁都捡不起来，20 秒后消失），手里还是有刀
+  dropKnife(p) {
+    if (this.time - (p.knifeDropT || -9) < 0.4) return;
+    p.knifeDropT = this.time;
+    const { o, v } = this.throwStart(p, true);
+    const d = { id: this.eid++, w: 'knife', skin: p.skin || '', clip: 0, res: 0, by: p.id, t: this.time, pr: makeProjectile(o, v, 0.25) };
+    this.drops.push(d);
+    if (this.drops.length > 40) {
+      const old = this.drops.find((x) => x.w !== 'c4');
+      if (old) { this.drops.splice(this.drops.indexOf(old), 1); this.bcast({ t: 'pick', id: old.id, by: -1 }); }
+    }
+    this.bcast({ t: 'drop', d: [d.id, 'knife', o[0], o[1], o[2], v[0], v[1], v[2], d.skin] });
   }
 
   onUse(p) {
     if (!p.alive) return;
     let best = null, bd = 2.2 * 2.2;
     for (const d of this.drops) {
-      if (d.w === 'c4') continue;
+      if (d.w === 'c4' || d.w === 'knife') continue;
       const dx = d.pr.x - p.x, dz = d.pr.z - p.z, dy = d.pr.y - p.y;
       const dd = dx * dx + dz * dz;
       if (dd < bd && Math.abs(dy) < 2) { bd = dd; best = d; }
@@ -1181,6 +1209,7 @@ export class Room {
         if (d.pr.rest) this.bcast({ t: 'dropr', id: d.id, p: [r2(d.pr.x), r2(d.pr.y), r2(d.pr.z)] });
         if (d.pr.y < -20) { this.drops.splice(k, 1); this.bcast({ t: 'pick', id: d.id, by: -1 }); continue; }
       }
+      if (d.w === 'knife' && this.time - d.t > 20) { this.drops.splice(k, 1); this.bcast({ t: 'pick', id: d.id, by: -1 }); continue; }
       if (d.w === 'c4' && this.bomb && this.bomb.st === 'dropped') { this.bomb.x = d.pr.x; this.bomb.y = d.pr.y; this.bomb.z = d.pr.z; }
     }
     for (const p of this.players.values()) {
@@ -1191,6 +1220,7 @@ export class Room {
         const dx = d.pr.x - p.x, dz = d.pr.z - p.z, dy = d.pr.y - p.y;
         if (dx * dx + dz * dz > 1.0 || dy < -0.6 || dy > 1.5) continue;
         if (d.w === 'c4') { if (p.team === 'T' && this.opts.mode === 'bomb') this.pickup(p, d); continue; }
+        if (d.w === 'knife') continue; // 扔出去的刀只是装饰
         if (!p.inv[WEAPONS[d.w].slot]) this.pickup(p, d);
       }
     }
@@ -1509,7 +1539,7 @@ export class Room {
       bomb: this.bombInfo(),
       smokes: this.smokes.map((s) => ({ id: s.id, p: [r2(s.x), r2(s.y), r2(s.z)], left: s.until - this.time })),
       fires: this.fires.map((f) => ({ id: f.id, p: [r2(f.x), r2(f.y), r2(f.z)], left: f.until - this.time })),
-      drops: this.drops.map((d) => [d.id, d.w, r2(d.pr.x), r2(d.pr.y), r2(d.pr.z), 0, 0, 0]),
+      drops: this.drops.map((d) => [d.id, d.w, r2(d.pr.x), r2(d.pr.y), r2(d.pr.z), 0, 0, 0, d.skin || '']),
       hpk: (this.hpacks || []).map((k) => [k.id, k.x, k.y, k.z]),
       me: { p: [r2(p.x), r2(p.y), r2(p.z)], yaw: r3(p.yaw), al: p.alive ? 1 : 0, tm: p.team },
       ro: this.opts.mode === 'range' ? this.rangeOpts : undefined,

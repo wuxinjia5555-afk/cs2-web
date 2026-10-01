@@ -544,7 +544,7 @@ export class TouchControls {
     const alt = w.type === 'sniper' ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? (this.throwShort ? '近抛' : '远抛') : '';
     this.set('.t-alt', 'alt', alt, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-reload', 'reload', isGun(w), (el, v) => el.classList.toggle('off', !v));
-    this.set('.t-dropbtn', 'drop', me.slot === 1 || me.slot === 2 || me.slot === 5, (el, v) => el.classList.toggle('off', !v));
+    this.set('.t-dropbtn', 'drop', me.slot === 1 || me.slot === 2 || me.slot === 3 || me.slot === 5, (el, v) => el.classList.toggle('off', !v));
     this.set('.t-alt', 'altLit', w.type === 'grenade' && !!this.throwShort, (el, v) => el.classList.toggle('lit', v));
     this.set('.t-knife span', 'knife', me.slot === 3 ? '切回' : '刀', (el, v) => { el.textContent = v; });
     const nades = me.inv[4] || [];
@@ -583,7 +583,7 @@ export class TouchControls {
     }
     if (me.inv[5]) items.push([5, SLOT_SHORT[5]]);
     let html = items.map(([s, n]) => `<button class="t-slot${me.slot === s ? ' cur' : ''}" data-act="slot${s}">${n}</button>`).join('');
-    if (me.slot === 1 || me.slot === 2 || me.slot === 5) html += '<button class="t-slot t-drop" data-act="drop">丢弃</button>';
+    if (me.slot === 1 || me.slot === 2 || me.slot === 3 || me.slot === 5) html += '<button class="t-slot t-drop" data-act="drop">丢弃</button>';
     bar.innerHTML = html;
   }
 

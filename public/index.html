@@ -263,65 +263,118 @@
   </div>
 
   <div id="menu-settings" class="menu hidden">
-    <div class="menu-box wide">
+    <div class="menu-box wide set-box">
       <h2>设置</h2>
-      <div class="grid2">
-        <label class="field"><span>鼠标灵敏度 <b id="v-sens"></b></span><input type="range" id="s-sens" min="0.2" max="8" step="0.05"></label>
-        <label class="field"><span>开镜灵敏度倍率 <b id="v-zoom"></b></span><input type="range" id="s-zoom" min="0.3" max="2" step="0.05"></label>
-        <label class="field"><span>音量 <b id="v-vol"></b></span><input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
-        <label class="field"><span>枪声音量 <b id="v-gunvol"></b></span><input type="range" id="s-gunvol" min="0" max="1" step="0.05"></label>
-        <label class="field"><span>脚步音量 <b id="v-stepvol"></b></span><input type="range" id="s-stepvol" min="0" max="1" step="0.05"></label>
-        <label class="field"><span>画面分辨率 <b id="v-res"></b></span><input type="range" id="s-res" min="0.5" max="1.5" step="0.1"></label>
-        <label class="field"><span>准星颜色</span><input type="color" id="s-xcolor"></label>
-        <label class="field"><span>准星长度 <b id="v-xlen"></b></span><input type="range" id="s-xlen" min="1" max="14" step="1"></label>
-        <label class="field"><span>准星间隙 <b id="v-xgap"></b></span><input type="range" id="s-xgap" min="0" max="12" step="1"></label>
-        <label class="field"><span>准星粗细 <b id="v-xthick"></b></span><input type="range" id="s-xthick" min="1" max="5" step="1"></label>
-        <label class="check"><input type="checkbox" id="s-xdot"> 准星中心点</label>
-        <label class="check"><input type="checkbox" id="s-xdyn"> 动态准星（随精度扩散）</label>
-        <label class="check"><input type="checkbox" id="s-shadows"> 实时阴影</label>
-        <label class="check"><input type="checkbox" id="s-voice"> 语音播报（下包/胜负）</label>
-        <label class="check"><input type="checkbox" id="s-soundviz"> 声纹（准星周围显示敌人脚步/枪声的方向）</label>
-        <label class="check"><input type="checkbox" id="s-hitmarker"> 命中反馈（打中时准星旁边的四条线）</label>
-        <label class="check"><input type="checkbox" id="s-full"> 进入游戏自动全屏（防止 Ctrl+W 误关页面）</label>
-        <label class="check"><input type="checkbox" id="s-fps"> 显示帧率/延迟</label>
+      <div class="set-tabs" id="set-tabs">
+        <button data-tab="ctl">🖱 电脑操作</button>
+        <button data-tab="touch">📱 手机操作</button>
+        <button data-tab="gyro">🧭 陀螺仪</button>
+        <button data-tab="gfx">🖥 画面</button>
+        <button data-tab="sound">🔊 声音</button>
+        <button data-tab="xhair">✚ 准星</button>
       </div>
-      <h3>触屏 / 手机</h3>
-      <div class="grid2">
-        <label class="field"><span>操作方式</span><select id="s-touchmode"><option value="auto">自动识别</option><option value="on">触屏按钮</option><option value="off">键盘鼠标</option></select></label>
-        <label class="field"><span>滑屏灵敏度 <b id="v-tsens"></b></span><input type="range" id="s-tsens" min="0.3" max="3" step="0.05"></label>
-        <label class="field"><span>按钮大小 <b id="v-bscale"></b></span><input type="range" id="s-bscale" min="0.7" max="1.4" step="0.05"></label>
-        <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
-        <label class="field"><span>滑屏横向（左右）灵敏度 <b id="v-tsx"></b></span><input type="range" id="s-tsx" min="0.3" max="2.5" step="0.05"></label>
-        <label class="field"><span>滑屏纵向（上下）灵敏度 <b id="v-tsy"></b></span><input type="range" id="s-tsy" min="0.3" max="2.5" step="0.05"></label>
-        <label class="field"><span>陀螺仪横向（左右）灵敏度 <b id="v-gsx"></b></span><input type="range" id="s-gsx" min="0.3" max="4" step="0.05"></label>
-        <label class="field"><span>陀螺仪纵向（上下）灵敏度 <b id="v-gsy"></b></span><input type="range" id="s-gsy" min="0.3" max="4" step="0.05"></label>
-        <label class="field"><span>移动摇杆</span><select id="s-joymode"><option value="float">浮动（手指按左边哪里，摇杆就出现在哪里）</option><option value="fixed">固定（位置和大小在「自定义按键布局」里调）</option></select></label>
-        <label class="field"><span>蹲键方式</span><select id="s-crouchmode"><option value="toggle">点按切换（点一下蹲、再点站起）</option><option value="hold">按住蹲（松手站起）</option><option value="mixed">混合（点按切换，长按为按住蹲）</option></select></label>
-        <label class="field"><span>开镜方式</span><select id="s-scopemode"><option value="toggle">点按切换</option><option value="hold">按住开镜（松手关镜）</option><option value="mixed">混合（点按切换，长按为按住开镜）</option></select></label>
-        <label class="field"><span>开镜灵敏度 <b id="v-tzoom"></b></span><input type="range" id="s-tzoom" min="0.3" max="2" step="0.05"></label>
-        <label class="field"><span>陀螺仪灵敏度 <b id="v-gsens"></b></span><input type="range" id="s-gsens" min="0.2" max="3" step="0.1"></label>
-        <label class="check"><input type="checkbox" id="s-assist"> 辅助瞄准（准星靠近敌人时减速+轻微吸附）</label>
-        <label class="check"><input type="checkbox" id="s-autofire"> 自动开火（准星对准敌人自动射击）</label>
-        <label class="check"><input type="checkbox" id="s-leftfire"> 左侧开火键</label>
-        <label class="check"><input type="checkbox" id="s-quickstop"> 松手急停（松开摇杆马上停住，开枪更准）</label>
-        <label class="check"><input type="checkbox" id="s-firedrag"> 按住开火键滑动可以转视角（关掉后：按着按键时手指滑动不会转视角）</label>
-        <label class="check"><input type="checkbox" id="s-vibrate"> 震动反馈（命中/击杀/受伤，安卓手机）</label>
-        <label class="check"><input type="checkbox" id="s-gyro"> 陀螺仪瞄准（转动手机转视角）</label>
-        <label class="check"><input type="checkbox" id="s-gyroscope"> 只在开镜时使用陀螺仪</label>
-        <label class="check"><input type="checkbox" id="s-gyroinvx"> 陀螺仪左右反转</label>
-        <label class="check"><input type="checkbox" id="s-gyroinvy"> 陀螺仪上下反转</label>
-        <label class="check"><input type="checkbox" id="s-gyroswap"> 陀螺仪上下和左右对调（方向不对时打开）</label>
-        <div id="gyro-status" class="gyro-status"></div>
+      <div class="set-body">
+        <section class="set-tab" data-tab="ctl">
+          <div class="grid2">
+            <label class="field"><span>鼠标灵敏度 <b id="v-sens"></b></span><input type="range" id="s-sens" min="0.2" max="8" step="0.05"></label>
+            <label class="field"><span>开镜灵敏度倍率 <b id="v-zoom"></b></span><input type="range" id="s-zoom" min="0.3" max="2" step="0.05"></label>
+          </div>
+          <div id="binds-sec">
+            <h3>键位设置</h3>
+            <div class="binds-tip">点一下按键框，再按下新的键（Esc 取消，Backspace 清空）。每个动作可以设两个键。</div>
+            <div id="binds-list" class="binds-list"></div>
+            <div class="row"><button class="btn ghost" id="btn-binds-reset">恢复默认键位</button></div>
+          </div>
+        </section>
+
+        <section class="set-tab" data-tab="touch">
+          <div class="row"><button class="btn" id="btn-touch-layout">✋ 自定义按键布局（拖动按钮位置、调大小）</button></div>
+          <h3>基本</h3>
+          <div class="grid2">
+            <label class="field"><span>操作方式</span><select id="s-touchmode"><option value="auto">自动识别</option><option value="on">触屏按钮</option><option value="off">键盘鼠标</option></select></label>
+            <label class="field"><span>移动摇杆</span><select id="s-joymode"><option value="float">浮动（手指按左边哪里，摇杆就出现在哪里）</option><option value="fixed">固定（位置和大小在「自定义按键布局」里调）</option></select></label>
+            <label class="field"><span>按钮大小 <b id="v-bscale"></b></span><input type="range" id="s-bscale" min="0.7" max="1.4" step="0.05"></label>
+            <label class="field"><span>按钮不透明度 <b id="v-bop"></b></span><input type="range" id="s-bop" min="0.25" max="1" step="0.05"></label>
+            <label class="field"><span>蹲键方式</span><select id="s-crouchmode"><option value="toggle">点按切换（点一下蹲、再点站起）</option><option value="hold">按住蹲（松手站起）</option><option value="mixed">混合（点按切换，长按为按住蹲）</option></select></label>
+            <label class="field"><span>开镜方式</span><select id="s-scopemode"><option value="toggle">点按切换</option><option value="hold">按住开镜（松手关镜）</option><option value="mixed">混合（点按切换，长按为按住开镜）</option></select></label>
+          </div>
+          <h3>滑屏灵敏度</h3>
+          <div class="grid2">
+            <label class="field"><span>滑屏灵敏度（总） <b id="v-tsens"></b></span><input type="range" id="s-tsens" min="0.3" max="3" step="0.05"></label>
+            <label class="field"><span>开镜时的灵敏度 <b id="v-tzoom"></b></span><input type="range" id="s-tzoom" min="0.3" max="2" step="0.05"></label>
+            <label class="field"><span>横向（左右） <b id="v-tsx"></b></span><input type="range" id="s-tsx" min="0.3" max="2.5" step="0.05"></label>
+            <label class="field"><span>纵向（上下） <b id="v-tsy"></b></span><input type="range" id="s-tsy" min="0.3" max="2.5" step="0.05"></label>
+          </div>
+          <h3>辅助功能</h3>
+          <div class="grid2">
+            <label class="check"><input type="checkbox" id="s-quickstop"> 松手急停（松开摇杆马上停住，开枪更准）</label>
+            <label class="check"><input type="checkbox" id="s-firedrag"> 按住开火键滑动可以转视角</label>
+            <label class="check"><input type="checkbox" id="s-leftfire"> 左侧开火键</label>
+            <label class="check"><input type="checkbox" id="s-assist"> 辅助瞄准（准星靠近敌人时减速 + 轻微吸附）</label>
+            <label class="check"><input type="checkbox" id="s-autofire"> 自动开火（准星对准敌人自动射击）</label>
+            <label class="check"><input type="checkbox" id="s-vibrate"> 震动反馈（命中 / 击杀 / 受伤，安卓手机）</label>
+          </div>
+        </section>
+
+        <section class="set-tab" data-tab="gyro">
+          <div class="grid2">
+            <label class="check"><input type="checkbox" id="s-gyro"> 陀螺仪瞄准（转动手机转视角）</label>
+            <label class="check"><input type="checkbox" id="s-gyroscope"> 只在开镜时使用陀螺仪</label>
+          </div>
+          <div id="gyro-status" class="gyro-status"></div>
+          <h3>灵敏度</h3>
+          <div class="grid2">
+            <label class="field"><span>陀螺仪灵敏度（总） <b id="v-gsens"></b></span><input type="range" id="s-gsens" min="0.2" max="3" step="0.1"></label>
+            <span></span>
+            <label class="field"><span>横向（左右） <b id="v-gsx"></b></span><input type="range" id="s-gsx" min="0.3" max="4" step="0.05"></label>
+            <label class="field"><span>纵向（上下） <b id="v-gsy"></b></span><input type="range" id="s-gsy" min="0.3" max="4" step="0.05"></label>
+          </div>
+          <h3>方向</h3>
+          <div class="grid2">
+            <label class="check"><input type="checkbox" id="s-gyroinvx"> 左右反转</label>
+            <label class="check"><input type="checkbox" id="s-gyroinvy"> 上下反转</label>
+            <label class="check"><input type="checkbox" id="s-gyroswap"> 上下和左右对调（方向不对时打开）</label>
+          </div>
+        </section>
+
+        <section class="set-tab" data-tab="gfx">
+          <div class="grid2">
+            <label class="field"><span>帧率上限</span><select id="s-fpscap"><option value="0">不限（跟随屏幕刷新率）</option><option value="30">30 帧（最省电）</option><option value="45">45 帧</option><option value="60">60 帧</option><option value="90">90 帧</option><option value="120">120 帧</option><option value="144">144 帧</option></select></label>
+            <label class="field"><span>画面分辨率 <b id="v-res"></b></span><input type="range" id="s-res" min="0.5" max="1.5" step="0.1"></label>
+            <label class="check"><input type="checkbox" id="s-shadows"> 实时阴影</label>
+            <label class="check"><input type="checkbox" id="s-fps"> 显示帧率 / 延迟</label>
+            <label class="check"><input type="checkbox" id="s-full"> 进入游戏自动全屏（防止 Ctrl+W 误关页面）</label>
+          </div>
+          <div class="set-tip">手机发烫或者耗电快：把帧率上限调到 60 或 30、画面分辨率调低、关掉实时阴影。</div>
+        </section>
+
+        <section class="set-tab" data-tab="sound">
+          <div class="grid2">
+            <label class="field"><span>总音量 <b id="v-vol"></b></span><input type="range" id="s-vol" min="0" max="1" step="0.05"></label>
+            <label class="field"><span>枪声音量 <b id="v-gunvol"></b></span><input type="range" id="s-gunvol" min="0" max="1" step="0.05"></label>
+            <label class="field"><span>脚步音量 <b id="v-stepvol"></b></span><input type="range" id="s-stepvol" min="0" max="1" step="0.05"></label>
+            <span></span>
+            <label class="check"><input type="checkbox" id="s-voice"> 语音播报（下包 / 胜负）</label>
+            <label class="check"><input type="checkbox" id="s-soundviz"> 声纹（准星周围显示敌人脚步 / 枪声的方向）</label>
+          </div>
+        </section>
+
+        <section class="set-tab" data-tab="xhair">
+          <div class="xh-wrap">
+            <div class="grid2">
+              <label class="field"><span>准星颜色</span><input type="color" id="s-xcolor"></label>
+              <label class="field"><span>准星长度 <b id="v-xlen"></b></span><input type="range" id="s-xlen" min="1" max="14" step="1"></label>
+              <label class="field"><span>准星间隙 <b id="v-xgap"></b></span><input type="range" id="s-xgap" min="0" max="12" step="1"></label>
+              <label class="field"><span>准星粗细 <b id="v-xthick"></b></span><input type="range" id="s-xthick" min="1" max="5" step="1"></label>
+              <label class="check"><input type="checkbox" id="s-xdot"> 准星中心点</label>
+              <label class="check"><input type="checkbox" id="s-xdyn"> 动态准星（随精度扩散）</label>
+              <label class="check"><input type="checkbox" id="s-hitmarker"> 命中反馈（打中时准星旁边的四条线）</label>
+            </div>
+            <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
+          </div>
+        </section>
       </div>
-      <div class="row"><button class="btn" id="btn-touch-layout">✋ 自定义按键布局（拖动按钮位置、调大小）</button></div>
-      <div id="binds-sec">
-        <h3>键位设置（电脑）</h3>
-        <div class="binds-tip">点一下按键框，再按下新的键（Esc 取消，Backspace 清空）。每个动作可以设两个键。</div>
-        <div id="binds-list" class="binds-list"></div>
-        <div class="row"><button class="btn ghost" id="btn-binds-reset">恢复默认键位</button></div>
-      </div>
-      <div class="xh-preview"><div id="xh-prev"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b class="dot"></b></div></div>
-      <div class="row"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
+      <div class="row set-foot"><button class="btn ghost" id="btn-settings-back">返回</button><button class="btn" id="btn-settings-reset">恢复默认</button></div>
     </div>
   </div>
 

@@ -433,7 +433,7 @@ export class Game {
 
   nearDrop() {
     for (const d of this.drops.values()) {
-      if (d.w === 'c4') continue;
+      if (d.w === 'c4' || d.w === 'knife') continue;
       if (Math.hypot(d.pr.x - this.sim.x, d.pr.z - this.sim.z) < 1.9 && Math.abs(d.pr.y - this.sim.y) < 2) return d;
     }
     return null;
@@ -1042,9 +1042,9 @@ export class Game {
   }
 
   addDrop(d, rest) {
-    const [id, w, x, y, z, vx, vy, vz] = d;
+    const [id, w, x, y, z, vx, vy, vz, skin] = d;
     if (this.drops.has(id)) return;
-    const mesh = makeWeapon(w, true);
+    const mesh = makeWeapon(w, true, w === 'knife' ? skin || null : null);
     if (w !== 'c4') mesh.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2);
     const pr = makeProjectile([x, y, z], [vx, vy, vz], 0.25);
     if (rest) pr.rest = true;
@@ -1149,7 +1149,17 @@ export class Game {
       if (n != null) this.switchSlot(n);
     }
     if (inp.hit('KeyR')) this.startReload();
-    if (inp.hit('KeyG')) this.net.send({ t: 'drop' });
+    if (inp.hit('KeyG')) {
+      this.net.send({ t: 'drop' });
+      // 丢刀：手里马上再拔出一把（播切刀动作）
+      if (this.me.slot === 3 && this.now - (this.knifeDropT || -9) >= 0.4) {
+        this.knifeDropT = this.now;
+        audio.play('throw');
+        this.vm.wid = null;
+        this.vm.setWeapon('knife', 0.5, this.now);
+        if (!this.vm.knifeFx()) audio.play('deploy');
+      }
+    }
     if (inp.hit('KeyF')) this.vm.onInspect(this.now);
     if (inp.hit('KeyE')) this.net.send({ t: 'use' });
   }
@@ -1847,6 +1857,14 @@ export class Game {
   frame(tMs) {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.frameBound);
+    // 帧率上限：按固定间隔放行（120 赫兹的屏幕限 90 帧也能接近 90）
+    const cap = settings.fpsCap || 0;
+    if (cap > 0) {
+      const iv = 1000 / cap;
+      if (!this.nextFrameMs || tMs - this.nextFrameMs > iv) this.nextFrameMs = tMs;
+      if (tMs < this.nextFrameMs - 1) return;
+      this.nextFrameMs += iv;
+    }
     this.tick(tMs);
   }
 
