@@ -671,6 +671,7 @@ const KNIVES = [
   { id: 'butterfly', name: '★ 蝴蝶刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时甩开刀柄、“咔”一声合进手里；按 F 检视会连续开合两次。' },
   { id: 'karambit', name: '★ 爪子刀', rarity: '隐秘', cls: 'r-covert', desc: '食指套着刀环，拔刀时绕手指转两圈接住；按 F 检视会正转、反转再甩一圈。' },
   { id: 'm9', name: '★ M9 刺刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时把刀抛起来翻一圈再接住；按 F 检视会转刀给你看两面，再抛一次。' },
+  { id: 'xeno', name: '★ 剥皮小刀', rarity: '隐秘', cls: 'r-covert', desc: '瓦罗兰特「异星猎人」小刀：锯齿刀背、镂空刀柄、刀尾挂绳。拔刀时在手里翻一圈握住；检视会翻面看两面，再在指间转两圈。' },
 ];
 let inv = null;
 

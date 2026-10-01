@@ -9,7 +9,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const WNAME = { world: '摔落', c4: 'C4 爆炸', he: '手雷', molotov: '燃烧', incgrenade: '燃烧', knife: '匕首' };
 export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || (EQUIP[w] && EQUIP[w].name) || w;
-export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀' };
+export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀' };
 const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
 const REASON = { elim: '全歼敌人', time: '时间耗尽', bomb: '目标已被摧毁', defuse: '炸弹已被拆除' };
 

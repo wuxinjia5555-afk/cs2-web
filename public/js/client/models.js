@@ -311,7 +311,51 @@ function m9Bayonet(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
 }
 
-const KNIFE_SKINS = { butterfly, karambit, m9: m9Bayonet };
+// 剥皮小刀（瓦罗兰特「异星猎人」小刀）：银色宽刃，刀背靠近护手一排锯齿、刀尖斜削，刃根有个开孔；
+// 护手下端往前勾；刀柄是镂空的金属框（三角形镂空），刀尾斜切、挂绳孔上吊着一根小绳
+function xenohunter(g) {
+  const K = { blade: 0xc9cfd6, edge: 0xf2f5f8, dark: 0x4a5058, frame: 0x3b4047, frame2: 0x2c3036, bolt: 0xd8dde3, cord: 0x2a2a2a, hole: 0x15181c };
+  const PV = new THREE.Vector3(0, 0.01, 0.03); // 转刀的轴（握刀的位置）
+  const spin = new THREE.Group();
+  spin.position.copy(PV);
+  g.add(spin);
+  const add = (m) => { m.position.sub(PV); spin.add(m); return m; };
+  // 刀柄：上下两根框 + 之字形斜撑（中间就是三角形镂空）
+  add(box(0.012, 0.006, 0.118, K.frame, 0, 0.021, 0.036));
+  add(box(0.012, 0.006, 0.118, K.frame, 0, -0.001, 0.036));
+  const zs = [-0.016, 0.011, 0.038, 0.065, 0.09];
+  for (let i = 0; i < zs.length - 1; i++) {
+    const za = zs[i], zb = zs[i + 1], ya = i % 2 ? 0.021 : -0.001, yb = i % 2 ? -0.001 : 0.021;
+    const len = Math.hypot(zb - za, yb - ya);
+    add(box(0.0115, 0.0055, len + 0.004, K.frame2, 0, (ya + yb) / 2, (za + zb) / 2, Math.atan2(-(yb - ya), zb - za)));
+  }
+  add(box(0.012, 0.028, 0.008, K.frame, 0, 0.01, -0.019));
+  // 刀尾：斜切的尾端 + 挂绳孔 + 小绳（单独一个组，跟着动作晃）
+  add(box(0.0125, 0.03, 0.02, K.frame, 0, 0.012, 0.102, -0.35));
+  add(box(0.013, 0.008, 0.008, K.hole, 0, 0.012, 0.104));
+  const cord = new THREE.Group();
+  cord.position.set(0, 0.006, 0.106);
+  cord.add(box(0.003, 0.03, 0.003, K.cord, 0, -0.015, 0));
+  cord.add(box(0.006, 0.008, 0.006, K.cord, 0, -0.03, 0));
+  cord.add(box(0.0025, 0.012, 0.0025, K.cord, 0.0015, -0.039, 0.001));
+  add(cord);
+  // 刀柄前端的螺栓
+  add(box(0.0135, 0.007, 0.007, K.bolt, 0, 0.01, -0.006));
+  // 护手：薄片，下端往前勾
+  add(box(0.016, 0.046, 0.006, K.dark, 0, 0.006, -0.027));
+  add(box(0.016, 0.007, 0.018, K.dark, 0, -0.016, -0.034, -0.5));
+  // 刀身
+  add(box(0.004, 0.03, 0.125, K.blade, 0, 0.012, -0.093));
+  add(box(0.0042, 0.006, 0.118, K.edge, 0, -0.0005, -0.095));
+  add(box(0.0046, 0.006, 0.012, K.hole, 0, 0.0035, -0.04)); // 刃根开孔
+  for (let k = 0; k < 6; k++) add(box(0.0046, 0.005, 0.005, K.dark, 0, 0.028, -0.042 - k * 0.0085, Math.PI / 4)); // 刀背锯齿
+  add(box(0.004, 0.024, 0.05, K.blade, 0, 0.011, -0.172, -0.32)); // 斜削的刀尖
+  add(box(0.0042, 0.006, 0.044, K.edge, 0, 0.0015, -0.174, -0.12));
+  g.userData.kfx = { kind: 'xeno', spin, base: PV.clone(), cord };
+  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
+}
+
+const KNIFE_SKINS = { butterfly, karambit, m9: m9Bayonet, xeno: xenohunter };
 
 function grenade(g, type) {
   if (type === 'he') {

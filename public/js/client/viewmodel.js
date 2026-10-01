@@ -79,6 +79,10 @@ const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5
   { t0: 1.95, t1: 2.4, a0: TAU, a1: 2 * TAU, ease: (x) => eOut(x, 2) }];
 const M9_ROLL = [{ t0: 0.42, t1: 0.86, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.02, t1: 1.42, a0: Math.PI, a1: TAU, ease: sstep }];
 const M9_TOSS = { draw: [0.06, 0.36], inspect: [1.56, 1.96] };
+// 剥皮小刀：拔刀时在手里往后翻一圈握住；检视：亮刀 → 慢慢翻面看两面 → 指间快速转两圈 → 放下
+const XE_DRAW = [{ t0: 0.04, t1: 0.42, a0: TAU, a1: 0, ease: (x) => eOut(x, 2.2) }];
+const XE_ROLL = [{ t0: 0.5, t1: 1.05, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.35, t1: 1.9, a0: Math.PI, a1: TAU, ease: sstep }];
+const XE_TWIRL = [{ t0: 2.0, t1: 2.55, a0: 0, a1: -2 * TAU, ease: (x) => eOut(x, 1.8) }];
 // 翻刀时手腕转过来，让刀面对着屏幕（不然转刀是侧着看的，看不清）
 const WRIST = { ry: 0.85, rz: 0.25, rx: -0.12, px: -0.075, py: 0.055, pz: 0.05 };
 export const KNIFE_FX = {
@@ -105,6 +109,16 @@ export const KNIFE_FX = {
     draw: { dur: 0.66, back: [0.48, 0.66], ev: [{ t: 0.05, k: 'kn_swish' }, { t: 0.5, k: 'kn_catch' }] },
     inspect: { dur: 2.7, back: [2.38, 2.7], ev: [{ t: 0.35, k: 'kn_swish' }, { t: 0.95, k: 'kn_tick' }, { t: 1.5, k: 'kn_swish' }, { t: 1.85, k: 'kn_tick' },
       { t: 1.95, k: 'kn_swish' }, { t: 2.4, k: 'kn_catch' }] },
+    attack(stab, p, o) {
+      // 先快后慢：0~0.3 出手，之后慢慢收回
+      const s = p < 0.3 ? Math.sin((p / 0.3) * Math.PI / 2) : Math.cos(((p - 0.3) / 0.7) * Math.PI / 2);
+      if (stab) {
+        const lift = p < 0.25 ? Math.sin((p / 0.25) * Math.PI / 2) * (1 - p / 0.25) : 0;
+        o.py += lift * 0.05 - s * 0.03; o.pz -= s * 0.1; o.rx += s * 0.75; o.rz -= s * 0.25; o.px -= s * 0.04;
+      } else {
+        o.px -= s * 0.17; o.py += s * 0.025; o.pz -= s * 0.05; o.rz += s * 0.55; o.ry += s * 0.35;
+      }
+    },
     parts(P, mode, e) {
       let a = mode === 'draw' ? track(KA_DRAW, e) : mode === 'inspect' ? track(KA_INSP, e) : 0;
       if (mode === 'inspect' && e > 0.95 && e < 1.5) a += Math.sin((e - 0.95) * 11) * 0.16 * (1 - (e - 0.95) / 0.55); // 挂着晃
@@ -112,6 +126,17 @@ export const KNIFE_FX = {
     },
     // 刀面本来就对着屏幕，手腕只要稍微抬一下
     wrist: { draw: { ry: 0, rz: 0.12, rx: 0.05, px: -0.03, py: 0.035, pz: 0.03 }, inspect: { ry: 0, rz: 0.15, rx: -0.05, px: -0.05, py: 0.07, pz: 0 } },
+  },
+  xeno: {
+    draw: { dur: 0.56, back: [0.4, 0.56], ev: [{ t: 0.04, k: 'kn_swish' }, { t: 0.42, k: 'kn_catch' }] },
+    inspect: { dur: 3.1, back: [2.65, 3.1], ev: [{ t: 0.5, k: 'kn_swish' }, { t: 1.35, k: 'kn_swish' }, { t: 2.0, k: 'kn_swish' }, { t: 2.55, k: 'kn_catch' }] },
+    parts(P, mode, e) {
+      const a = mode === 'draw' ? track(XE_DRAW, e) : mode === 'inspect' ? track(XE_TWIRL, e) : 0;
+      P.spin.rotation.set(a, 0, mode === 'inspect' ? track(XE_ROLL, e) : 0);
+      // 挂绳跟着转动甩一甩
+      const sw = Math.abs(a) > 0.01 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
+      P.cord.rotation.set(sw, 0, sw * 0.4);
+    },
   },
   m9: {
     draw: { dur: 0.52, back: [0.36, 0.52], ev: [{ t: 0.06, k: 'kn_swish' }, { t: 0.36, k: 'kn_catch' }] },
@@ -307,7 +332,11 @@ export class ViewModel {
       const dur = this.knifeStab ? 0.55 : 0.32;
       const p = (now - this.knifeT) / dur;
       if (p >= 1) this.knifeT = -1;
-      else {
+      else if (kfx && KNIFE_FX[kfx.kind].attack) {
+        const o = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
+        KNIFE_FX[kfx.kind].attack(this.knifeStab, p, o);
+        px += o.px; py += o.py; pz += o.pz; rx += o.rx; ry += o.ry; rz += o.rz;
+      } else {
         const s = Math.sin(p * Math.PI);
         if (this.knifeStab) { pz -= s * 0.12; rx -= s * 0.5; }
         else { ry += s * 1.1 - 0.4 * s; rz -= s * 0.9; px -= s * 0.1; }

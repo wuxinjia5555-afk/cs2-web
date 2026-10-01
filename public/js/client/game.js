@@ -1341,7 +1341,9 @@ export class Game {
       const it = me.inv[me.slot];
       if (inp.mDown[0]) W.pendingClick = now;
       const auto = this.isTouch && settings.autoFire && this.aimEnemy && (w.type !== 'sniper' || W.scope > 0);
-      const wantFire = (inp.mouse[0] && (w.auto || now - W.pendingClick < 0.12)) || auto;
+      // 刚按过开火（0.12 秒内）就开枪：甩狙时点得很快，按下松开都在两帧之间，也不能吞掉这一枪
+      const clicked = now - W.pendingClick < 0.12;
+      const wantFire = (w.auto ? inp.mouse[0] || clicked : clicked) || auto;
       if (wantFire && canAct && ready && !W.reloadEnd && now >= W.nextFire) {
         if (it.clip > 0) {
           W.pendingClick = -1;
