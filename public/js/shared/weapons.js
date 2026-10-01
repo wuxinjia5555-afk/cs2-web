@@ -171,10 +171,12 @@ export function recoverRecoil(s, w, dt, since) {
   const rc = w.recoil;
   if (rc) {
     const iv = w.rpm ? 60 / w.rpm : 0.1;
-    if (since > (rc.wait != null ? rc.wait : iv * 1.3)) {
-      // 自动武器松手后回正更快：指数回正 + 线性回正，约 0.3 秒回到准星
-      const rec = w.auto ? Math.max(rc.rec, 10) : rc.rec;
-      const lin = rc.lin != null ? rc.lin : w.auto ? 5 : 0;
+    // 停火后最多等 0.15 秒就开始回正（以前按射速算，大狙、霰弹枪要等快 2 秒）
+    if (since > (rc.wait != null ? rc.wait : Math.min(iv * 1.3, 0.15))) {
+      // 指数回正 + 线性回正：自动武器约 0.3 秒、狙击枪 / 霰弹枪约 0.4 秒回到准星
+      const slow = w.type === 'sniper' || w.type === 'shotgun';
+      const rec = w.auto ? Math.max(rc.rec, 10) : slow ? Math.max(rc.rec, 9) : rc.rec;
+      const lin = rc.lin != null ? rc.lin : w.auto ? 5 : slow ? 6 : 0;
       const k = Math.exp(-rec * dt);
       s.punchP *= k;
       s.punchY *= k;
