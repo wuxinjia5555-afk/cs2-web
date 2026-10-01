@@ -37,7 +37,8 @@ const HTML = `
 // 可以自定义位置和大小的按钮
 const CUSTOM = [['fire', '.t-fire', '开火'], ['firel', '.t-fire-l', '左开火'], ['jump', '.t-jump', '跳'], ['crouch', '.t-crouch', '蹲'],
   ['reload', '.t-reload', '换弹'], ['alt', '.t-alt', '开镜'], ['use', '.t-use', '拆弹/拾取'], ['buy', '.t-buy', '购买'], ['weapons', '.t-weapons', '武器栏'],
-  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['radar', '.t-radar-proxy', '小地图']];
+  ['knife', '.t-knife', '切刀'], ['nade', '.t-nade', '投掷物'], ['inspect', '.t-inspect', '检视'], ['radar', '.t-radar-proxy', '小地图'],
+  ['top', '.t-top', '右上角按钮']];
 const NADE_SHORT = { he: '手雷', flash: '闪光', smoke: '烟雾', molotov: '燃烧', incgrenade: '燃烧' };
 
 // 小地图的位置（不在游戏里时 HUD 是隐藏的，用默认尺寸估算）
@@ -151,7 +152,8 @@ export class TouchControls {
     if (!bar.children.length) bar.innerHTML = '<button class="t-slot cur">主武器</button><button class="t-slot">手枪</button><button class="t-slot">刀</button>';
     const p = (this.panel = document.createElement('div'));
     p.className = 'tl-panel';
-    p.innerHTML = `<div class="tl-tip">拖动按钮换位置 · 点选按钮后可调大小</div>
+    p.innerHTML = `<div class="tl-tip"><span class="tl-grip">☰ 按住这里拖动面板</span><button class="tl-min" data-tl="min">收起</button></div>
+      <div class="tl-hint">拖动按钮换位置 · 点选按钮后可调大小</div>
       <label class="tl-row"><span id="tl-name">先点选一个按钮</span><input type="range" id="tl-size" min="0.6" max="1.8" step="0.05" value="1" disabled></label>
       <label class="tl-row"><span>按钮透明度</span><input type="range" id="tl-op" min="0.25" max="1" step="0.05" value="${settings.btnOpacity}"></label>
       <div class="tl-btns"><button data-tl="reset">恢复默认</button><button data-tl="cancel">取消</button><button data-tl="save" class="acc">保存</button></div>`;
@@ -166,10 +168,33 @@ export class TouchControls {
       settings.btnOpacity = +e.target.value;
       this.el.style.setProperty('--to', String(settings.btnOpacity));
     });
+    // 面板本身可以拖走（按钮被盖住时也能拖出来）
+    const grip = p.querySelector('.tl-tip');
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('[data-tl]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = p.getBoundingClientRect();
+      this.panelDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      try { grip.setPointerCapture(e.pointerId); } catch {}
+    });
+    grip.addEventListener('pointermove', (e) => {
+      const d = this.panelDrag;
+      if (!d || d.id !== e.pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      p.style.left = Math.max(0, Math.min(innerWidth - p.offsetWidth, e.clientX - d.dx)) + 'px';
+      p.style.top = Math.max(0, Math.min(innerHeight - 36, e.clientY - d.dy)) + 'px';
+      p.style.transform = 'none';
+    });
+    const endDrag = (e) => { if (this.panelDrag && this.panelDrag.id === e.pointerId) this.panelDrag = null; };
+    grip.addEventListener('pointerup', endDrag);
+    grip.addEventListener('pointercancel', endDrag);
     p.addEventListener('click', (e) => {
       const a = e.target.closest('[data-tl]');
       if (!a) return;
       const act = a.dataset.tl;
+      if (act === 'min') { const m = p.classList.toggle('mini'); a.textContent = m ? '展开' : '收起'; return; }
       if (act === 'reset') { this.draft = {}; this.applyCustom(this.draft); this.select(null); return; }
       if (act === 'save') { settings.touchLayout = this.draft; saveSettings(); }
       else settings.btnOpacity = this.origOpacity;
