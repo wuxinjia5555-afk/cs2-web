@@ -269,7 +269,7 @@ export class TouchControls {
     const btn = e.target.closest('[data-act]');
     if (this.wheelOpen && !(btn && (btn.dataset.act.startsWith('pick:') || btn.dataset.act === 'nade'))) this.closeWheel();
     try { this.el.setPointerCapture(e.pointerId); } catch {}
-    const p = { kind: 'look', x: e.clientX, y: e.clientY, act: null, btn: null };
+    const p = { kind: 'look', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, act: null, btn: null, dragOn: false };
     if (btn) {
       p.kind = 'btn';
       p.act = btn.dataset.act;
@@ -330,7 +330,13 @@ export class TouchControls {
       this.inp.moveY = my;
     } else if (p.kind === 'btn' && p.act === 'nade' && this.wheelOpen) {
       this.wheelMove(e.clientX, e.clientY);
-    } else if (p.kind === 'look' || (p.kind === 'btn' && p.act === 'fire' && settings.fireDragLook !== false)) {
+    } else if (p.kind === 'look') {
+      this.inp.tdx += dx;
+      this.inp.tdy += dy;
+    } else if (p.kind === 'btn' && (p.act === 'fire' || p.act === 'firel') && settings.fireDragLook !== false) {
+      // 按着开火键拖动转视角：手指离按下的位置超过 14 像素才开始转，点开火时手指的小晃动不算
+      if (!p.dragOn && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 14) return;
+      if (!p.dragOn) { p.dragOn = true; return; }
       this.inp.tdx += dx;
       this.inp.tdy += dy;
     }
