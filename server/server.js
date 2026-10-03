@@ -60,6 +60,7 @@ const accounts = await createAccounts(path.join(__dirname, 'data', 'accounts.jso
 // 服务器要关了（Render 重新部署 / 休眠时会先发 SIGTERM）：先把账号数据存好
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { for (const c of conns) settleCoins(c); } catch {}
     try { await accounts.flush(); } catch {}
     process.exit(0);
   });
@@ -143,6 +144,7 @@ const cleanSid = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{8,40}$/.test(v
 
 // 断线：保留玩家位置一段时间，等他重连
 function holdForResume(conn) {
+  settleCoins(conn);
   const e = conn.entry, pid = conn.pid;
   e.clients.delete(pid);
   const p = e.room.players.get(pid);
@@ -190,6 +192,24 @@ function makeCode() {
   return s;
 }
 
+// ---------------- 金币 ----------------
+// 登录了账号、在联网房间里打比赛才有金币。每种事情给多少：[对面有真人, 对面全是机器人]
+const COIN = { kill: [5, 1], dmkill: [2, 1], plant: [5, 2], defuse: [5, 2], round: [10, 3], match: [50, 15], finish: [20, 6], dmwin: [20, 6] };
+function rewardCoins(conn, kind, easy) {
+  const c = COIN[kind];
+  if (!conn || !conn.acct || !c) return;
+  const n = c[easy ? 1 : 0];
+  conn.earn = (conn.earn || 0) + n;
+  conn.sendObj({ t: 'coin', n, k: kind });
+}
+// 把攒着的金币记到账号上（一分钟结一次、离开房间时结一次：省云端数据库的读写次数）
+function settleCoins(conn) {
+  if (!conn.earn || !conn.acct) return;
+  const r = accounts.earn(conn.acct, conn.earn);
+  conn.earn = 0;
+  if (r && !r.error) conn.sendObj({ t: 'coins', total: r.coins, capped: r.capped ? 1 : 0 });
+}
+
 function roomList() {
   return [...rooms.values()].map((e) => ({ ...e.room.info(), humans: e.clients.size, max: MAX_HUMANS }));
 }
@@ -208,6 +228,7 @@ function createRoom(opts) {
       botDiff: Number(o.botDiff),
       teamSize: Number(o.teamSize),
       maxRounds: Number(o.maxRounds),
+      bombTime: Number(o.bombTime),
       ff: !!o.ff,
       warmup: true,
     },
@@ -222,6 +243,7 @@ function createRoom(opts) {
         const snap = msg.t === 's';
         for (const [pid, c] of entry.clients) if (pid !== except) c.sendRaw(s, snap);
       },
+      reward(pid, kind, easy) { rewardCoins(entry.clients.get(pid), kind, easy); },
     },
   );
   rooms.set(code, entry);
@@ -241,6 +263,7 @@ function joinRoom(conn, entry) {
 function leaveRoom(conn) {
   const e = conn.entry;
   if (!e) return;
+  settleCoins(conn);
   e.clients.delete(conn.pid);
   try { e.room.removePlayer(conn.pid); } catch (err) { console.error('removePlayer', err); }
   conn.entry = null;
@@ -259,6 +282,13 @@ function handleMsg(conn, m) {
     case 'ping':
       conn.sendObj({ t: 'pong', c: m.c });
       return;
+    case 'auth': {
+      // 告诉服务器自己登录的是哪个账号（挣金币要用）；没登录 / 退出登录就发空的
+      settleCoins(conn);
+      const k = typeof m.tk === 'string' && m.tk ? accounts.who(m.tk) : null;
+      conn.acct = typeof k === 'string' ? k : null;
+      return;
+    }
     case 'rooms':
       conn.sendObj({ t: 'rooms', list: roomList(), online: conns.size });
       return;
@@ -348,6 +378,7 @@ setInterval(() => {
   for (const c of conns) {
     if (now - c.ws.lastSeen > 45000) c.ws.close(1001);
     else c.ws.ping();
+    if (c.earn && now - (c.settleT || 0) > 60000) { c.settleT = now; settleCoins(c); } // 攒着的金币一分钟结一次
   }
 }, 15000);
 

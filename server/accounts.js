@@ -10,6 +10,7 @@ const TOKEN_DAYS = 180;
 const MAX_SETTINGS = 100000; // 设置 JSON 最多 100KB
 // 皮肤：默认匕首人人都有，其他刀要用金币解锁（新账号金币为 0）
 export const SKIN_PRICE = 1599;
+export const EARN_DAY_CAP = 800; // 打比赛每天最多挣这么多金币（按北京时间算一天）
 export const KNIFE_SKINS = ['butterfly', 'karambit', 'm9', 'xeno'];
 const MAX_FRIENDS = 100;
 
@@ -392,6 +393,22 @@ export async function createAccounts(file, devFile) {
       save();
       console.log(`[账号] ${u.name} 打开了开发者模式`);
       return { ok: true, ...view(k) };
+    },
+
+    // 这个令牌是哪个账号的（联机时服务器用它认人）；没登录或已失效返回 null
+    who(tk) { return userOf(tk); },
+
+    // 打比赛挣到的金币入账。k 是账号（who 返回的），n 是这次挣的；每天有上限。
+    // 返回 { added 实际到账, coins 现在一共多少, capped 今天到上限了 }
+    earn(k, n) {
+      const u = db.users[k];
+      if (!u) return null;
+      fix(u);
+      const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      if (!u.earn || u.earn.d !== day) u.earn = { d: day, n: 0 };
+      const add = Math.max(0, Math.min(Math.floor(Number(n) || 0), EARN_DAY_CAP - u.earn.n));
+      if (add > 0) { u.earn.n += add; u.coins = Math.min(1e12, u.coins + add); save(); }
+      return { added: add, coins: u.dev ? -1 : u.coins, capped: u.earn.n >= EARN_DAY_CAP };
     },
 
     saveSettings(tk, settings) {

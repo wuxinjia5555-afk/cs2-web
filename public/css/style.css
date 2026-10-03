@@ -214,6 +214,8 @@ kbd { background: #2b3647; border: 1px solid #435066; border-bottom-width: 3px; 
 #money-pop { position: absolute; left: 110px; top: 226px; font-size: 16px; font-weight: 700; color: var(--green); opacity: 0; transition: opacity .3s; }
 #money-pop.show { opacity: 1; }
 #money-pop.neg { color: var(--red); }
+#coin-pop { position: absolute; left: 14px; top: 254px; font-size: 14px; font-weight: 700; color: #ffd76a; opacity: 0; transition: opacity .3s; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+#coin-pop.show { opacity: 1; }
 
 #topbar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 4px; }
 .score { min-width: 54px; text-align: center; font-size: 26px; font-weight: 800; padding: 4px 10px; border-radius: 4px; background: rgba(0, 0, 0, .55); }
@@ -378,6 +380,7 @@ body.touch #radar-wrap, body.touch #radar { width: 112px; height: 112px; }
 body.touch #radar-wrap { left: calc(6px + env(safe-area-inset-left)); top: 6px; }
 body.touch #money-box { left: calc(8px + env(safe-area-inset-left)); top: 122px; font-size: 16px; }
 body.touch #money-pop { left: calc(84px + env(safe-area-inset-left)); top: 124px; font-size: 13px; }
+body.touch #coin-pop { left: calc(8px + env(safe-area-inset-left)); top: 144px; font-size: 12px; }
 body.touch #topbar { transform: translateX(-50%) scale(.72); transform-origin: top center; top: 2px; }
 body.touch .alive-row { min-width: 70px; }
 body.touch #killfeed { top: 46px; right: calc(8px + env(safe-area-inset-right)); }

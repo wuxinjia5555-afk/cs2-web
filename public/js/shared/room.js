@@ -27,6 +27,7 @@ export class Room {
       ff: !!opts.ff,
       warmup: opts.warmup !== false,
       freeze: isNum(opts.freeze) ? clamp(opts.freeze, 2, 15) : TIMES.freeze,
+      bombTime: [40, 45, 60].includes(opts.bombTime) ? opts.bombTime : TIMES.bomb, // 炸弹安放后多少秒爆炸（建房间时可选）
       roundTime: TIMES.round,
       dmKills: 40,
     });
@@ -404,6 +405,13 @@ export class Room {
     this.bcast({ t: 'msg', k: 'halftime' });
   }
 
+  // 金币奖励：只有联网服务器会接这个回调（人机练习没有）。kind：kill / dmkill / plant / defuse / round / match / finish / dmwin；
+  // easy = 对面一个真人都没有（打机器人挣得少）
+  reward(p, kind, easy) {
+    if (this.io.reward && p && !p.bot && !p.dummy) this.io.reward(p.id, kind, !!easy);
+  }
+  noHumans(team) { return this.countTeam(team, true) === 0; }
+
   endRound(winner, reason, mvpId = null) {
     if (this.phase !== 'live' && this.phase !== 'freeze') return;
     this.phase = 'over';
@@ -416,8 +424,9 @@ export class Room {
     const loser = otherTeam(winner);
     const reward = reason === 'bomb' ? ECON.winBomb : reason === 'defuse' ? ECON.winDefuse : reason === 'time' ? ECON.winTime : ECON.winElim;
     const lossB = ECON.lossBase + ECON.lossStep * Math.min(this.loss[loser], ECON.lossMaxSteps);
+    const easyWin = this.noHumans(loser);
     for (const p of this.players.values()) {
-      if (p.team === winner) this.addMoney(p, reward);
+      if (p.team === winner) { this.addMoney(p, reward); this.reward(p, 'round', easyWin); }
       else if (p.team === loser) this.addMoney(p, lossB + (loser === 'T' && this.roundPlanted ? ECON.plantTeamBonus : 0));
     }
     this.loss[winner] = Math.max(0, this.loss[winner] - 1);
@@ -447,6 +456,12 @@ export class Room {
     this.phase = 'matchover';
     this.phaseEnd = this.time + TIMES.matchEnd;
     this.matchPending = null;
+    // 打完一整场：赢的多给，输了 / 平了也给一点
+    for (const p of this.players.values()) {
+      if (p.team !== 'T' && p.team !== 'CT') continue;
+      if (this.opts.mode === 'dm') { if (p.id === w) this.reward(p, 'dmwin', this.humans().length < 2); }
+      else if (this.opts.mode === 'bomb') this.reward(p, p.team === w ? 'match' : 'finish', this.noHumans(otherTeam(p.team)));
+    }
     this.bcast({ t: 'mend', w, sc: this.scores, mode: this.opts.mode });
     this.bcastScores();
     this.bcastRound();
@@ -716,6 +731,7 @@ export class Room {
       if (this.isEnemy(a, v)) {
         a.kills++; a.roundKills++; a.score += 2;
         if (!dm) this.addMoney(a, (WEAPONS[wid] && WEAPONS[wid].killReward) ?? 300);
+        if (!v.dummy && this.phase !== 'warmup' && this.opts.mode !== 'range') this.reward(a, this.opts.mode === 'dm' ? 'dmkill' : 'kill', !!v.bot);
         if (this.phase === 'dm' && a.alive) this.refillAmmo(a); // 死斗：杀一个人就把子弹补满
       } else {
         a.kills--; a.score -= 2;
@@ -1302,9 +1318,10 @@ export class Room {
     p.inv[5] = false;
     p.dirty = true;
     const site = this.inSite(p) || 'A';
-    this.bomb = { st: 'planted', x: p.x, y: p.y, z: p.z, site, plantedAt: this.time, explodeAt: this.time + TIMES.bomb, planter: p.id, defuser: null, defuseEnd: 0 };
+    this.bomb = { st: 'planted', x: p.x, y: p.y, z: p.z, site, plantedAt: this.time, explodeAt: this.time + this.opts.bombTime, planter: p.id, defuser: null, defuseEnd: 0 };
     this.roundPlanted = true;
     this.addMoney(p, ECON.plantReward);
+    this.reward(p, 'plant', this.noHumans(otherTeam(p.team)));
     p.score += 2;
     this.phaseEnd = this.bomb.explodeAt;
     if (p.slot === 5) { p.slot = p.inv[1] ? 1 : p.inv[2] ? 2 : 3; p.drawEnd = this.time + 0.5; }
@@ -1320,6 +1337,7 @@ export class Room {
     b.defuser = null;
     p.defusing = false;
     this.addMoney(p, ECON.defuseReward);
+    this.reward(p, 'defuse', this.noHumans(otherTeam(p.team)));
     p.score += 2;
     this.bcastBomb();
     this.bcast({ t: 'msg', k: 'defused' });

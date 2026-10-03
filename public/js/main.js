@@ -289,6 +289,7 @@ async function reconnect(net) {
     try {
       await net.connect(8000);
       net.send({ t: 'hello', name: settings.name || playerName(), sid: net.sid });
+      net.send({ t: 'auth', tk: account.token || '' });
       reconnecting = false;
       showReconnect('已连上服务器，正在回到房间…');
       initWait = setTimeout(() => {
@@ -370,7 +371,7 @@ $('btn-start-offline').addEventListener('click', () => {
   goFullscreen();
   const opts = {
     map: offMap(), mode: $('off-mode').value, bots: true,
-    botDiff: +$('off-diff').value, teamSize: +$('off-size').value, maxRounds: +$('off-rounds').value,
+    botDiff: +$('off-diff').value, teamSize: +$('off-size').value, maxRounds: +$('off-rounds').value, bombTime: +$('off-bomb').value,
   };
   const net = new LocalNet(opts, playerName());
   net.onmessage = (m) => {
@@ -445,6 +446,7 @@ async function openOnline(autoJoin) {
     net.onmessage = lobbyMsg;
     net.onclose = lobbyClosed;
     net.send({ t: 'hello', name: playerName(), sid: net.sid });
+    net.send({ t: 'auth', tk: account.token || '' });
   }
   lobby.net.send({ t: 'rooms' });
   if (!lobby.timer) lobby.timer = setInterval(() => { if (lobby.net && lobby.net.open && !game) lobby.net.send({ t: 'rooms' }); }, 3000);
@@ -488,7 +490,7 @@ $('btn-create').addEventListener('click', () => {
     t: 'create',
     opts: {
       name: $('on-name').value.trim(), map: onMap(), mode: $('on-mode').value, bots: $('on-bots').value === '1',
-      botDiff: +$('on-diff').value, teamSize: +$('on-size').value, maxRounds: +$('on-rounds').value,
+      botDiff: +$('on-diff').value, teamSize: +$('on-size').value, maxRounds: +$('on-rounds').value, bombTime: +$('on-bomb').value,
     },
   });
 });
@@ -932,6 +934,7 @@ async function acctSubmit() {
   $('acct-submit').disabled = true;
   msg(acctTab === 'reg' ? '正在注册…' : '正在登录…');
   const r = acctTab === 'reg' ? await register(name, pw) : await login(name, pw);
+  tellServerWho();
   $('acct-submit').disabled = false;
   if (r.error) return msg(r.error);
   $('acct-pw').value = '';
@@ -967,7 +970,11 @@ $('dev-exit').addEventListener('click', async () => {
 for (const b of document.querySelectorAll('.acct-tabs [data-tab]')) b.addEventListener('click', () => { audio.play('click'); setAcctTab(b.dataset.tab); });
 $('acct-submit').addEventListener('click', acctSubmit);
 for (const id of ['acct-name', 'acct-pw', 'acct-pw2']) $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') acctSubmit(); });
-$('acct-logout').addEventListener('click', async () => { await logout(); toast('已退出登录（这台设备上的设置还在）'); renderAccount(); });
+$('acct-logout').addEventListener('click', async () => { await logout(); tellServerWho(); toast('已退出登录（这台设备上的设置还在）'); renderAccount(); });
+// 登录 / 退出后告诉联机服务器现在是哪个账号（打比赛挣的金币记到这个账号上）
+function tellServerWho() {
+  if (lobby && lobby.net && lobby.net.open) lobby.net.send({ t: 'auth', tk: account.token || '' });
+}
 $('acct-sync-now').addEventListener('click', () => uploadNow());
 
 // ---------------- 好友 ----------------

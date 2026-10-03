@@ -176,6 +176,14 @@ export class ViewModel {
 
   play(def, kind, t0, dur) { this.clip = def ? { def, kind, t0, dur, last: -1 } : null; }
 
+  // 提前把一把武器的模型搭好（搭一把要几十毫秒，放在不打紧的时候做，免得第一次切出来时卡一下）。返回是不是真的搭了
+  warm(wid) {
+    const key = wid === 'knife' ? 'knife:' + this.knifeSkin : wid;
+    if (this.cache.has(key)) return false;
+    this.cache.set(key, this.build(wid));
+    return true;
+  }
+
   // 当前拿的是有花式动作的刀
   knifeFx() { return !!(this.cur && this.cur.userData.gun.userData.kfx); }
 

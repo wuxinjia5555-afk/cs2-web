@@ -55,6 +55,7 @@ export class Game {
     // 告诉服务器我的刀皮肤（别人看到的第三人称模型）
     // （联机服务器会按账号检查这把刀解锁了没有）
     if (settings.skins && settings.skins.knife && settings.skins.knife !== 'default') this.net.send({ t: 'skin', k: settings.skins.knife, tk: account.token || undefined });
+    if (!this.net.isLocal) this.net.send({ t: 'auth', tk: account.token || '' }); // 告诉服务器是哪个账号（挣金币用）
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;
@@ -489,6 +490,11 @@ export class Game {
       case 'spawn': this.onSpawn(m); break;
       case 'round': this.onRound(m); break;
       case 'rend': this.onRoundEnd(m); break;
+      case 'coin': this.hud.coinPop(m.n); break; // 打比赛挣到金币
+      case 'coins':
+        if (m.total >= 0) account.coins = m.total;
+        if (m.capped && !this.coinCapTold) { this.coinCapTold = true; this.hud.center('今天打比赛挣的金币已经到上限了，明天再来', 3); }
+        break;
       case 'mend': this.hud.matchEnd(m); this.input.unlock(); this.suppressPause = true; break;
       case 'kill': this.onKill(m); break;
       case 'hurt': this.onHurt(m); break;
@@ -604,6 +610,7 @@ export class Game {
       if (i >= 0) me.inv[4].splice(i, 1);
     }
     me.inv[5] = !!m.i5;
+    this.warmVm();
     const wasAlive = me.alive;
     me.alive = !!m.al && (me.team === 'T' || me.team === 'CT');
     if (wasAlive && !me.alive && this.deathT < 0) this.deathT = this.now;
@@ -620,6 +627,20 @@ export class Game {
       if (me.slot === 4 && (!me.nade || !me.inv[4].includes(me.nade))) me.nade = me.inv[4][0] || null;
       this.vm.setWeapon(this.curWeapon().id, 0.3, this.now);
     }
+  }
+
+  // 背包里的武器提前把第一人称模型搭好，一次搭一把、隔一小会儿再搭下一把
+  warmVm() {
+    if (this.warmT || !this.running) return;
+    const me = this.me, ids = ['knife'];
+    for (const s of [1, 2]) if (me.inv[s]) ids.push(me.inv[s].w);
+    for (const n of me.inv[4] || []) ids.push(n);
+    if (me.inv[5]) ids.push('c4');
+    this.warmT = setTimeout(() => {
+      this.warmT = 0;
+      if (!this.running) return;
+      for (const id of ids) if (WEAPONS[id] && this.vm.warm(id)) { this.warmVm(); return; }
+    }, 150);
   }
 
   slotValid(s) {

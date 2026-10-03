@@ -146,6 +146,7 @@ export class Hud {
     this.toggle('ico-bomb', !!me.inv[5] && me.alive);
     this.toggle('ico-kit', me.kit && me.alive);
     if (this.moneyPopT && now > this.moneyPopT) { this.moneyPopT = 0; $('money-pop').classList.remove('show'); }
+    if (this.coinPopT && now > this.coinPopT) { this.coinPopT = 0; $('coin-pop').classList.remove('show'); }
     // 弹药
     const w = g.curWeapon();
     const item = me.inv[me.slot];
@@ -424,6 +425,15 @@ export class Hud {
 
   clearKillIcons() {
     $('kill-icons').innerHTML = '';
+  }
+
+  // 打比赛挣到金币：钱数下面冒一行小字，短时间内连着挣的加在一起
+  coinPop(n) {
+    const el = $('coin-pop'), now = this.g.now;
+    this.coinSum = now < (this.coinPopT || 0) ? (this.coinSum || 0) + n : n;
+    el.textContent = `+${this.coinSum} 金币`;
+    el.classList.add('show');
+    this.coinPopT = now + 2.5;
   }
 
   moneyPop(delta) {

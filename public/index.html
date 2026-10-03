@@ -38,6 +38,7 @@
   <div id="radar-wrap"><canvas id="radar" width="200" height="200"></canvas><div id="radar-site"></div></div>
   <div id="money-box"><span id="buyzone" class="hidden" title="购买区">🛒</span><span id="money">$800</span></div>
   <div id="money-pop"></div>
+  <div id="coin-pop"></div>
 
   <div id="topbar">
     <div class="alive-row" id="alive-t"></div>
@@ -249,6 +250,7 @@
         <label class="field"><span>机器人难度</span><select id="off-diff"><option value="0">新手</option><option value="1">简单</option><option value="2" selected>普通</option><option value="3">中等</option><option value="4">困难</option><option value="5">专家</option></select></label>
         <label class="field"><span>每队人数</span><select id="off-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
         <label class="field"><span>回合数</span><select id="off-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
+        <label class="field"><span>炸弹倒计时</span><select id="off-bomb"><option value="40" selected>40 秒（标准）</option><option value="45">45 秒</option><option value="60">60 秒（宽松）</option></select></label>
       </div>
       <div class="row">
         <button class="btn ghost" data-back>返回</button>
@@ -278,6 +280,7 @@
           <label class="field"><span>机器人难度</span><select id="on-diff"><option value="0">新手</option><option value="1">简单</option><option value="2" selected>普通</option><option value="3">中等</option><option value="4">困难</option><option value="5">专家</option></select></label>
           <label class="field"><span>每队人数</span><select id="on-size"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></label>
           <label class="field"><span>回合数</span><select id="on-rounds"><option value="8">短赛（先赢 5 局）</option><option value="16" selected>标准（先赢 9 局）</option><option value="24">完整（先赢 13 局）</option></select></label>
+          <label class="field"><span>炸弹倒计时</span><select id="on-bomb"><option value="40" selected>40 秒（标准）</option><option value="45">45 秒</option><option value="60">60 秒（宽松）</option></select></label>
         </div>
         <div class="row"><button class="btn ghost" id="btn-hide-create">取消</button><button class="btn accent big" id="btn-create">创建并进入</button></div>
       </div>
@@ -457,7 +460,7 @@
         <div class="inv-list">
           <div class="inv-cat">刀具</div>
           <div class="inv-items" id="inv-knives"></div>
-          <div class="inv-tip" id="inv-tip">刀皮肤要用金币解锁（每把 1599），好友之间可以互相赠送金币和皮肤</div>
+          <div class="inv-tip" id="inv-tip">刀皮肤要用金币解锁（每把 1599）。登录后联机打比赛能挣金币：击杀 5、下包 / 拆包 5、赢一回合 10、赢一整场 50（打机器人只有零头，每天最多 800）；好友之间也可以互相赠送</div>
         </div>
         <div class="inv-preview">
           <canvas id="inv-canvas"></canvas>
