@@ -184,36 +184,93 @@ function arm(k, name, o, style) {
   });
 }
 
-// 握步枪的两只手：右手握握把（食指搭在扳机上），左手托着护木
-const RIFLE_POSE = {
-  right: {
-    grip: [0.001, -0.052, 0.058], thumbDir: [0, 0.95, -0.31], palmDir: [-0.82, 0, -0.57], elbow: [0.2, -0.3, 0.42],
-    pose: {
-      curl: [[0.35, 0.75, 0.45], [1.25, 1.5, 0.8], [1.3, 1.5, 0.8], [1.3, 1.45, 0.75]],
-      splay: [-0.1, 0, 0.04, 0.1],
-      thumb: [[0.35, 0.45, 0.82], [-0.15, 0.6, 0.78], [-0.3, 0.85, 0.42]],
-    },
+// ---------------- 各种握法 ----------------
+// 手指弯多少：握握把（食指伸出去搭扳机）、攥紧细刀柄、托着粗护木、握一个圆罐子
+const CURL = {
+  grip: [[0.35, 0.75, 0.45], [1.25, 1.5, 0.8], [1.3, 1.5, 0.8], [1.3, 1.45, 0.75]],
+  fist: [[1.3, 1.6, 0.9], [1.32, 1.6, 0.9], [1.34, 1.6, 0.9], [1.36, 1.55, 0.85]],
+  cup: [[0.75, 1.0, 0.55], [0.8, 1.0, 0.55], [0.82, 1.0, 0.55], [0.85, 1.0, 0.5]],
+  wrap: [[0.95, 1.2, 0.6], [1.0, 1.2, 0.6], [1.02, 1.2, 0.6], [1.05, 1.15, 0.55]],
+  can: [[0.8, 1.0, 0.55], [0.85, 1.0, 0.55], [0.87, 1.0, 0.55], [0.9, 0.95, 0.5]],
+};
+// 大拇指：绕过去扣住（握把、刀柄）/ 顺着枪身往前贴着（托护木）/ 翘起来压在上面（C4）
+const THUMB = {
+  wrap: [[0.35, 0.45, 0.82], [-0.15, 0.6, 0.78], [-0.3, 0.85, 0.42]],
+  along: [[0.45, 0.3, 0.84], [0.75, 0.2, 0.62], [0.9, 0.1, 0.42]],
+  top: [[0.5, 0.2, 0.85], [0.3, 0.55, 0.78], [0.05, 0.85, 0.55]],
+};
+const SPLAY = [-0.1, 0, 0.04, 0.1];
+
+// 右手握握把：握把中心在 (0, y, z)，握把往后倾 rx（弧度，负数）
+const rGrip = (y, z, rx, o = {}) => ({
+  grip: [0, y, z], thumbDir: [0, Math.cos(rx), Math.sin(rx)], palmDir: [-0.82, 0, -0.57], elbow: [0.2, -0.3, 0.42],
+  pose: { curl: CURL.grip, splay: SPLAY, thumb: THUMB.wrap }, ...o,
+});
+// 左手从下面托住：托的那一段中心在 (0, y, z)，half 是它中心到底面的距离
+const lCup = (y, z, half, o = {}) => ({
+  left: true, grip: [0, y, z], thumbDir: [0, 0.12, -1], palmDir: [0.5, 0.87, 0], hold: [0, 0.07, 0.014 + half], elbow: [-0.36, -0.3, 0.2],
+  pose: { curl: CURL.cup, splay: [-0.12, -0.03, 0.05, 0.14], thumb: THUMB.along }, ...o,
+});
+// 左手从左边包住一根竖着的东西（手枪握把上右手的手指、冲锋枪的前握把）
+const lWrap = (y, z, o = {}) => ({
+  left: true, grip: [0, y, z], thumbDir: [0, 1, -0.25], palmDir: [1, 0, 0.12], hold: [0, 0.095, 0.05], elbow: [-0.32, -0.3, 0.36],
+  pose: { curl: CURL.wrap, splay: SPLAY, thumb: [[0.4, 0.5, 0.75], [0.3, 0.8, 0.5], [0.2, 0.95, 0.25]] }, ...o,
+});
+// 右手攥着一根朝前的刀柄（大拇指那一侧朝刀尖）
+const rKnife = (y, z, o = {}) => ({
+  grip: [0, y, z], thumbDir: [0, 0, -1], palmDir: [0.7, 0.7, 0], hold: [0, 0.1, 0.03], elbow: [0.27, -0.36, 0.3],
+  pose: { curl: CURL.fist, splay: SPLAY, thumb: THUMB.wrap }, ...o,
+});
+
+const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026) };
+// 每把枪的握法（位置对着各自模型上的握把、护木）
+const POSES = {
+  ak47: RIFLE_POSE,
+  galil: { right: rGrip(-0.04, 0.02, -0.3), left: lCup(0.03, -0.33, 0.025) },
+  m4a4: { right: rGrip(-0.045, 0.02, -0.3), left: lCup(0.03, -0.35, 0.029) },
+  m4a1s: { right: rGrip(-0.045, 0.02, -0.3), left: lCup(0.03, -0.35, 0.029) },
+  famas: { right: rGrip(-0.05, -0.1, -0.2), left: lCup(0.03, -0.27, 0.05) },
+  ssg08: { right: rGrip(-0.045, 0.08, -0.35), left: lCup(0.02, -0.22, 0.0325) },
+  awp: { right: rGrip(-0.045, 0.08, -0.35), left: lCup(0.02, -0.22, 0.04) },
+  nova: { right: rGrip(-0.04, 0.05, -0.3), left: lCup(0.02, -0.36, 0.024) },
+  ump45: { right: rGrip(-0.045, 0.03, -0.3), left: lCup(0.02, -0.2, 0.0425) },
+  mp9: { right: rGrip(-0.04, 0.01, -0.15), left: lWrap(-0.045, -0.2, { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] }) },
+  mac10: { right: rGrip(-0.04, 0.01, -0.1), left: lWrap(-0.055, 0.0) },
+  pistol: { right: rGrip(-0.045, 0.02, -0.25), left: lWrap(-0.06, 0.012) },
+  knife: { right: rKnife(0.01, 0.03) },
+  knife_karambit: {
+    // 爪子刀横着握：刀柄左右走向，刀环在拳头左边（食指那一侧），手背对着自己
+    right: { grip: [0.0085, -0.018, 0.03], thumbDir: [-1, 0, 0], palmDir: [0, 0.2, -1], hold: [0, 0.1, 0.03], elbow: [0.14, -0.42, 0.3],
+      pose: { curl: CURL.fist, splay: SPLAY, thumb: THUMB.wrap } },
   },
-  left: {
-    left: true, grip: [0, 0.0334, -0.325], thumbDir: [0, 0.12, -1], palmDir: [0.5, 0.87, 0], hold: [0, 0.07, 0.04], elbow: [-0.36, -0.3, 0.2],
-    pose: {
-      curl: [[0.75, 1.0, 0.55], [0.8, 1.0, 0.55], [0.82, 1.0, 0.55], [0.85, 1.0, 0.5]],
-      splay: [-0.12, -0.03, 0.05, 0.14],
-      thumb: [[0.45, 0.3, 0.84], [0.75, 0.2, 0.62], [0.9, 0.1, 0.42]],
-    },
+  grenade: {
+    right: { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
+      pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } },
+  },
+  c4: {
+    // 两只手从下面托着炸弹的两头，大拇指压在上面
+    right: { grip: [0.07, 0, 0], thumbDir: [0, 0, -1], palmDir: [-0.3, 0.95, 0], hold: [0, 0.07, 0.047], elbow: [0.3, -0.3, 0.32],
+      pose: { curl: CURL.cup, splay: SPLAY, thumb: THUMB.top } },
+    left: { left: true, grip: [-0.07, 0, 0], thumbDir: [0, 0, -1], palmDir: [0.3, 0.95, 0], hold: [0, 0.07, 0.047], elbow: [-0.3, -0.3, 0.32],
+      pose: { curl: CURL.cup, splay: SPLAY, thumb: THUMB.top } },
   },
 };
 
 // ============================== 对外 ==============================
 // 有高精度模型的武器。gun(hd)：hd=true 是第一人称用的，false 是远处看的简化版
 export const HD = {
-  ak47: { gun: (hd) => ak47(new Kit(hd)), pose: RIFLE_POSE, lay: { pos: [0.115, -0.15, -0.27], rot: [0.03, 0.1, 0] } },
+  ak47: { gun: (hd) => ak47(new Kit(hd)), lay: { pos: [0.115, -0.15, -0.27], rot: [0.03, 0.1, 0] } },
 };
 
-// 握着这把枪的两只手（第一人称）。cols：{ glove, sleeve, skin, fingerless }
-export function hdHands(wid, cols) {
-  const def = HD[wid];
-  if (!def) return null;
+// 这把武器该怎么握：先按武器名找，再按类型（手枪 / 刀 / 手雷）找
+export function handPose(wid, type, skin) {
+  if (wid === 'knife') return POSES['knife_' + skin] || POSES.knife;
+  return POSES[wid] || POSES[type] || null;
+}
+
+// 握着这把武器的手（第一人称）。cols：{ glove, sleeve, skin, fingerless }。返回的组里 userData.rh / lh 是两只手
+export function hdHands(pose, cols) {
+  if (!pose) return null;
   const k = new Kit(true, {
     glove: { color: cols.glove, metal: 0, rough: 0.82, tex: 'cloth', uv: 60 },
     pad: { color: cols.pad ?? 0x111214, metal: 0.1, rough: 0.55, tex: 'metal', uv: 20 },
@@ -221,7 +278,9 @@ export function hdHands(wid, cols) {
     skin: { color: cols.skin, metal: 0, rough: 0.8 },
   });
   const style = { fingerless: !!cols.fingerless, pads: !cols.fingerless };
-  arm(k, 'rh', def.pose.right, style);
-  arm(k, 'lh', def.pose.left, style);
-  return k.build();
+  arm(k, 'rh', pose.right, style);
+  if (pose.left) arm(k, 'lh', pose.left, style);
+  const g = k.build();
+  g.userData.lhGrip = pose.left ? pose.left.grip : null;
+  return g;
 }

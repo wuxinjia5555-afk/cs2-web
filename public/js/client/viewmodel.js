@@ -1,12 +1,13 @@
 // 第一人称武器（独立场景渲染，不会穿墙），含晃动、后坐、换弹、切枪、挥刀、检视动画
 import * as THREE from 'three';
 import { makeWeapon, armColors, mbox } from './models.js';
-import { HD, hdHands } from './hdmodels.js';
+import { HD, hdHands, handPose } from './hdmodels.js';
 import { viewEnv } from './hdkit.js';
 import { flare } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
 
+const HANDS_ALL = false; // 改成 true：所有武器都换成带手指的手
 const LAYOUT = {
   rifle: { pos: [0.19, -0.19, -0.36], rot: [0.02, 0.06, 0] },
   sniper: { pos: [0.19, -0.195, -0.34], rot: [0.02, 0.05, 0] },
@@ -230,11 +231,18 @@ export class ViewModel {
     if (grip) { gun.rotation.set(...grip.rot); gun.position.set(...grip.pos); }
     g.add(gun);
     const col = armColors(this.team);
-    // 有高精度模型的枪：配带手指的手（摆好了握枪的姿势）
-    const hands = HD[wid] ? hdHands(wid, col) : null;
+    // 带手指的手（按这把武器的握法摆好姿势）。每把武器的握法都配好了，
+    // 但手的样子还在改，所以先只给高精度模型的枪用，其他武器暂时还是后面的方块手
+    const hands = HD[wid] || HANDS_ALL ? hdHands(handPose(wid, type, this.knifeSkin), col) : null;
     if (hands) {
       g.add(hands);
       g.userData.hands = hands;
+      // 换弹时左手要挪到弹匣那里：算出从握的地方到弹匣的偏移
+      const mag = gun.userData.mag;
+      if (mag && hands.userData.lhGrip) {
+        const c = new THREE.Box3().setFromObject(mag).getCenter(new THREE.Vector3()), lg = hands.userData.lhGrip;
+        g.userData.lhTo = new THREE.Vector3(c.x - lg[0], c.y - lg[1] - 0.05, c.z - lg[2]).clampLength(0, 0.26);
+      }
       g.userData.gun = gun;
       g.userData.lay = lay;
       g.userData.type = type;
@@ -362,7 +370,9 @@ export class ViewModel {
       }
       if (lh) {
         const to = sstep(seg(p, 0.02, 0.16)) * (1 - sstep(seg(p, 0.78, 0.96))); // 手挪到弹匣上的程度
-        lh.position.set(0.012 * to, -0.165 * to - out * 0.18, 0.105 * to);
+        const v = g.userData.lhTo;
+        if (v) lh.position.set(v.x * to, v.y * to - out * 0.18, v.z * to);
+        else lh.position.set(0, -out * 0.12, 0);
       }
       if (p >= 1) this.reloadDur = 0;
     } else {
