@@ -39,9 +39,72 @@ export class Nav {
     return !!this.walk[b] && this.level[b] - this.level[a] <= 1;
   }
 
-  nearestWalkable(x, z) {
+  // 从格子 i 能走到的相邻格子（和 A* 同一套规则：斜着走要两边都能走）
+  eachStep(i, fn) {
+    const W = this.W, c = i % W, r = (i / W) | 0;
+    for (let d = 0; d < 8; d++) {
+      const nc = c + DC[d], nr = r + DR[d];
+      if (nc < 0 || nr < 0 || nc >= W || nr >= this.H) continue;
+      const j = nr * W + nc;
+      if (!this.canStep(i, j)) continue;
+      if (d >= 4 && (!this.canStep(i, r * W + nc) || !this.canStep(i, nr * W + c))) continue;
+      fn(j);
+    }
+  }
+
+  // 只保留「从 seed 走得到、也走得回 seed」的格子，其余的都标成不可走
+  keepMain(seed) {
+    const n = this.W * this.H;
+    if (seed < 0 || !this.walk[seed]) return;
+    const rev = new Array(n);
+    for (let i = 0; i < n; i++) if (this.walk[i]) this.eachStep(i, (j) => { (rev[j] || (rev[j] = [])).push(i); });
+    const flood = (next) => {
+      const seen = new Uint8Array(n), q = [seed];
+      seen[seed] = 1;
+      for (let k = 0; k < q.length; k++) next(q[k], (j) => { if (!seen[j]) { seen[j] = 1; q.push(j); } });
+      return seen;
+    };
+    const fwd = flood((i, fn) => this.eachStep(i, fn));
+    const back = flood((i, fn) => { if (rev[i]) for (const j of rev[i]) fn(j); });
+    this.walkList.length = 0;
+    for (let i = 0; i < n; i++) {
+      if (!this.walk[i]) continue;
+      if (fwd[i] && back[i]) this.walkList.push(i);
+      else this.walk[i] = 0;
+    }
+  }
+
+  // 出口：标出哪些格子算「走出去了」，并从出口往回推，算好每个格子朝最近出口走的下一步
+  setExits(isExit) {
+    const n = this.W * this.H;
+    const rev = new Array(n);
+    for (let i = 0; i < n; i++) if (this.walk[i]) this.eachStep(i, (j) => { (rev[j] || (rev[j] = [])).push(i); });
+    const next = (this.exitNext = new Int32Array(n).fill(-1));
+    const q = [];
+    for (let i = 0; i < n; i++) if (this.walk[i] && isExit(i)) { next[i] = i; q.push(i); }
+    for (let k = 0; k < q.length; k++) {
+      const j = q[k];
+      if (!rev[j]) continue;
+      for (const i of rev[j]) if (next[i] < 0) { next[i] = j; q.push(i); }
+    }
+  }
+
+  // 从 (x, z, 脚高 y) 走到最近出口的格子路径；走不出去返回 null
+  wayOut(x, z, y) {
+    if (!this.exitNext) return null;
+    let cur = this.nearestWalkable(x, z, y, true);
+    if (cur < 0 || this.exitNext[cur] < 0) return null;
+    const cells = [cur];
+    while (this.exitNext[cur] !== cur && cells.length < 800) { cur = this.exitNext[cur]; cells.push(cur); }
+    return cells;
+  }
+
+  // 离 (x, z) 最近的可走格子。给了 y（脚的高度）就只找「不比脚高出一步以上」的格子，
+  // 免得人站在台子下面，却被当成站在台子上面；strict：找不到合适高度的就返回 -1（不退而求其次）
+  nearestWalkable(x, z, y, strict) {
+    const hasY = y != null, maxLv = hasY ? (y + 0.5) / LEVEL_H : 0;
     const i0 = this.cellOf(x, z);
-    if (i0 >= 0 && this.walk[i0]) return i0;
+    if (i0 >= 0 && this.walk[i0] && (!hasY || this.level[i0] <= maxLv)) return i0;
     const c0 = Math.floor(x / this.S), r0 = Math.floor(z / this.S);
     for (let rad = 1; rad <= 8; rad++) {
       let best = -1, bd = Infinity;
@@ -51,14 +114,14 @@ export class Nav {
           const c = c0 + dc, r = r0 + dr;
           if (c < 0 || r < 0 || c >= this.W || r >= this.H) continue;
           const i = r * this.W + c;
-          if (!this.walk[i]) continue;
+          if (!this.walk[i] || (hasY && this.level[i] > maxLv)) continue;
           const d = dc * dc + dr * dr;
           if (d < bd) { bd = d; best = i; }
         }
       }
       if (best >= 0) return best;
     }
-    return -1;
+    return hasY && !strict ? this.nearestWalkable(x, z) : -1;
   }
 
   findPath(start, goal, maxIter = Math.max(8000, (this.W * this.H) >> 1)) {

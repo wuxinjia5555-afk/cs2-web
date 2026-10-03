@@ -37,6 +37,7 @@ export class BotBrain {
     this.burst = 0; this.nextBurst = 0; this.nextTap = 0; this.strafeDir = 1; this.strafeUntil = 0; this.crouchUntil = 0;
     this.wantYaw = this.p.yaw; this.wantPitch = 0;
     this.lastPos = { x: this.p.x, z: this.p.z }; this.stuckCheckT = 0; this.stuckCount = 0;
+    this.evadeUntil = 0; this.evadeDir = 1;
     this.alertT = -99; this.alertPos = null;
     this.guardCell = -1; this.roamCell = -1; this.via = -1;
     this.nadeT = 0;
@@ -363,13 +364,17 @@ export class BotBrain {
     const r = this.room, p = this.p, nav = r.nav, t = r.time;
     const dx = x - p.x, dz = z - p.z;
     if (dx * dx + dz * dz < 1.0) { this.path = null; return true; }
-    const gk = key + '|' + Math.round(x) + ',' + Math.round(z);
+    // 人在楼板下面那一层（比如掉进了地下通道）：周围没有和脚下一样高的可走格子，先照着那一层的路走出去
+    const s0 = nav.nearestWalkable(p.x, p.z, p.y, true);
+    const lower = s0 < 0 && nav.lower ? nav.lower : null;
+    const gk = lower ? 'wayout' : key + '|' + Math.round(x) + ',' + Math.round(z);
     if (this.goalKey !== gk || !this.path || t > this.repathAt) {
       this.goalKey = gk;
       this.repathAt = t + 4 + r.rng() * 2;
-      const s = nav.nearestWalkable(p.x, p.z), g = nav.nearestWalkable(x, z);
-      const cells = nav.findPath(s, g);
-      this.path = cells ? nav.smooth(cells, p.x, p.z) : null;
+      let cells = null, on = nav;
+      if (lower) { cells = lower.wayOut(p.x, p.z, p.y); on = lower; }
+      if (!cells) { on = nav; cells = nav.findPath(s0 >= 0 ? s0 : nav.nearestWalkable(p.x, p.z), nav.nearestWalkable(x, z)); }
+      this.path = cells ? on.smooth(cells, p.x, p.z) : null;
       this.pathIdx = 0;
       if (!this.path || !this.path.length) {
         this.path = null;
@@ -391,6 +396,8 @@ export class BotBrain {
     }
     const w = path[Math.min(this.pathIdx, path.length - 1)];
     this.moveToward(w.x, w.z);
+    // 被卡住了：先往旁边让一步、退一点（绕开挡路的角），还不行再重新找路
+    if (t < this.evadeUntil) { this.cmd.side = this.evadeDir; this.cmd.fwd = -0.4; }
     if (!this.visible) {
       if (this.lastSeen && t - this.lastSeenT < 3) this.wantYaw = anglesFromDir(this.lastSeen.x - p.x, 0, this.lastSeen.z - p.z)[0];
       else if (t - this.alertT > 1.5) this.wantYaw = anglesFromDir(w.x - p.x, 0, w.z - p.z)[0];
@@ -401,6 +408,10 @@ export class BotBrain {
       if (moved < 0.3) {
         this.stuckCount++;
         this.cmd.jump = true;
+        if (this.stuckCount >= 2) {
+          this.evadeDir = this.stuckCount % 2 ? 1 : -1;
+          this.evadeUntil = t + 0.45;
+        }
         if (this.stuckCount > 3) { this.path = null; this.goalKey = null; this.stuckCount = 0; }
       } else this.stuckCount = 0;
       this.lastPos.x = p.x; this.lastPos.z = p.z;

@@ -319,7 +319,7 @@ export function buildMap(id) {
       if (B.type[r * W + c] !== CELL.FLOOR) continue;
       let ok = true;
       for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (B.type[(r + dr) * W + c + dc] === CELL.WALL) { ok = false; break; }
-      if (ok) dmSpawns.push({ ...cellPos(c, r), yaw: 0 });
+      if (ok) dmSpawns.push({ ...cellPos(c, r), y: navLevel[r * W + c] * LEVEL_H + 0.02, yaw: 0 });
     }
   }
 
@@ -327,21 +327,48 @@ export function buildMap(id) {
 
   const walk = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) walk[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) ? 1 : 0;
-  // 小格子地图（半米一格）：挨着墙 / 箱子的格子不给机器人走，留出人的身位（不然会往人过不去的窄缝里钻）
+  // 小格子地图（半米一格）：人比格子宽，挨着墙 / 箱子的格子不给机器人走，留出人的身位（不然会往人过不去的窄缝里钻）。
+  // 挨着「比自己高出两级以上的台子」也一样：人上不去，贴着走会被台子边卡住，等于一堵矮墙
   if (S < 0.8) {
-    const solid = (i) => B.type[i] !== CELL.FLOOR;
+    const blocks = (i, j) => B.type[j] !== CELL.FLOOR || navLevel[j] - navLevel[i] > 1;
     const keep = new Uint8Array(W * H);
     for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
       const i = r * W + c;
       if (!walk[i]) continue;
       let ok = 1;
-      for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (solid(i + dr * W + dc)) { ok = 0; break; }
+      for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (blocks(i, i + dr * W + dc)) { ok = 0; break; }
       keep[i] = ok;
     }
     walk.set(keep);
   }
   // 屋顶下的格子也可走；门梁不影响
   const nav = new Nav(W, H, S, walk, navLevel);
+  // 只留「从出生点走得到、也走得回来」的格子：走不到的角落、只能下不能上的坑都不给机器人走，也不会被选成目标
+  const seed = spawns.T[0] || spawns.CT[0];
+  if (seed) nav.keepMain(nav.nearestWalkable(seed.x, seed.z));
+  // 死斗出生点也只用走得出来的地方（免得出生在下不来的屋顶上）
+  const okSpawns = dmSpawns.filter((s) => nav.walk[nav.cellOf(s.x, s.z)]);
+  if (okSpawns.length >= 12) { dmSpawns.length = 0; dmSpawns.push(...okSpawns); }
+  // 楼板下面那一层（地下通道）和只能下不能上的坑：机器人不会主动走进去，但万一掉下去了，要能自己走出来。
+  // 这一层单独做一张寻路网格（高度用最底下那层地面），并算好每个格子往「回到主区域」方向的下一步
+  if (B.bridges.length) {
+    const walk2 = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) walk2[i] = B.type[i] === CELL.FLOOR ? 1 : 0;
+    if (S < 0.8) {
+      const blocks = (i, j) => B.type[j] !== CELL.FLOOR || B.level[j] - B.level[i] > 1;
+      const keep = new Uint8Array(W * H);
+      for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+        const i = r * W + c;
+        if (!walk2[i]) continue;
+        let ok = 1;
+        for (let dr = -1; dr <= 1 && ok; dr++) for (let dc = -1; dc <= 1; dc++) if (blocks(i, i + dr * W + dc)) { ok = 0; break; }
+        keep[i] = ok;
+      }
+      walk2.set(keep);
+    }
+    nav.lower = new Nav(W, H, S, walk2, B.level);
+    nav.lower.setExits((i) => !!nav.walk[i] && navLevel[i] === B.level[i]);
+  }
 
   return {
     id, name: def.name, theme: def.theme, def, W, H, S, wallH,
