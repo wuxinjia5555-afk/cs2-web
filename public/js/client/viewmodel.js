@@ -1,6 +1,8 @@
 // 第一人称武器（独立场景渲染，不会穿墙），含晃动、后坐、换弹、切枪、挥刀、检视动画
 import * as THREE from 'three';
 import { makeWeapon, armColors, mbox } from './models.js';
+import { HD, hdHands } from './hdmodels.js';
+import { viewEnv } from './hdkit.js';
 import { flare } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
@@ -196,6 +198,15 @@ export class ViewModel {
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flare(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, color: 0xffe0a0 }));
     this.flash.visible = false;
     this.flash.scale.set(0.16, 0.16, 1);
+    this.boltK = 0;      // 枪机后坐（开一枪弹回去）
+    this.envFor = null;  // 环境反光是给哪个渲染器做的
+  }
+
+  // 渲染前调用：高精度模型的金属要有环境可反射（每个渲染器只做一次）
+  prepare(renderer) {
+    if (this.envFor === renderer) return;
+    this.envFor = renderer;
+    this.scene.environment = viewEnv(renderer);
   }
 
   setTeam(team) {
@@ -212,13 +223,26 @@ export class ViewModel {
   build(wid) {
     const w = WEAPONS[wid];
     const type = w ? (w.type === 'grenade' ? 'grenade' : w.type) : 'knife';
-    const lay = (wid === 'knife' && LAYOUT['knife_' + this.knifeSkin]) || LAYOUT[type] || LAYOUT.rifle;
+    const lay = (HD[wid] && HD[wid].lay) || (wid === 'knife' && LAYOUT['knife_' + this.knifeSkin]) || LAYOUT[type] || LAYOUT.rifle;
     const g = new THREE.Group();
     const gun = makeWeapon(wid, false, wid === 'knife' ? this.knifeSkin : null);
     const grip = wid === 'knife' && GRIP[this.knifeSkin];
     if (grip) { gun.rotation.set(...grip.rot); gun.position.set(...grip.pos); }
     g.add(gun);
     const col = armColors(this.team);
+    // 有高精度模型的枪：配带手指的手（摆好了握枪的姿势）
+    const hands = HD[wid] ? hdHands(wid, col) : null;
+    if (hands) {
+      g.add(hands);
+      g.userData.hands = hands;
+      g.userData.gun = gun;
+      g.userData.lay = lay;
+      g.userData.type = type;
+      g.visible = false;
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+      this.root.add(g);
+      return g;
+    }
     // 右手握把 + 前臂
     if (grip && grip.glove) { const [gw, gh, gd, gx, gy, gz, grx] = grip.glove; g.add(mbox(gw, gh, gd, col.glove, gx, gy, gz, grx)); }
     else g.add(mbox(0.05, 0.09, 0.075, col.glove, 0.0, -0.045, 0.03, -0.3));
@@ -268,6 +292,7 @@ export class ViewModel {
   knifeFx() { return !!(this.cur && this.cur.userData.gun.userData.kfx); }
 
   onFire(now, strength = 1) {
+    this.boltK = 1;
     this.kick = Math.min(1.6, this.kick + strength);
     this.flashT = now + 0.045;
     this.flash.material.rotation = Math.random() * Math.PI * 2;
@@ -321,22 +346,34 @@ export class ViewModel {
     const gun = g.userData.gun;
     const mag = gun.userData.mag;
     if (mag && mag.userData.base === undefined) mag.userData.base = mag.position.clone();
+    // 高精度模型：左手跟着弹匣走（从护木挪到弹匣上，抽出旧的、插上新的，再回到护木）
+    const lh = g.userData.hands ? g.userData.hands.userData.lh : null;
     if (this.reloadDur > 0) {
       const p = clamp((now - this.reloadStart) / this.reloadDur, 0, 1);
       const s = Math.sin(p * Math.PI);
       rx -= s * 0.35;
       rz += s * 0.45;
       py -= s * 0.04;
+      const out = p < 0.2 ? p / 0.2 : p < 0.55 ? 1 : p < 0.75 ? 1 - (p - 0.55) / 0.2 : 0;
       if (mag) {
-        const out = p < 0.2 ? p / 0.2 : p < 0.55 ? 1 : p < 0.75 ? 1 - (p - 0.55) / 0.2 : 0;
         mag.position.copy(mag.userData.base);
         mag.position.y -= out * 0.18;
         mag.visible = !(p > 0.3 && p < 0.5);
       }
+      if (lh) {
+        const to = sstep(seg(p, 0.02, 0.16)) * (1 - sstep(seg(p, 0.78, 0.96))); // 手挪到弹匣上的程度
+        lh.position.set(0.012 * to, -0.165 * to - out * 0.18, 0.105 * to);
+      }
       if (p >= 1) this.reloadDur = 0;
-    } else if (mag) {
-      mag.position.copy(mag.userData.base);
-      mag.visible = true;
+    } else {
+      if (mag) { mag.position.copy(mag.userData.base); mag.visible = true; }
+      if (lh) lh.position.set(0, 0, 0);
+    }
+    // 枪机：开一枪往后一缩再弹回去
+    const bolt = gun.userData.bolt;
+    if (bolt) {
+      this.boltK *= Math.exp(-dt * 26);
+      bolt.position.z = this.boltK * 0.05;
     }
     // 挥刀
     if (this.knifeT >= 0) {

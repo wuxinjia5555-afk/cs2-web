@@ -1,6 +1,7 @@
 // 程序生成的低多边形模型：士兵、武器、投掷物、C4
 import * as THREE from 'three';
 import { textSprite, flare } from './textures.js';
+import { HD } from './hdmodels.js';
 
 const geoCache = new Map();
 const matCache = new Map();
@@ -396,6 +397,14 @@ export function makeWeapon(id, merged = false, skin = null) {
     if (merged) collapse(g, 'w:knife:' + skin);
     return g;
   }
+  // 有高精度模型的枪：第一人称用完整版，别人手里 / 地上的用简化版（照旧合并成一个网格）
+  if (HD[id]) {
+    const hg = HD[id].gun(!merged);
+    hg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    hg.userData.id = id;
+    if (merged) collapse(hg, 'w:' + id);
+    return hg;
+  }
   switch (id) {
     case 'ak47': rifleAK(g); break;
     case 'galil': rifleAK(g, C.olive, C.dark, C.dark); break;
@@ -590,7 +599,8 @@ export class PlayerModel {
 // 第一人称手臂颜色
 export function armColors(team) {
   const P = TEAM_COL[team] || TEAM_COL.T;
-  return { sleeve: P.shirt, glove: P.glove };
+  // 匪徒戴露指手套、光着小臂；警察戴全指战术手套、穿长袖
+  return { sleeve: P.shirt, glove: P.glove, skin: P.skin, fingerless: team !== 'CT' };
 }
 export { box as mbox };
 

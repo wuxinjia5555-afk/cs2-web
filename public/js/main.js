@@ -749,6 +749,7 @@ function invLoop() {
   const now = invNow(), dt = Math.min(0.05, now - (inv.last || now));
   inv.last = now;
   inv.vm.update(dt, { now, speed: 0, onGround: true, crouch: false, mdx: Math.sin(now * 0.7) * 30, mdy: Math.cos(now * 0.5) * 12, scoped: false, hidden: false, silenced: false });
+  inv.vm.prepare(inv.r);
   inv.r.render(inv.vm.scene, inv.vm.camera);
   requestAnimationFrame(invLoop);
 }

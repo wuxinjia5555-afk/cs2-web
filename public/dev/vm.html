@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>模型预览（开发用）</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #20242b; overflow: hidden; font: 13px/1.5 system-ui, sans-serif; color: #dfe5ee; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #ui { position: fixed; left: 8px; top: 8px; background: rgba(0, 0, 0, .45); padding: 6px 10px; border-radius: 6px; }
+  #ui a { color: #ffd76a; margin-right: 8px; cursor: pointer; }
+</style>
+<script>
+  // three.js 来源：和游戏主页一样，优先用本服务器托管的，找不到再用 CDN
+  (function () {
+    var local = '/lib/three/three.module.js', cdn = 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js', ok = false;
+    try { var x = new XMLHttpRequest(); x.open('HEAD', local, false); x.send(); ok = x.status === 200; } catch (e) {}
+    var s = document.createElement('script');
+    s.type = 'importmap';
+    s.textContent = JSON.stringify({ imports: { three: ok ? local : cdn } });
+    document.currentScript.after(s);
+  })();
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">模型预览 · 网址参数：w=武器 team=T/CT view=fp（第一人称）/orbit（转着看） yaw pitch dist
+  <div><a data-a="fire">开火</a><a data-a="reload">换弹</a><a data-a="inspect">检视</a><a data-a="draw">拔枪</a></div></div>
+<script type="module">
+// 开发用的模型预览页：/dev/vm.html?w=ak47&team=CT&view=fp
+import * as THREE from 'three';
+import { ViewModel } from '../js/client/viewmodel.js';
+import { makeWeapon } from '../js/client/models.js';
+import { WEAPONS } from '../js/shared/weapons.js';
+
+const q = new URLSearchParams(location.search);
+const wid = q.get('w') || 'ak47', team = q.get('team') || 'CT';
+const S = { view: q.get('view') || 'fp', yaw: +(q.get('yaw') || 0.9), pitch: +(q.get('pitch') || 0.25), dist: +(q.get('dist') || 0.9), far: q.get('far') === '1' };
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+
+// 背景：一片天空和地面（和游戏里差不多的亮度）
+const bg = new THREE.Scene();
+bg.background = new THREE.Color(0x9fb4cf);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({ color: 0xc2a577 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.6;
+bg.add(ground);
+const wall = new THREE.Mesh(new THREE.BoxGeometry(30, 6, 1), new THREE.MeshBasicMaterial({ color: 0xa08b68 }));
+wall.position.set(0, 1.2, -18);
+bg.add(wall);
+const bgCam = new THREE.PerspectiveCamera(74, 1, 0.1, 500);
+
+const vm = new ViewModel();
+vm.team = team;
+vm.setWeapon(wid, 0, 0);
+const now = () => performance.now() / 1000;
+
+// 转着看：把枪（和手）单独拿出来看
+const orbitCam = new THREE.PerspectiveCamera(40, 1, 0.01, 20);
+// 放大画面的一块来看细节：S.zoom = [左, 上, 宽, 高]（都是 0~1 的比例）
+function zoomTo(cam, w, h) {
+  if (S.zoom) cam.setViewOffset(w, h, S.zoom[0] * w, S.zoom[1] * h, S.zoom[2] * w, S.zoom[3] * h);
+  else cam.clearViewOffset();
+  cam.updateProjectionMatrix();
+}
+function render() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.floor(w * renderer.getPixelRatio())) renderer.setSize(w, h, false);
+  renderer.autoClear = false;
+  renderer.clear();
+  bgCam.aspect = w / h; bgCam.updateProjectionMatrix();
+  renderer.render(bg, bgCam);
+  renderer.clearDepth();
+  vm.prepare(renderer);
+  if (S.view === 'orbit') {
+    const g = vm.cur;
+    // 以握把和护木中间为中心转
+    g.position.set(0, 0, 0); g.rotation.set(0, 0, 0);
+    g.updateMatrixWorld(true);
+    const cc = S.center || [0, 0.02, -0.2];
+    const c = new THREE.Vector3(cc[0], cc[1], cc[2]).applyMatrix4(g.matrixWorld);
+    orbitCam.aspect = w / h; orbitCam.updateProjectionMatrix();
+    orbitCam.position.set(c.x + Math.sin(S.yaw) * Math.cos(S.pitch) * S.dist, c.y + Math.sin(S.pitch) * S.dist, c.z + Math.cos(S.yaw) * Math.cos(S.pitch) * S.dist);
+    orbitCam.lookAt(c);
+    zoomTo(orbitCam, w, h);
+    renderer.render(vm.scene, orbitCam);
+  } else {
+    vm.resize(w / h);
+    zoomTo(vm.camera, w, h);
+    renderer.render(vm.scene, vm.camera);
+  }
+}
+let last = now();
+function tick() {
+  const t = now(), dt = Math.min(0.05, t - last);
+  last = t;
+  if (S.view !== 'orbit') vm.update(dt, { now: t, speed: 0, onGround: true, crouch: false, mdx: 0, mdy: 0, scoped: false, hidden: false, silenced: false });
+  render();
+}
+function loop() { tick(); requestAnimationFrame(loop); }
+loop();
+
+const acts = {
+  fire: () => vm.onFire(now(), 1),
+  reload: () => vm.onReload(now(), (WEAPONS[wid] && WEAPONS[wid].reload) || 2.5),
+  inspect: () => vm.onInspect(now()),
+  draw: () => { vm.wid = null; vm.setWeapon(wid, 0.6, now()); },
+};
+document.getElementById('ui').addEventListener('click', (e) => { const a = e.target.dataset && e.target.dataset.a; if (a && acts[a]) acts[a](); });
+// 给调试脚本用
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer });
+</script>
+</body>
+</html>

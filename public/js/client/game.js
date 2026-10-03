@@ -1868,9 +1868,11 @@ export class Game {
     r.render(this.scene, this.camera);
     if (this.me.alive && this.w.scope === 0) {
       r.clearDepth();
+      this.vm.prepare(r);
       r.render(this.vm.scene, this.vm.camera);
     } else if (!this.me.alive && this.specView && this.svm && this.svmId === this.specView.id && !this.specScoped) {
       r.clearDepth();
+      this.svm.prepare(r);
       r.render(this.svm.scene, this.svm.camera);
     }
   }
