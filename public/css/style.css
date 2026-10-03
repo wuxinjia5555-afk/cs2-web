@@ -466,6 +466,10 @@ body.touch .team-card { padding: 14px 10px; }
   .home-nav { margin-left: 4px; }
   .home-tab { padding: 0 9px; font-size: 13px; gap: 5px; letter-spacing: 0; }
   .home-tab svg { width: 16px; height: 16px; }
+  #menus.sub .menu:not(.home) { padding: 48px 8px 6px; }
+  #menus.sub .menu-box.wide { max-height: calc(100vh - 56px); }
+  .menu-box { padding: 12px 14px; gap: 8px; }
+  .menu-box h2 { font-size: 16px; padding-bottom: 6px; }
   .home-user { font-size: 12px; gap: 6px; }
   .home-body { padding: 8px 12px 4px; gap: 8px; grid-template-columns: minmax(240px, 330px) 1fr minmax(160px, 210px); }
   .home-panel { padding: 9px; gap: 6px; }
