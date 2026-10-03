@@ -111,9 +111,9 @@ function at(t, st) {
 // 调试用：把一串画面拼成一张图。frames = [[标题, 准备这一帧的函数]…]，crop = [左, 上, 右, 下]（0~1）
 function sheet(frames, cols = 4, crop = [0, 0, 1, 1]) {
   let c = document.getElementById('sheet');
-  if (!c) { c = document.createElement('canvas'); c.id = 'sheet'; c.style.cssText = 'position:fixed;left:0;top:0;z-index:9;width:auto;height:auto'; document.body.appendChild(c); }
+  if (!c) { c = document.createElement('canvas'); c.id = 'sheet'; c.style.cssText = 'position:fixed;left:0;top:0;z-index:9;height:auto;width:' + (S.sheetW || 1000) + 'px'; document.body.appendChild(c); }
   if (!frames) { c.remove(); return; }
-  const tw = Math.floor((innerWidth || 1280) / cols);
+  const tw = Math.floor(1280 / cols);
   let g = null, th = 0;
   frames.forEach(([label, fn], i) => {
     fn();

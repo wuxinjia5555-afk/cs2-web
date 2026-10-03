@@ -1,4 +1,4 @@
-// 程序生成的低多边形模型：士兵、武器、投掷物、C4
+// 程序生成的模型：士兵（低多边形）；武器、投掷物、C4 用 hdmodels.js / hdguns.js 里的高精度模型
 import * as THREE from 'three';
 import { textSprite, flare } from './textures.js';
 import { HD, HD_KNIVES } from './hdmodels.js';
@@ -20,18 +20,6 @@ function boxGeo(w, h, d) {
   const k = `b${w},${h},${d}`;
   let g = geoCache.get(k);
   if (!g) { g = new THREE.BoxGeometry(w, h, d); geoCache.set(k, g); }
-  return g;
-}
-function cylGeo(r, h, seg = 12) {
-  const k = `c${r},${h},${seg}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.CylinderGeometry(r, r, h, seg); geoCache.set(k, g); }
-  return g;
-}
-function sphGeo(r) {
-  const k = `s${r}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.SphereGeometry(r, 12, 8); geoCache.set(k, g); }
   return g;
 }
 
@@ -87,206 +75,50 @@ function box(w, h, d, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
   m.rotation.set(rx, ry, rz);
   return m;
 }
-function cyl(r, h, color, x, y, z, rx = 0, ry = 0, rz = 0) {
-  const m = new THREE.Mesh(cylGeo(r, h), mat(color));
-  m.position.set(x, y, z);
-  m.rotation.set(rx, ry, rz);
-  return m;
-}
-
-const C = {
-  black: 0x1c1d20, dark: 0x2e3034, metal: 0x505359, silver: 0xb4b8bd, wood: 0x80501f, woodD: 0x5d3a18,
-  olive: 0x5a6040, green: 0x46573a, tan: 0xa89066, blue: 0x34465c, red: 0x8a2c22, glass: 0x6e5a2e,
-};
-
 // ---------------- 武器 ----------------
-function rifleAK(g, furn = C.wood, furnD = C.woodD, body = C.dark) {
-  g.add(box(0.05, 0.07, 0.3, body, 0, 0.035, -0.1));
-  g.add(box(0.045, 0.02, 0.26, C.metal, 0, 0.078, -0.1));
-  g.add(box(0.05, 0.05, 0.16, furn, 0, 0.03, -0.33));
-  g.add(box(0.03, 0.025, 0.14, furn, 0, 0.068, -0.32));
-  g.add(box(0.022, 0.022, 0.26, C.dark, 0, 0.045, -0.53));
-  g.add(box(0.012, 0.045, 0.012, C.dark, 0, 0.072, -0.62));
-  g.add(box(0.03, 0.03, 0.05, C.dark, 0, 0.045, -0.68));
-  g.userData.mag = box(0.036, 0.17, 0.06, C.dark, 0, -0.06, -0.17, 0.38);
-  g.add(g.userData.mag);
-  g.add(box(0.034, 0.1, 0.045, furnD, 0, -0.04, 0.02, -0.3));
-  g.add(box(0.042, 0.08, 0.26, furn, 0, 0.0, 0.17, 0.12));
-  g.userData.muzzle = new THREE.Vector3(0, 0.045, -0.72);
-}
-
-function rifleM4(g, silenced = false) {
-  g.add(box(0.05, 0.075, 0.28, C.black, 0, 0.03, -0.1));
-  g.add(box(0.03, 0.035, 0.1, C.dark, 0, 0.085, -0.06));
-  g.add(box(0.058, 0.058, 0.22, C.dark, 0, 0.03, -0.35));
-  g.add(box(0.012, 0.06, 0.012, C.black, 0, 0.075, -0.46));
-  if (silenced) {
-    g.add(box(0.036, 0.036, 0.24, C.black, 0, 0.035, -0.58));
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.72);
-  } else {
-    g.add(box(0.02, 0.02, 0.18, C.dark, 0, 0.035, -0.55));
-    g.add(box(0.028, 0.028, 0.05, C.black, 0, 0.035, -0.66));
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.7);
+// 武器模型都在 hdmodels.js / hdguns.js 里（高精度）。这里分两种用法：
+//   第一人称（merged = false）：完整版，零件分组（弹匣、枪机……可以单独动）
+//   别人手里 / 地上的（merged = true）：简化版，整把枪合并成一个网格、只有顶点颜色；每种武器只搭一次，之后共用
+const worldGeo = new Map();
+function worldWeapon(key, build) {
+  let geo = worldGeo.get(key);
+  if (!geo) {
+    const src = build();
+    src.updateMatrixWorld(true);
+    const pos = [], nor = [], col = [], c = new THREE.Color();
+    src.traverse((m) => {
+      if (!m.isMesh) return;
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+      g.applyMatrix4(m.matrixWorld);
+      c.copy(m.material.color);
+      const P = g.attributes.position.array, N = g.attributes.normal.array;
+      for (let i = 0; i < P.length; i++) { pos.push(P[i]); nor.push(N[i]); }
+      for (let i = 0; i < P.length / 3; i++) col.push(c.r, c.g, c.b);
+      g.dispose();
+    });
+    geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeBoundingSphere();
+    geo.userData.muzzle = src.userData.muzzle || new THREE.Vector3();
+    src.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+    worldGeo.set(key, geo);
   }
-  g.userData.mag = box(0.034, 0.15, 0.06, C.dark, 0, -0.07, -0.14, 0.12);
-  g.add(g.userData.mag);
-  g.add(box(0.032, 0.09, 0.045, C.black, 0, -0.045, 0.02, -0.3));
-  g.add(box(0.03, 0.03, 0.12, C.dark, 0, 0.04, 0.1));
-  g.add(box(0.045, 0.09, 0.13, C.black, 0, 0.02, 0.2));
+  const g = new THREE.Group(), mesh = new THREE.Mesh(geo, vertexColorMat());
+  mesh.castShadow = true;
+  g.add(mesh);
+  g.userData.muzzle = geo.userData.muzzle;
+  return g;
 }
 
-function famas(g) {
-  g.add(box(0.055, 0.1, 0.5, C.black, 0, 0.03, -0.08));
-  g.add(box(0.02, 0.045, 0.32, C.dark, 0, 0.11, -0.12));
-  g.add(box(0.02, 0.02, 0.14, C.dark, 0, 0.03, -0.4));
-  g.add(box(0.034, 0.1, 0.045, C.black, 0, -0.05, -0.1, -0.2));
-  g.userData.mag = box(0.034, 0.13, 0.06, C.dark, 0, -0.06, 0.08, 0.1);
-  g.add(g.userData.mag);
-  g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.48);
-}
-
-function sniper(g, body, big) {
-  const L = big ? 0.5 : 0.44;
-  g.add(box(big ? 0.06 : 0.048, big ? 0.08 : 0.065, L, body, 0, 0.02, -0.05));
-  g.add(box(big ? 0.028 : 0.02, big ? 0.028 : 0.02, 0.45, C.dark, 0, 0.04, -0.52));
-  if (big) g.add(box(0.042, 0.042, 0.06, C.black, 0, 0.04, -0.76));
-  g.add(cyl(big ? 0.028 : 0.022, 0.32, C.black, 0, 0.12, -0.08, Math.PI / 2));
-  g.add(cyl(big ? 0.036 : 0.028, 0.06, C.black, 0, 0.12, -0.26, Math.PI / 2));
-  g.add(cyl(big ? 0.032 : 0.026, 0.05, C.black, 0, 0.12, 0.09, Math.PI / 2));
-  g.add(box(0.02, 0.04, 0.02, C.dark, 0, 0.085, -0.16));
-  g.add(box(0.02, 0.04, 0.02, C.dark, 0, 0.085, 0.0));
-  g.userData.mag = box(0.045, 0.07, 0.08, C.dark, 0, -0.045, -0.08);
-  g.add(g.userData.mag);
-  g.add(box(0.034, 0.1, 0.045, C.black, 0, -0.045, 0.08, -0.35));
-  g.add(box(big ? 0.06 : 0.045, big ? 0.12 : 0.09, 0.26, body, 0, -0.01, 0.3));
-  g.userData.muzzle = new THREE.Vector3(0, 0.04, big ? -0.8 : -0.76);
-}
-
-function pistol(g, slide, frame, len = 0.19, silenced = false, big = false) {
-  const sh = big ? 0.055 : 0.042;
-  g.add(box(big ? 0.036 : 0.03, sh, len, slide, 0, 0.035, -0.07));
-  g.add(box(big ? 0.034 : 0.028, 0.022, len * 0.8, frame, 0, 0.005, -0.06));
-  g.add(box(big ? 0.036 : 0.03, 0.11, 0.05, frame === C.silver ? C.black : frame, 0, -0.045, 0.02, -0.25));
-  g.userData.mag = box(0.026, 0.03, 0.04, C.black, 0, -0.1, 0.035, -0.25);
-  g.add(g.userData.mag);
-  g.add(box(0.008, 0.022, 0.04, frame, 0, -0.012, -0.035));
-  if (silenced) {
-    g.add(box(0.032, 0.032, 0.16, C.black, 0, 0.035, -0.24));
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.33);
-  } else {
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.07 - len / 2 - 0.01);
-  }
-}
-
-function smg(g, kind) {
-  if (kind === 'mac10') {
-    g.add(box(0.05, 0.09, 0.2, C.dark, 0, 0.02, -0.08));
-    g.add(box(0.02, 0.02, 0.06, C.black, 0, 0.045, -0.21));
-    g.userData.mag = box(0.034, 0.12, 0.045, C.black, 0, -0.12, 0.01);
-    g.add(box(0.034, 0.1, 0.05, C.dark, 0, -0.04, 0.01, -0.1));
-    g.add(g.userData.mag);
-    g.userData.muzzle = new THREE.Vector3(0, 0.045, -0.25);
-  } else if (kind === 'mp9') {
-    g.add(box(0.045, 0.07, 0.24, C.black, 0, 0.03, -0.1));
-    g.add(box(0.03, 0.07, 0.03, C.black, 0, -0.04, -0.2));
-    g.add(box(0.034, 0.1, 0.045, C.black, 0, -0.04, 0.01, -0.15));
-    g.userData.mag = box(0.03, 0.1, 0.04, C.dark, 0, -0.12, 0.02, -0.15);
-    g.add(g.userData.mag);
-    g.add(box(0.015, 0.015, 0.2, C.dark, 0.03, 0.02, 0.06));
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.25);
-  } else {
-    g.add(box(0.05, 0.085, 0.34, C.dark, 0, 0.02, -0.1));
-    g.add(box(0.02, 0.02, 0.06, C.black, 0, 0.035, -0.29));
-    g.userData.mag = box(0.034, 0.14, 0.06, C.black, 0, -0.08, -0.15, 0.1);
-    g.add(g.userData.mag);
-    g.add(box(0.034, 0.1, 0.045, C.black, 0, -0.045, 0.03, -0.3));
-    g.add(box(0.035, 0.07, 0.2, C.black, 0, 0.01, 0.17));
-    g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.33);
-  }
-}
-
-function shotgun(g) {
-  g.add(box(0.05, 0.075, 0.22, C.dark, 0, 0.03, -0.05));
-  g.add(box(0.028, 0.028, 0.5, C.black, 0, 0.055, -0.4));
-  g.add(box(0.03, 0.03, 0.38, C.dark, 0, 0.02, -0.36));
-  g.userData.mag = box(0.048, 0.048, 0.13, C.woodD, 0, 0.02, -0.36);
-  g.add(g.userData.mag);
-  g.add(box(0.034, 0.1, 0.045, C.black, 0, -0.04, 0.05, -0.3));
-  g.add(box(0.045, 0.09, 0.26, C.black, 0, 0.0, 0.18, 0.1));
-  g.userData.muzzle = new THREE.Vector3(0, 0.055, -0.66);
-}
-
-function grenade(g, type) {
-  if (type === 'he') {
-    g.add(new THREE.Mesh(sphGeo(0.035), mat(C.olive)));
-    g.add(box(0.012, 0.05, 0.012, C.metal, 0.012, 0.035, 0));
-  } else if (type === 'flash') {
-    g.add(cyl(0.024, 0.1, 0x8c9196, 0, 0, 0));
-    g.add(cyl(0.018, 0.02, C.metal, 0, 0.06, 0));
-  } else if (type === 'smoke') {
-    g.add(cyl(0.028, 0.11, 0x5c6b56, 0, 0, 0));
-    g.add(cyl(0.02, 0.02, C.metal, 0, 0.065, 0));
-  } else if (type === 'molotov') {
-    g.add(cyl(0.03, 0.12, C.glass, 0, 0, 0));
-    g.add(cyl(0.012, 0.06, C.glass, 0, 0.09, 0));
-    g.add(box(0.03, 0.05, 0.02, 0xd8d2c0, 0, 0.12, 0, 0, 0, 0.4));
-  } else {
-    g.add(cyl(0.028, 0.11, 0x80858a, 0, 0, 0));
-    g.add(cyl(0.029, 0.02, C.red, 0, 0.02, 0));
-  }
-  g.userData.muzzle = new THREE.Vector3(0, 0, 0);
-}
-
-function c4(g) {
-  g.add(box(0.2, 0.065, 0.12, 0xa49066, 0, 0, 0));
-  g.add(box(0.08, 0.012, 0.07, C.dark, 0.03, 0.036, 0));
-  g.add(box(0.05, 0.013, 0.02, 0x3cff6e, 0.03, 0.04, -0.02));
-  g.add(box(0.012, 0.012, 0.13, C.red, -0.07, 0.036, 0));
-  g.add(box(0.012, 0.012, 0.13, 0x2a5cc4, -0.05, 0.036, 0));
-  g.userData.muzzle = new THREE.Vector3(0, 0, 0);
-}
-
-const WEAPON_IDS = new Set(['ak47', 'galil', 'm4a4', 'm4a1s', 'famas', 'awp', 'ssg08', 'glock', 'usp', 'p250', 'deagle', 'mac10', 'mp9', 'ump45', 'nova',
-  'he', 'flash', 'smoke', 'molotov', 'incgrenade', 'c4']);
 export function makeWeapon(id, merged = false, skin = null) {
-  const g = new THREE.Group();
-  // 刀（按皮肤）：第一人称用完整版，别人手里 / 地上的用简化版
-  if (id === 'knife' || !WEAPON_IDS.has(id)) {
-    const sk = skin && HD_KNIVES[skin] ? skin : 'default';
-    const kg = HD_KNIVES[sk](!merged);
-    kg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    kg.userData.id = id;
-    if (merged) collapse(kg, 'w:knife:' + sk);
-    return kg;
-  }
-  // 有高精度模型的枪：第一人称用完整版，别人手里 / 地上的用简化版（照旧合并成一个网格）
-  if (HD[id]) {
-    const hg = HD[id].gun(!merged);
-    hg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    hg.userData.id = id;
-    if (merged) collapse(hg, 'w:' + id);
-    return hg;
-  }
-  switch (id) {
-    case 'ak47': rifleAK(g); break;
-    case 'galil': rifleAK(g, C.olive, C.dark, C.dark); break;
-    case 'm4a4': rifleM4(g, false); break;
-    case 'm4a1s': rifleM4(g, true); break;
-    case 'famas': famas(g); break;
-    case 'awp': sniper(g, C.green, true); break;
-    case 'ssg08': sniper(g, C.blue, false); break;
-    case 'glock': pistol(g, C.dark, C.black, 0.19); break;
-    case 'usp': pistol(g, C.black, C.dark, 0.2, true); break;
-    case 'p250': pistol(g, C.metal, C.black, 0.17); break;
-    case 'deagle': pistol(g, C.silver, C.silver, 0.25, false, true); break;
-    case 'mac10': case 'mp9': case 'ump45': smg(g, id); break;
-    case 'nova': shotgun(g); break;
-    case 'he': case 'flash': case 'smoke': case 'molotov': case 'incgrenade': grenade(g, id); break;
-    case 'c4': c4(g); break;
-  }
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  const knife = !HD[id];
+  const sk = knife ? (skin && HD_KNIVES[skin] ? skin : 'default') : null;
+  const build = (hd) => (knife ? HD_KNIVES[sk](hd) : HD[id].gun(hd));
+  const g = merged ? worldWeapon(knife ? 'knife:' + sk : id, () => build(false)) : build(true);
+  if (!merged) g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.id = id;
-  if (merged) collapse(g, 'w:' + id);
   return g;
 }
 

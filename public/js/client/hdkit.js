@@ -79,6 +79,19 @@ export const HD_MATS = {
   oliveD: { color: 0x2b3024, metal: 0, rough: 0.82 },
   brass: { color: 0xb8975a, metal: 0.9, rough: 0.35 },                            // 黄铜（销钉）
   cord: { color: 0x26272b, metal: 0, rough: 0.95 },                               // 伞绳
+  polymer: { color: 0x212226, metal: 0.05, rough: 0.72 },                         // 手枪的塑料套筒座
+  slate: { color: 0x39424d, metal: 0.05, rough: 0.7 },                            // 鸟狙的深蓝灰枪托
+  lens: { color: 0x1b2a40, metal: 0.95, rough: 0.08 },                            // 瞄准镜镜片
+  glass: { color: 0x5a4a26, metal: 0.2, rough: 0.12 },                            // 燃烧瓶的玻璃
+  label: { color: 0xd9d3c0, metal: 0, rough: 0.8 },                               // 标签 / 色带
+  rag: { color: 0xd8d2c0, metal: 0, rough: 0.95, tex: 'cloth', uv: 60 },          // 布条
+  nadeF: { color: 0x8c9aa6, metal: 0.6, rough: 0.4, tex: 'metal', uv: 9 },        // 闪光弹的壳
+  nadeS: { color: 0x596654, metal: 0.1, rough: 0.7 },                             // 烟雾弹的壳
+  red: { color: 0x8a2c22, metal: 0.1, rough: 0.6 },
+  wireB: { color: 0x2a5cc4, metal: 0.1, rough: 0.6 },
+  c4: { color: 0xa49066, metal: 0, rough: 0.85, tex: 'cloth', uv: 30 },           // C4 的油纸包
+  lcd: { color: 0x3cff6e, metal: 0, rough: 0.4 },
+  keys: { color: 0x9aa0a8, metal: 0.2, rough: 0.5 },
 };
 const stdCache = new Map(), flatCache = new Map();
 // 第一人称用的材质（带金属反光和贴图）；extra 可以加自定义材质（比如按队伍上色的手套）
@@ -152,7 +165,8 @@ function creaseNormals(geo, angle = 0.62) {
     fn[f * 3] = b.x; fn[f * 3 + 1] = b.y; fn[f * 3 + 2] = b.z;
   }
   const map = new Map();
-  const keyOf = (i) => `${Math.round(P[i] * 20000)},${Math.round(P[i + 1] * 20000)},${Math.round(P[i + 2] * 20000)}`;
+  // 同一个位置的顶点归到一起：三个坐标各量化成 17 位整数拼成一个数（比拼字符串快得多；模型都在 ±3 米以内）
+  const keyOf = (i) => ((Math.round(P[i] * 20000) + 65536) * 131072 + Math.round(P[i + 1] * 20000) + 65536) * 131072 + Math.round(P[i + 2] * 20000) + 65536;
   for (let v = 0; v < n * 3; v++) {
     const k = keyOf(v * 3);
     let l = map.get(k);

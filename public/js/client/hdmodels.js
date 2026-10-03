@@ -2,13 +2,16 @@
 // 零件都是照真枪的大致尺寸自己搭出来的（见 hdkit.js），没有用任何游戏的模型或贴图。
 import * as THREE from 'three';
 import { Kit, arcPts, rrect } from './hdkit.js';
+import { GUNS } from './hdguns.js';
 
 const U = 0.00116; // 真枪的 1 毫米 = 模型里的这么多米（比真枪略大一点，第一人称里更饱满）
 const YB = 0.045;  // 枪管轴线的高度（和旧模型一致，枪口火光、曳光弹的位置不用改）
 
 // ============================== AK-47 ==============================
 // 尺寸写的都是真枪上的毫米数：第一个数是离枪口多远，第二个数是比枪管轴线高多少
-function ak47(k) {
+// galil = true：加利尔（AK 的亲戚）：护木、握把换成黑色塑料，枪托换成折叠的钢管托，弹匣更直
+function ak47(k, galil = false) {
+  const wood = galil ? 'polymer' : 'wood', woodD = galil ? 'polymer' : 'woodD';
   const Z = (mm) => -0.72 + mm * U;
   const Y = (mm) => YB + mm * U;
   const P = (...pts) => pts.map(([a, b]) => [Z(a), Y(b)]);
@@ -37,8 +40,8 @@ function ak47(k) {
   k.tube('steel', 10.5 * U, Z(384), Z(392), { y: Y(27) });
   // ---- 护木（木头）----
   k.sweep('blued', X([[-21, 8], [-21, -22], [-12, -27], [12, -27], [21, -22], [21, 8]]), Z(257), Z(268), { bevel: 0.001 }); // 前护木箍
-  k.sweep('wood', X([[-19, 9], [-22.5, -2], [-23.5, -14], [-20, -26], [-12, -31], [12, -31], [20, -26], [23.5, -14], [22.5, -2], [19, 9]]), Z(268), Z(396), { bevel: 0.003 });
-  k.sweep('wood', X([[-18, 10], [-19.5, 24], [-15, 36], [-7, 42], [7, 42], [15, 36], [19.5, 24], [18, 10]]), Z(252), Z(384), { bevel: 0.003 });
+  k.sweep(wood, X([[-19, 9], [-22.5, -2], [-23.5, -14], [-20, -26], [-12, -31], [12, -31], [20, -26], [23.5, -14], [22.5, -2], [19, 9]]), Z(268), Z(396), { bevel: 0.003 });
+  k.sweep(wood, X([[-18, 10], [-19.5, 24], [-15, 36], [-7, 42], [7, 42], [15, 36], [19.5, 24], [18, 10]]), Z(252), Z(384), { bevel: 0.003 });
   // ---- 表尺座、表尺 ----
   k.prof('blued', P([386, -14], [452, -14], [452, 10], [436, 16], [398, 42], [386, 42]), 34 * U, { bevel: 0.002 });
   k.prof('steel', P([392, 43], [444, 39.5], [446, 43], [446, 46], [444, 46.5], [392, 46.5]), 15 * U, { bevel: 0.0008 });
@@ -74,7 +77,7 @@ function ak47(k) {
   });
   // ---- 弹匣（弧形，侧面三道筋；换弹时整个往下抽）----
   k.group('mag', () => {
-    const R = 250 * U, h = 31 * U, t0 = -0.14, t1 = t0 - (235 * U) / R;
+    const R = (galil ? 520 : 250) * U, h = (galil ? 27 : 31) * U, t0 = galil ? -0.07 : -0.14, t1 = t0 - (235 * U) / R;
     const cz = Z(505) - R * Math.cos(t0), cy = Y(-30) - R * Math.sin(t0);
     const band = (r0, r1, a, b, n = 12) => [...arcPts(cz, cy, r1, a, b, n), ...arcPts(cz, cy, r0, b, a, n)];
     k.prof('blued', band(R - h, R + h, t0, t1), 27 * U, { bevel: 0.0025 });
@@ -88,9 +91,17 @@ function ak47(k) {
   k.prof('blued', P([628, -78], [632, -78], [643, -52], [639, -52]), 14 * U, { bevel: 0.0005 });
   k.prof('steel', P([596, -38], [603, -38], [604, -50], [600, -64], [596, -66], [597, -52]), 5 * U, { bevel: 0.0008 });
   // ---- 握把、枪托（木头）----
-  k.prof('woodD', P([640, -38], [686, -38], [694, -60], [704, -100], [700, -128], [672, -134], [660, -110], [650, -80], [643, -52]), 28 * U, { bevel: 0.005 });
-  k.prof('wood', P([700, 8], [876, -14], [876, -126], [868, -128], [718, -40], [700, -36]), 34 * U, { bevel: 0.007 });
-  k.prof('blued', P([876, -12], [880, -13], [880, -128], [876, -129]), 35 * U, { bevel: 0.001 });
+  k.prof(woodD, P([640, -38], [686, -38], [694, -60], [704, -100], [700, -128], [672, -134], [660, -110], [650, -80], [643, -52]), 28 * U, { bevel: 0.005 });
+  if (galil) {
+    // 折叠钢管托：上下两根管子 + 托底
+    k.rod('blued', 7 * U, [0, Y(-4), Z(700)], [0, Y(-10), Z(872)]);
+    k.rod('blued', 7 * U, [0, Y(-30), Z(702)], [0, Y(-104), Z(868)]);
+    k.prof('blued', P([866, 2], [880, 0], [880, -116], [866, -116]), 26 * U, { bevel: 0.003 });
+    k.box('blued', 26 * U, 42 * U, 12 * U, 0, Y(-16), Z(704), { r: 0.002 });
+  } else {
+    k.prof('wood', P([700, 8], [876, -14], [876, -126], [868, -128], [718, -40], [700, -36]), 34 * U, { bevel: 0.007 });
+    k.prof('blued', P([876, -12], [880, -13], [880, -128], [876, -129]), 35 * U, { bevel: 0.001 });
+  }
 
   const g = k.build();
   g.userData.muzzle = new THREE.Vector3(0, YB, Z(0) - 0.012);
@@ -192,31 +203,56 @@ function handMatrix(grip, thumbDir, palmDir, left, hold = [0, 0.1, 0.032], finge
   return m;
 }
 
+// 一只手的模型（在手自己的坐标里）：同一种姿势、同一副手套只搭一次，各把武器共用（搭一只手要十几毫秒）
+const handCache = new Map();
+const MIRROR = new THREE.Matrix4().makeScale(-1, 1, 1);
+function handMeshes(pose, style, cols, left) {
+  const key = (left ? 'L' : 'R') + JSON.stringify(pose) + JSON.stringify(cols);
+  let g = handCache.get(key);
+  if (!g) {
+    const k = handKit(cols);
+    if (left) k.with(MIRROR, true, () => hand(k, pose, style)); else hand(k, pose, style);
+    g = k.build();
+    handCache.set(key, g);
+  }
+  const c = new THREE.Group();
+  for (const m of g.children) c.add(new THREE.Mesh(m.geometry, m.material));
+  return c;
+}
+
 // 一只手 + 小臂。elbow：手肘在哪（枪的坐标，一般在画面外）
-function arm(k, name, o, style) {
-  const m = handMatrix(o.grip, o.thumbDir, o.palmDir, !!o.left, o.hold, o.fingerDir);
-  k.group(name, () => {
-    k.with(m, !!o.left, () => hand(k, o.pose, style));
-    // 小臂：从手腕到手肘的一根扁圆管（扁的方向和手掌一致），靠手腕的一小段是手套的袖口
-    const w = new THREE.Vector3(0, -0.004, 0).applyMatrix4(m), e = new THREE.Vector3(...o.elbow);
-    const yv = w.clone().sub(e).normalize(); // 手肘 → 手腕
-    const zv = new THREE.Vector3().setFromMatrixColumn(m, 0).normalize().cross(yv).normalize();
-    const xv = new THREE.Vector3().crossVectors(yv, zv);
-    const piece = (mat, t0, t1, r0, r1) => { // t：0 = 手腕，1 = 手肘
-      const a = w.clone().lerp(e, t0), b = w.clone().lerp(e, t1);
-      const geo = new THREE.CylinderGeometry(r0, r1, a.distanceTo(b), 16);
-      geo.scale(1, 1, 0.74);
-      k.add(mat, geo, new THREE.Matrix4().makeBasis(xv, yv, zv).setPosition(a.add(b).multiplyScalar(0.5)));
-    };
-    piece('glove', -0.03, 0.03, 0.0255, 0.03);  // 手套的袖筒：靠手腕这头收细，和手掌接上
-    piece('glove', 0.025, 0.085, 0.03, 0.0335);
-    piece('sleeve', 0.065, 0.1, 0.037, 0.038);  // 袖口的收边
-    // 袖子：越往手肘越粗，中间微微鼓起；褶子只留两道很浅的，免得像一节一节的管子
-    piece('sleeve', 0.09, 0.3, 0.0355, 0.0485);
-    piece('sleeve', 0.29, 0.6, 0.0485, 0.056);
-    piece('sleeve', 0.59, 1, 0.056, 0.066);
-    for (const t of [0.24, 0.47]) piece('sleeve', t, t + 0.06, 0.0462 + t * 0.021, 0.0478 + t * 0.021);
-  });
+function arm(name, o, style, cols) {
+  const left = !!o.left, m = handMatrix(o.grip, o.thumbDir, o.palmDir, left, o.hold, o.fingerDir);
+  const g = new THREE.Group();
+  g.name = name;
+  const h = handMeshes(o.pose, style, cols, left);
+  h.matrixAutoUpdate = false;
+  h.matrix.copy(m);
+  if (left) h.matrix.multiply(MIRROR); // 左手的模型已经镜像过了，这里只剩摆位置
+  g.add(h);
+  // 小臂：从手腕到手肘的一根扁圆管（扁的方向和手掌一致），靠手腕的一小段是手套的袖口
+  const k = handKit(cols);
+  const w = new THREE.Vector3(0, -0.004, 0).applyMatrix4(m), e = new THREE.Vector3(...o.elbow);
+  const yv = w.clone().sub(e).normalize(); // 手肘 → 手腕
+  const zv = new THREE.Vector3().setFromMatrixColumn(m, 0).normalize().cross(yv).normalize();
+  const xv = new THREE.Vector3().crossVectors(yv, zv);
+  const piece = (mat, t0, t1, r0, r1) => { // t：0 = 手腕，1 = 手肘
+    const a = w.clone().lerp(e, t0), b = w.clone().lerp(e, t1);
+    const geo = new THREE.CylinderGeometry(r0, r1, a.distanceTo(b), 16);
+    geo.scale(1, 1, 0.74);
+    k.add(mat, geo, new THREE.Matrix4().makeBasis(xv, yv, zv).setPosition(a.add(b).multiplyScalar(0.5)));
+  };
+  piece('glove', -0.03, 0.03, 0.0255, 0.03);  // 手套的袖筒：靠手腕这头收细，和手掌接上
+  piece('glove', 0.025, 0.085, 0.03, 0.0335);
+  piece('sleeve', 0.065, 0.1, 0.037, 0.038);  // 袖口的收边
+  // 袖子：越往手肘越粗，中间微微鼓起；褶子只留两道很浅的，免得像一节一节的管子
+  piece('sleeve', 0.09, 0.3, 0.0355, 0.0485);
+  piece('sleeve', 0.29, 0.6, 0.0485, 0.056);
+  piece('sleeve', 0.59, 1, 0.056, 0.066);
+  for (const t of [0.24, 0.47]) piece('sleeve', t, t + 0.06, 0.0462 + t * 0.021, 0.0478 + t * 0.021);
+  const sl = k.build();
+  while (sl.children.length) g.add(sl.children[0]);
+  return g;
 }
 
 // ---------------- 各种握法 ----------------
@@ -264,6 +300,16 @@ const lPush = (y, z, o = {}) => ({
   left: true, grip: [0, y, z], fingerDir: [0.55, 0.1, -0.83], palmDir: [0.25, 0.95, 0.15], hold: [0, 0.07, 0.02], elbow: [-0.25, -0.4, 0.25],
   pose: { curl: CURL.cup, splay: SPLAY, thumb: THUMB.along }, ...o,
 });
+// 左手从左边伸过来勾住侧面的拉机柄头 (x, y, z)：手心朝右
+const lSide = (x, y, z, o = {}) => ({
+  left: true, grip: [x, y, z], fingerDir: [0.2, 0.75, -0.63], palmDir: [0.93, -0.1, 0.35], hold: [0, 0.1, 0.022], elbow: [-0.42, -0.32, 0.22],
+  pose: { curl: CURL.hook, splay: SPLAY, thumb: THUMB.along }, ...o,
+});
+// 左手食指勾住手雷的拉环（拉环在 (-0.018, y, 0)）
+const lPin = (y) => ({
+  left: true, grip: [-0.018, y, 0], fingerDir: [0.85, 0.3, -0.4], palmDir: [0.15, -0.5, -0.85], hold: [0.028, 0.135, 0.012], elbow: [-0.4, -0.3, 0.25],
+  pose: { curl: CURL.hook, splay: SPLAY, thumb: THUMB.along },
+});
 // 右手握住栓动步枪右边的拉机柄头 (x, y, z)
 const rKnob = (x, y, z, o = {}) => ({
   grip: [x, y, z], fingerDir: [-0.1, 0.55, -0.83], palmDir: [-0.86, 0.3, -0.4], hold: [0, 0.092, 0.024], elbow: [0.24, -0.3, 0.36],
@@ -275,22 +321,27 @@ const rKnife = (y, z, o = {}) => ({
   pose: { curl: CURL.fist, splay: SPLAY, thumb: THUMB.wrap }, ...o,
 });
 
+const NADE_R = { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
+  pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } };
 const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lOver(0.087, -0.113) };
+const SNIPER_POSE = { right: rGrip(-0.068, 0.118, -0.3), left: lCup(0.018, -0.25, 0.022), rightAct: rKnob(0.05, 0.018, 0.122) };
+const M4_POSE = { right: rGrip(-0.07, -0.004, -0.3), left: lCup(0.04, -0.352, 0.0325), leftAct: lOver(0.083, 0.01) };
 // 每把枪的握法（位置对着各自模型上的握把、护木）。
 // leftAct：左手去拉拉机柄 / 套筒时的姿势；leftMag：左手拿弹匣的姿势（不写就用平时托枪的手）；rightAct：右手拉栓的姿势
 const POSES = {
   ak47: RIFLE_POSE,
-  galil: { right: rGrip(-0.04, 0.02, -0.3), left: lCup(0.03, -0.33, 0.025) },
-  m4a4: { right: rGrip(-0.045, 0.02, -0.3), left: lCup(0.03, -0.35, 0.029) },
-  m4a1s: { right: rGrip(-0.045, 0.02, -0.3), left: lCup(0.03, -0.35, 0.029) },
-  famas: { right: rGrip(-0.05, -0.1, -0.2), left: lCup(0.03, -0.27, 0.05) },
-  ssg08: { right: rGrip(-0.045, 0.08, -0.35), left: lCup(0.02, -0.22, 0.0325) },
-  awp: { right: rGrip(-0.045, 0.08, -0.35), left: lCup(0.02, -0.22, 0.04) },
-  nova: { right: rGrip(-0.04, 0.05, -0.3), left: lCup(0.02, -0.36, 0.024) },
-  ump45: { right: rGrip(-0.045, 0.03, -0.3), left: lCup(0.02, -0.2, 0.0425) },
-  mp9: { right: rGrip(-0.04, 0.01, -0.15), left: lWrap(-0.045, -0.2, { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] }) },
-  mac10: { right: rGrip(-0.04, 0.01, -0.1), left: lWrap(-0.055, 0.0) },
-  pistol: { right: rGrip(-0.045, 0.02, -0.25), left: lWrap(-0.06, 0.012) },
+  galil: RIFLE_POSE,
+  m4a4: M4_POSE,
+  m4a1s: M4_POSE,
+  famas: { right: rGrip(-0.068, -0.094, -0.2), left: lCup(0.016, -0.26, 0.056), leftAct: lSide(-0.012, 0.092, -0.08) },
+  ssg08: SNIPER_POSE,
+  awp: SNIPER_POSE,
+  nova: { right: rGrip(-0.062, 0.106, -0.3), left: lCup(0.027, -0.36, 0.024) },
+  ump45: { right: rGrip(-0.07, 0.046, -0.24), left: lCup(0.039, -0.255, 0.039), leftAct: lSide(-0.046, 0.056, -0.22) },
+  mp9: { right: rGrip(-0.055, 0.02, -0.17), left: lWrap(-0.045, -0.195, { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] }), leftAct: lOver(0.076, 0.026) },
+  mac10: { right: rGrip(-0.055, 0.011, -0.05), left: lWrap(-0.06, 0.008), leftAct: lOver(0.086, -0.07) },
+  pistol: { right: rGrip(-0.045, 0.022, -0.34), left: lWrap(-0.06, 0.012), leftAct: lOver(0.052, -0.004), leftMag: lPush(-0.112, 0.045) },
+  deagle: { right: rGrip(-0.052, 0.025, -0.34), left: lWrap(-0.068, 0.014), leftAct: lOver(0.064, -0.004), leftMag: lPush(-0.128, 0.05) },
   knife: { right: rKnife(0.011, 0.028) },
   knife_m9: { right: rKnife(0.017, 0.022) },
   knife_butterfly: { right: rKnife(0.012, 0.036) },
@@ -300,10 +351,11 @@ const POSES = {
     right: { grip: [0.0085, -0.018, 0.03], thumbDir: [-1, 0, 0], palmDir: [0, 0.2, -1], hold: [0, 0.1, 0.03], elbow: [0.14, -0.42, 0.3],
       pose: { curl: CURL.fist, splay: SPLAY, thumb: THUMB.wrap } },
   },
-  grenade: {
-    right: { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
-      pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } },
-  },
+  grenade: { right: NADE_R },
+  he: { right: NADE_R, leftAct: lPin(0.045) },
+  flash: { right: NADE_R, leftAct: lPin(0.05) },
+  smoke: { right: NADE_R, leftAct: lPin(0.062) },
+  incgrenade: { right: NADE_R, leftAct: lPin(0.062) },
   c4: {
     // 两只手从下面托着炸弹的两头，大拇指压在上面
     right: { grip: [0.07, 0, 0], thumbDir: [0, 0, -1], palmDir: [-0.3, 0.95, 0], hold: [0, 0.07, 0.047], elbow: [0.3, -0.3, 0.32],
@@ -477,8 +529,20 @@ function knifeXeno(k) {
 
 // ============================== 对外 ==============================
 // 有高精度模型的武器。gun(hd)：hd=true 是第一人称用的，false 是远处看的简化版
+const more = (wid, lay) => ({ gun: (hd) => GUNS[wid](new Kit(hd)), lay });
 export const HD = {
   ak47: { gun: (hd) => ak47(new Kit(hd)), lay: { pos: [0.18, -0.185, -0.34], rot: [0.02, 0.06, 0] } },
+  galil: { gun: (hd) => ak47(new Kit(hd), true), lay: { pos: [0.18, -0.185, -0.34], rot: [0.02, 0.06, 0] } },
+  m4a4: more('m4a4', { pos: [0.18, -0.167, -0.278], rot: [0.02, 0.06, 0] }),
+  m4a1s: more('m4a1s', { pos: [0.18, -0.167, -0.278], rot: [0.02, 0.06, 0] }),
+  famas: more('famas', { pos: [0.18, -0.169, -0.19], rot: [0.02, 0.06, 0] }),
+  awp: more('awp', { pos: [0.19, -0.172, -0.39], rot: [0.02, 0.05, 0] }),
+  ssg08: more('ssg08', { pos: [0.19, -0.172, -0.39], rot: [0.02, 0.05, 0] }),
+  nova: more('nova', { pos: [0.18, -0.175, -0.387], rot: [0.02, 0.06, 0] }),
+  ump45: more('ump45', { pos: [0.18, -0.167, -0.33], rot: [0.02, 0.07, 0] }),
+  mac10: more('mac10'), mp9: more('mp9'),
+  glock: more('glock'), usp: more('usp'), p250: more('p250'), deagle: more('deagle'),
+  he: more('he'), flash: more('flash'), smoke: more('smoke'), molotov: more('molotov'), incgrenade: more('incgrenade'), c4: more('c4'),
 };
 // 刀（按皮肤）
 export const HD_KNIVES = {
@@ -511,21 +575,16 @@ const handStyle = (cols) => ({ fingerless: !!cols.fingerless, pads: !cols.finger
 // 返回的组里 userData.rh / lh 是两只手；lhB / lhM / rhB 是做动作时换上的姿势（拉栓、拿弹匣），平时不显示
 export function hdHands(pose, cols) {
   if (!pose) return null;
-  const k = handKit(cols), style = handStyle(cols);
-  arm(k, 'rh', pose.right, style);
-  if (pose.left) arm(k, 'lh', pose.left, style);
-  if (pose.leftMag) arm(k, 'lhM', pose.leftMag, style);
-  if (pose.leftAct) arm(k, 'lhB', pose.leftAct, style);
-  if (pose.rightAct) arm(k, 'rhB', pose.rightAct, style);
-  return k.build();
+  const g = new THREE.Group(), style = handStyle(cols);
+  const put = (name, o) => { if (o) { g.userData[name] = arm(name, o, style, cols); g.add(g.userData[name]); } };
+  put('rh', pose.right); put('lh', pose.left); put('lhM', pose.leftMag); put('lhB', pose.leftAct); put('rhB', pose.rightAct);
+  return g;
 }
 
 // 拿刀时空着的左手：张开、手心朝下放在画面左下（位置直接写在相机坐标里）
 export function hdOffHand(cols) {
-  const k = handKit(cols);
-  arm(k, 'lh', {
+  return arm('lh', {
     left: true, grip: [-0.105, -0.112, -0.25], fingerDir: [0.66, -0.1, -0.74], palmDir: [0.12, -0.92, -0.37], hold: [0, 0.1, 0],
     elbow: [-0.36, -0.42, 0.18], pose: { curl: CURL.open, splay: [-0.16, -0.05, 0.06, 0.18], thumb: THUMB.open },
-  }, handStyle(cols));
-  return k.build();
+  }, handStyle(cols), cols);
 }
