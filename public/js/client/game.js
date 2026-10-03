@@ -1192,6 +1192,7 @@ export class Game {
     this.pitch = clamp(this.pitch - inp.dy * sens, -89 * DEG, 89 * DEG);
     if (inp.touch) {
       let dx = inp.tdx, dy = inp.tdy;
+      // 辅助瞄准：准星靠近敌人时滑屏变慢（只减速，不会把准星拉向敌人）
       const a = this.assist;
       if (a) {
         const slow = a.off < a.size * 1.8 ? 0.45 : 0.72;
@@ -1202,13 +1203,6 @@ export class Game {
       const k = 0.2 * settings.touchSens * DEG * tz;
       this.yaw += -dx * k * settings.touchSensX + inp.gyroYaw * tz;
       this.pitch = clamp(this.pitch - dy * k * settings.touchSensY + inp.gyroPitch * tz, -89 * DEG, 89 * DEG);
-      // 辅助瞄准：转动视角或移动时，轻微吸附到敌人身上
-      const active = dx !== 0 || dy !== 0 || inp.moveX !== 0 || inp.moveY !== 0 || inp.gyroYaw !== 0;
-      if (a && active && this.me.alive) {
-        const pull = Math.min(1, dt * 6) * 0.35;
-        this.yaw += angleDiff(this.yaw, a.ay) * pull;
-        this.pitch += (a.ap - this.pitch) * pull;
-      }
     }
     if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
     else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
@@ -1713,7 +1707,7 @@ export class Game {
       const cone = size * 3 + 0.035;
       if (off > cone) continue;
       const score = off / cone;
-      if (score < bestScore) { bestScore = score; best = { ay, ap, off, size, x: tx, y: ty, z: tz }; }
+      if (score < bestScore) { bestScore = score; best = { off, size, x: tx, y: ty, z: tz }; }
     }
     if (best && (!this.world.clear(e.x, e.y, e.z, best.x, best.y, best.z) || this.fx.smokeDensityAt({ x: (e.x + best.x) / 2, y: (e.y + best.y) / 2, z: (e.z + best.z) / 2 }) > 0.4)) best = null;
     this.assist = best;
