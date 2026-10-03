@@ -1,170 +1,46 @@
-// 第一人称武器（独立场景渲染，不会穿墙），含晃动、后坐、换弹、切枪、挥刀、检视动画
+// 第一人称武器（独立场景渲染，不会穿墙），含晃动、后坐、切枪 / 拉栓 / 换弹、挥刀、检视动画
 import * as THREE from 'three';
-import { makeWeapon, armColors, mbox } from './models.js';
-import { HD, hdHands, handPose } from './hdmodels.js';
+import { makeWeapon, armColors } from './models.js';
+import { HD, hdHands, hdOffHand, handPose } from './hdmodels.js';
 import { viewEnv } from './hdkit.js';
 import { flare } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
+import { clipFor, sample, KNIFE_FX, KNIFE_SHOW, KNIFE_HIT, seg, eOut } from './vmanims.js';
 
-const HANDS_ALL = true; // 所有武器都用带手指的手（改成 false 就只有高精度模型的枪用）
+// 摆位的朝向：dir = 枪口 / 刀尖朝哪，face = 模型右侧面（+X）朝哪（都是相机坐标；face 会自动修正成和 dir 垂直）
+function aim(dir, face) {
+  const z = new THREE.Vector3(...dir).normalize().negate();
+  const x = new THREE.Vector3(...face);
+  x.addScaledVector(z, -x.dot(z)).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z));
+}
+const layQ = (l) => l.q || (l.q = l.dir ? aim(l.dir, l.face) : new THREE.Quaternion().setFromEuler(new THREE.Euler(...l.rot)));
+
+// 各类武器在画面里的位置（相机坐标：右、上、后）。rot 是转角，或者用 dir / face 直接写朝向；bob：走路晃动的幅度
 const LAYOUT = {
   rifle: { pos: [0.19, -0.19, -0.36], rot: [0.02, 0.06, 0] },
   sniper: { pos: [0.19, -0.195, -0.34], rot: [0.02, 0.05, 0] },
   smg: { pos: [0.17, -0.17, -0.36], rot: [0.02, 0.07, 0] },
   shotgun: { pos: [0.19, -0.19, -0.35], rot: [0.02, 0.06, 0] },
   pistol: { pos: [0.15, -0.16, -0.4], rot: [0.02, 0.1, 0] },
-  knife: { pos: [0.17, -0.18, -0.38], rot: [0.25, 0.45, -0.25] },
   grenade: { pos: [0.16, -0.16, -0.36], rot: [0.2, 0.2, 0] },
   c4: { pos: [0.03, -0.24, -0.42], rot: [0.6, 0, 0] },
+  // 刀照 CS:GO 的拿法：拳头在画面右下、手背对着自己，刀身朝左前方斜着指出去（刀面朝上对着镜头，刀背靠近自己）
+  knife: { pos: [0.127, -0.097, -0.26], dir: [-0.86, 0.3, -0.41], face: [-0.1, 0.8, 0.59], scale: 1.15, bob: 0.7 },
+  // 剥皮小刀照瓦罗兰特的拿法：刀立得更直，在画面右侧
+  knife_xeno: { pos: [0.135, -0.13, -0.27], dir: [-0.45, 0.72, -0.52], face: [-0.3, 0.45, 0.84], scale: 1.15, bob: 0.7 },
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
-  knife_karambit: { pos: [0.09, -0.11, -0.34], rot: [0.06, -0.08, 0.06] },
+  knife_karambit: { pos: [0.105, -0.115, -0.31], rot: [0.06, -0.08, 0.06], scale: 1.25, bob: 0.8 },
 };
 // 刀在手里的摆法（相对手的位置）：爪子刀横着握，刀柄穿过拳头
-// glove：这种握法的拳头 [宽, 高, 厚, x, y, z, 绕 x 转]（横着握，拳头要包住刀柄，刀环贴在拳头左边）
-const GRIP = { karambit: { rot: [0, -Math.PI / 2, 0], pos: [0.02, -0.03, 0.03], glove: [0.07, 0.06, 0.062, 0.004, -0.032, 0.035, 0],
-  sleeve: [0.078, 0.078, 0.34, 0.0615, -0.1874, 0.1359, 1.012, 0.3078] } };
+const GRIP = { karambit: { rot: [0, -Math.PI / 2, 0], pos: [0.02, -0.03, 0.03] } };
 
-// ---------- 特殊刀（背包皮肤）的切刀 / 检视花式动画 ----------
-const TAU = Math.PI * 2;
-const seg = (e, a, b) => clamp((e - a) / (b - a), 0, 1);
-const sstep = (x) => x * x * (3 - 2 * x);
-const eOut = (x, p = 3) => 1 - Math.pow(1 - x, p);
-const backOut = (x, c = 1.6) => 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2);
+const T1 = new THREE.Vector3(), T2 = new THREE.Vector3(), EU = new THREE.Euler(), QD = new THREE.Quaternion(), QP = new THREE.Quaternion();
+const G6 = [0, 0, 0, 0, 0, 0];
+const v3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 
-// 蝴蝶刀的一次翻刀。open：刀身连着咬柄（hB）一起甩出去 180°（刀身到位“嗒”），咬柄再自己转 180° 拍回手心（“咔”）；close 反过来。
-// k > 1：越转越快，最后拍合那一下最快最脆
-const bfSeg = (open, t0, t1, k) => ({ open, t0, t1, k, mid: t0 + (t1 - t0) * Math.pow(0.5, 1 / k) });
-function bfAngles(segs, closed, e) {
-  for (const s of segs) {
-    if (e < s.t0) break;
-    if (e < s.t1) {
-      const f = Math.pow((e - s.t0) / (s.t1 - s.t0), s.k) * TAU;
-      return s.open ? [Math.PI - Math.min(Math.PI, f), -f] : [Math.max(0, f - Math.PI), f];
-    }
-    closed = !s.open;
-  }
-  return closed ? [Math.PI, 0] : [0, 0];
-}
-const bfEv = (segs) => segs.flatMap((s) => [{ t: s.t0, k: 'kn_swish' }, { t: s.mid, k: 'kn_tick' }, { t: s.t1, k: 'kn_clack' }]);
-// 分段转角：[{t0, t1, a0, a1, ease}]
-function track(tr, e) {
-  let a = tr[0].a0;
-  for (const s of tr) {
-    if (e < s.t0) return a;
-    if (e < s.t1) return s.a0 + (s.a1 - s.a0) * s.ease((e - s.t0) / (s.t1 - s.t0));
-    a = s.a1;
-  }
-  return a;
-}
-const BF_DRAW = [bfSeg(true, 0.05, 0.3, 1.6)];
-// 蝴蝶刀检视（照 CS:GO / CS2 的检视拆帧做的）：抬手把刀亮到画面中间、刀面对着镜头 →
-// 整把刀在指间甩一圈（咬柄被甩开、最后“咔”地合上）→ 合刀、再开刀 → 捏着销轴把咬柄张开成 Y 字展示一会儿 → “咔”合上放下
-const BF_INSP_FLIP = [bfSeg(false, 1.35, 1.8, 1.4), bfSeg(true, 1.9, 2.4, 1.5)];
-// 返回 [整把刀绕销轴的转角, 刀身, 咬柄]
-function bfInspect(e) {
-  let P = 0, b = 0, h = 0;
-  const q = seg(e, 0.45, 1.25);
-  if (q > 0 && q < 1) { P = -TAU * sstep(q); h = Math.sin(q * Math.PI) * 1.9; }
-  if (e >= 1.35 && e < 2.4) [b, h] = bfAngles(BF_INSP_FLIP, false, e);
-  if (e >= 2.5 && e < 3.6) {
-    const yIn = sstep(seg(e, 2.5, 2.8)), shut = seg(e, 3.3, 3.45);
-    h = 1.75 * yIn * (1 - shut * shut); // 张开，最后越合越快“咔”一声
-    P = (-0.5 + Math.sin((e - 2.5) * 3) * 0.06) * yIn * (1 - sstep(seg(e, 3.3, 3.6)));
-  }
-  return [P, b, h];
-}
-// 爪子刀（参考 CS2）：拔刀时绕食指往里转一圈（屏幕上逆时针：刀刃在前，先往上、往里翻），先快后慢地停住；
-// 检视：往里转大半圈，刀身朝下挂在手指上晃一晃，再甩回来、最后再转一圈接住。角度增大 = 屏幕上逆时针
-const HANG = Math.PI * 1.5;
-const KA_DRAW = [{ t0: 0.05, t1: 0.5, a0: -TAU, a1: 0, ease: (x) => eOut(x, 2) }];
-const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5, t1: 1.85, a0: HANG, a1: TAU, ease: sstep },
-  { t0: 1.95, t1: 2.4, a0: TAU, a1: 2 * TAU, ease: (x) => eOut(x, 2) }];
-const M9_ROLL = [{ t0: 0.42, t1: 0.86, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.02, t1: 1.42, a0: Math.PI, a1: TAU, ease: sstep }];
-const M9_TOSS = { draw: [0.06, 0.36], inspect: [1.56, 1.96] };
-// 剥皮小刀：拔刀时在手里往后翻一圈握住；检视：亮刀 → 慢慢翻面看两面 → 指间快速转两圈 → 放下
-// 切刀（照游戏视频拆帧做的）：刀尖朝上、刀面对着镜头从下面抬上来 → 在手里飞快顺时针转一整圈（约 0.2 秒）
-// → 竖着握住，手腕一拧绕刀身转一圈、露出刀背锯齿 → 放下到平时的拿法
-const XE_DRAW = [{ t0: 0.06, t1: 0.28, a0: 0, a1: -TAU, ease: sstep }];
-const XE_DRAW_ROLL = [{ t0: 0.3, t1: 0.56, a0: 0, a1: TAU, ease: (x) => eOut(x, 2) }];
-const XE_ROLL = [{ t0: 0.5, t1: 1.05, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.35, t1: 1.9, a0: Math.PI, a1: TAU, ease: sstep }];
-const XE_TWIRL = [{ t0: 2.0, t1: 2.55, a0: 0, a1: -2 * TAU, ease: (x) => eOut(x, 1.8) }];
-// 翻刀时手腕转过来，让刀面对着屏幕（不然转刀是侧着看的，看不清）
-const WRIST = { ry: 0.85, rz: 0.25, rx: -0.12, px: -0.075, py: 0.055, pz: 0.05 };
-export const KNIFE_FX = {
-  butterfly: {
-    draw: { dur: 0.5, back: [0.3, 0.5], ev: bfEv(BF_DRAW) },
-    inspect: { dur: 4.0, back: [3.5, 4.0], ev: [{ t: 0.05, k: 'kn_swish' }, { t: 0.45, k: 'kn_swish' }, { t: 1.25, k: 'kn_clack' }, ...bfEv(BF_INSP_FLIP),
-      { t: 2.55, k: 'kn_tick' }, { t: 3.45, k: 'kn_clack' }] },
-    parts(P, mode, e) {
-      const [a, b, h] = mode === 'draw' ? [0, ...bfAngles(BF_DRAW, true, e)] : mode === 'inspect' ? bfInspect(e) : [0, 0, 0];
-      P.pivot.rotation.x = a;
-      P.blade.rotation.x = b;
-      P.hB.rotation.x = h;
-    },
-    wrist: { inspect: { ry: 0, rz: 0, rx: 0, px: 0, py: 0, pz: 0 } },
-    pose(mode, e, o) {
-      if (mode !== 'inspect') return;
-      // 把刀亮到画面中间偏右、刀面对着镜头
-      const w = sstep(seg(e, 0, 0.45)) * (1 - sstep(seg(e, 3.5, 4.0)));
-      o.rx += w * 1.2; o.ry += w * (-0.35 + Math.sin(e * 1.7) * 0.05); o.rz += w * 1.75;
-      o.px += w * -0.04; o.py += w * 0.1; o.pz += w * 0.08;
-    },
-  },
-  karambit: {
-    draw: { dur: 0.66, back: [0.48, 0.66], ev: [{ t: 0.05, k: 'kn_swish' }, { t: 0.5, k: 'kn_catch' }] },
-    inspect: { dur: 2.7, back: [2.38, 2.7], ev: [{ t: 0.35, k: 'kn_swish' }, { t: 0.95, k: 'kn_tick' }, { t: 1.5, k: 'kn_swish' }, { t: 1.85, k: 'kn_tick' },
-      { t: 1.95, k: 'kn_swish' }, { t: 2.4, k: 'kn_catch' }] },
-    attack(stab, p, o) {
-      // 先快后慢：0~0.3 出手，之后慢慢收回
-      const s = p < 0.3 ? Math.sin((p / 0.3) * Math.PI / 2) : Math.cos(((p - 0.3) / 0.7) * Math.PI / 2);
-      if (stab) {
-        const lift = p < 0.25 ? Math.sin((p / 0.25) * Math.PI / 2) * (1 - p / 0.25) : 0;
-        o.py += lift * 0.05 - s * 0.03; o.pz -= s * 0.1; o.rx += s * 0.75; o.rz -= s * 0.25; o.px -= s * 0.04;
-      } else {
-        o.px -= s * 0.17; o.py += s * 0.025; o.pz -= s * 0.05; o.rz += s * 0.55; o.ry += s * 0.35;
-      }
-    },
-    parts(P, mode, e) {
-      let a = mode === 'draw' ? track(KA_DRAW, e) : mode === 'inspect' ? track(KA_INSP, e) : 0;
-      if (mode === 'inspect' && e > 0.95 && e < 1.5) a += Math.sin((e - 0.95) * 11) * 0.16 * (1 - (e - 0.95) / 0.55); // 挂着晃
-      P.spin.rotation.x = a;
-    },
-    // 刀面本来就对着屏幕，手腕只要稍微抬一下
-    wrist: { draw: { ry: 0, rz: 0.12, rx: 0.05, px: -0.03, py: 0.035, pz: 0.03 }, inspect: { ry: 0, rz: 0.15, rx: -0.05, px: -0.05, py: 0.07, pz: 0 } },
-  },
-  xeno: {
-    draw: { dur: 0.6, back: [0.42, 0.6], ev: [{ t: 0.06, k: 'kn_swish' }, { t: 0.28, k: 'kn_tick' }, { t: 0.3, k: 'kn_swish' }, { t: 0.54, k: 'kn_catch' }] },
-    inspect: { dur: 3.1, back: [2.65, 3.1], ev: [{ t: 0.5, k: 'kn_swish' }, { t: 1.35, k: 'kn_swish' }, { t: 2.0, k: 'kn_swish' }, { t: 2.55, k: 'kn_catch' }] },
-    wrist: { draw: { ry: 0, rz: 0, rx: 0, px: 0, py: 0, pz: 0 } },
-    pose(mode, e, o) {
-      if (mode !== 'draw') return;
-      // 切刀时刀尖朝上、刀面对着镜头举在画面右下，最后放下到平时的拿法
-      const w = 1 - sstep(seg(e, 0.42, 0.6));
-      o.rx += w * 1.2; o.ry += w * -0.35; o.rz += w * 1.75;
-      o.px += w * -0.05; o.py += w * 0.08; o.pz += w * 0.05;
-    },
-    parts(P, mode, e) {
-      const a = mode === 'draw' ? track(XE_DRAW, e) : mode === 'inspect' ? track(XE_TWIRL, e) : 0;
-      P.spin.rotation.set(a, 0, mode === 'draw' ? track(XE_DRAW_ROLL, e) : mode === 'inspect' ? track(XE_ROLL, e) : 0);
-      // 挂绳跟着转动甩一甩
-      const sw = Math.abs(a) > 0.01 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
-      P.cord.rotation.set(sw, 0, sw * 0.4);
-    },
-  },
-  m9: {
-    draw: { dur: 0.52, back: [0.36, 0.52], ev: [{ t: 0.06, k: 'kn_swish' }, { t: 0.36, k: 'kn_catch' }] },
-    inspect: { dur: 2.6, back: [2.15, 2.6], ev: [{ t: 0.42, k: 'kn_swish' }, { t: 1.02, k: 'kn_swish' }, { t: 1.56, k: 'kn_swish' }, { t: 1.96, k: 'kn_catch' }] },
-    parts(P, mode, e) {
-      // 抛起来翻一圈（在空中匀速转），再接住
-      const T = M9_TOSS[mode];
-      const q = T && e > T[0] && e < T[1] ? (e - T[0]) / (T[1] - T[0]) : 0;
-      P.spin.rotation.set(q ? -TAU * (1 - q) : 0, 0, mode === 'inspect' ? track(M9_ROLL, e) : 0);
-      P.spin.position.copy(P.base);
-      if (q) P.spin.position.y += 0.07 * 4 * q * (1 - q);
-    },
-  },
-};
+export { KNIFE_FX };
 
 export class ViewModel {
   constructor() {
@@ -179,7 +55,7 @@ export class ViewModel {
     this.camera.add(this.root);
     this.team = 'T';
     this.knifeSkin = 'default'; // 刀的皮肤（背包里选）
-    this.sfx = null; // 花式动作的音效回调（kn_swish / kn_tick / kn_clack / kn_catch）
+    this.sfx = null; // 动作的音效回调（刀的花式动作、拉栓、换弹匣这些）
     this.kfxKey = ''; this.kfxLast = -1; this.joltT = -9;
     this.cache = new Map();
     this.cur = null;
@@ -191,7 +67,7 @@ export class ViewModel {
     this.swayY = 0;
     this.drawStart = 0; this.drawDur = 0;
     this.reloadStart = 0; this.reloadDur = 0;
-    this.knifeT = -1; this.knifeStab = false;
+    this.knifeT = -1; this.knifeStab = false; this.knifeAlt = false;
     this.inspectT = -1;
     this.throwT = -1;
     this.landKick = 0;
@@ -201,6 +77,11 @@ export class ViewModel {
     this.flash.scale.set(0.16, 0.16, 1);
     this.boltK = 0;      // 枪机后坐（开一枪弹回去）
     this.envFor = null;  // 环境反光是给哪个渲染器做的
+    this.clip = null;    // 正在放的一段动作：{ def, kind, t0, dur, last }
+    this.off = null;     // 拿刀时空着的左手
+    // 这一帧各条轨道的值
+    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
+    this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
   }
 
   // 渲染前调用：高精度模型的金属要有环境可反射（每个渲染器只做一次）
@@ -215,6 +96,7 @@ export class ViewModel {
     this.team = team;
     for (const g of this.cache.values()) this.root.remove(g);
     this.cache.clear();
+    if (this.off) { this.root.remove(this.off); this.off = null; }
     const w = this.wid;
     this.wid = null;
     this.cur = null;
@@ -225,51 +107,42 @@ export class ViewModel {
     const w = WEAPONS[wid];
     const type = w ? (w.type === 'grenade' ? 'grenade' : w.type) : 'knife';
     const lay = (HD[wid] && HD[wid].lay) || (wid === 'knife' && LAYOUT['knife_' + this.knifeSkin]) || LAYOUT[type] || LAYOUT.rifle;
-    const g = new THREE.Group();
+    layQ(lay);
+    const g = new THREE.Group(), U = g.userData;
+    if (lay.scale) g.scale.setScalar(lay.scale);
     const gun = makeWeapon(wid, false, wid === 'knife' ? this.knifeSkin : null);
     const grip = wid === 'knife' && GRIP[this.knifeSkin];
     if (grip) { gun.rotation.set(...grip.rot); gun.position.set(...grip.pos); }
     g.add(gun);
-    const col = armColors(this.team);
-    // 带手指的手（按这把武器的握法摆好姿势）。每把武器的握法都配好了，
-    // 但手的样子还在改，所以先只给高精度模型的枪用，其他武器暂时还是后面的方块手
-    const hands = HD[wid] || HANDS_ALL ? hdHands(handPose(wid, type, this.knifeSkin), col) : null;
-    if (hands) {
-      g.add(hands);
-      g.userData.hands = hands;
-      // 换弹时左手要挪到弹匣那里：算出从握的地方到弹匣的偏移
-      const mag = gun.userData.mag;
-      if (mag && hands.userData.lhGrip) {
-        const c = new THREE.Box3().setFromObject(mag).getCenter(new THREE.Vector3()), lg = hands.userData.lhGrip;
-        g.userData.lhTo = new THREE.Vector3(c.x - lg[0], c.y - lg[1] - 0.05, c.z - lg[2]).clampLength(0, 0.26);
-      }
-      g.userData.gun = gun;
-      g.userData.lay = lay;
-      g.userData.type = type;
-      g.visible = false;
-      g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
-      this.root.add(g);
-      return g;
+    // 带手指的手（按这把武器的握法摆好姿势）
+    const pose = handPose(wid, type, this.knifeSkin);
+    const hands = hdHands(pose, armColors(this.team));
+    if (hands) g.add(hands);
+    const H = hands ? hands.userData : {}, P = gun.userData;
+    Object.assign(U, { gun, lay, type, wid, hands, rh: H.rh || null, lh: H.lh || null, lhM: H.lhM || null, lhB: H.lhB || null, rhB: H.rhB || null,
+      mag: P.mag || null, bolt: P.bolt || null, pump: P.pump || null, pin: P.pin || null });
+    // 会动的零件：记下原来的位置
+    for (const k of ['mag', 'bolt', 'pump', 'pin']) if (U[k]) { U[k].userData.base = U[k].position.clone(); U[k].userData.rx0 = U[k].rotation.x; }
+    for (const k of ['lhM', 'lhB', 'rhB']) if (U[k]) U[k].visible = false;
+    U.travel = P.boltTravel ?? 0.05;     // 枪机 / 套筒能拉开多远
+    U.kickBolt = P.boltKick ?? (P.manual ? 0 : U.travel * 0.8); // 开枪时自己往后弹多少（栓动的不弹）
+    U.lift = P.boltLift ?? 0;            // 栓动步枪：拉机柄抬起的角度
+    U.pumpTravel = P.pumpTravel ?? 0.07;
+    // 手要去的地方（枪的坐标）。左手：平时握的地方 lhG、弹匣 magAt、拉机柄 boltAt；右手：握把 rhG、拉机柄 knobAt
+    if (pose) {
+      U.lhG = pose.left ? v3(pose.left.grip) : pose.leftAct ? v3(pose.leftAct.grip) : null;
+      U.boltAt = pose.leftAct ? v3(pose.leftAct.grip) : null;
+      U.rhG = v3(pose.right.grip);
+      U.knobAt = pose.rightAct ? v3(pose.rightAct.grip) : null;
+      if (pose.leftMag) U.magAt = v3(pose.leftMag.grip);
+      else if (U.mag && pose.left) {
+        // 没有专门的拿弹匣姿势：就用托枪的手挪到弹匣下半截
+        const b = new THREE.Box3().setFromObject(U.mag), c = b.getCenter(new THREE.Vector3());
+        U.magAt = new THREE.Vector3(c.x, Math.max(b.min.y + 0.03, c.y - 0.05), c.z);
+        if (U.magAt.distanceTo(U.lhG) > 0.3) U.magAt.sub(U.lhG).setLength(0.3).add(U.lhG);
+      } else if (P.port && pose.left) U.magAt = v3(P.port); // 霰弹枪：装弹口
+      if (U.knobAt && U.bolt) U.knobR = U.knobAt.clone().sub(U.bolt.userData.base).setZ(0); // 拉机柄头到枪机轴线
     }
-    // 右手握把 + 前臂
-    if (grip && grip.glove) { const [gw, gh, gd, gx, gy, gz, grx] = grip.glove; g.add(mbox(gw, gh, gd, col.glove, gx, gy, gz, grx)); }
-    else g.add(mbox(0.05, 0.09, 0.075, col.glove, 0.0, -0.045, 0.03, -0.3));
-    if (grip && grip.sleeve) { const [sw, sh, sd, sx, sy, sz, srx, sry] = grip.sleeve; g.add(mbox(sw, sh, sd, col.sleeve, sx, sy, sz, srx, sry)); }
-    else g.add(mbox(0.078, 0.078, 0.34, col.sleeve, 0.05, -0.16, 0.2, 0.7, -0.25));
-    if (type === 'rifle' || type === 'sniper' || type === 'smg' || type === 'shotgun') {
-      const hz = type === 'smg' ? -0.2 : type === 'sniper' ? -0.3 : -0.33;
-      g.add(mbox(0.055, 0.07, 0.1, col.glove, -0.005, -0.015, hz));
-      g.add(mbox(0.08, 0.08, 0.24, col.sleeve, -0.07, -0.12, hz + 0.1, 1.05, 0.55));
-    } else if (type === 'pistol') {
-      g.add(mbox(0.05, 0.08, 0.07, col.glove, -0.03, -0.06, 0.015, -0.3, 0.3));
-      g.add(mbox(0.078, 0.078, 0.34, col.sleeve, -0.13, -0.14, 0.17, 0.4, 0.55));
-    } else if (type === 'c4') {
-      g.add(mbox(0.05, 0.08, 0.08, col.glove, -0.09, -0.03, 0.02));
-      g.add(mbox(0.078, 0.078, 0.34, col.sleeve, -0.15, -0.12, 0.2, 0.45, 0.25));
-    }
-    g.userData.gun = gun;
-    g.userData.lay = lay;
-    g.userData.type = type;
     g.visible = false;
     g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
     this.root.add(g);
@@ -294,7 +167,14 @@ export class ViewModel {
     this.knifeT = -1;
     this.inspectT = -1;
     this.throwT = -1;
+    this.boltK = 0;
+    g.userData.pinGone = false;
+    // 切出来的动作：时间太短（刚出生、切换观战对象）就只是抬上来
+    this.clip = null;
+    if (deploy > 0 && !g.userData.gun.userData.kfx) this.play(deploy < 0.45 ? clipFor('', 'draw') : clipFor(wid, 'draw'), 'draw', now, deploy);
   }
+
+  play(def, kind, t0, dur) { this.clip = def ? { def, kind, t0, dur, last: -1 } : null; }
 
   // 当前拿的是有花式动作的刀
   knifeFx() { return !!(this.cur && this.cur.userData.gun.userData.kfx); }
@@ -307,158 +187,218 @@ export class ViewModel {
     const s = 0.12 + Math.random() * 0.1;
     this.flash.scale.set(s, s, 1);
     this.inspectT = -1;
+    // 栓动步枪、泵动霰弹枪：开完一枪要拉一下
+    const c = clipFor(this.wid, 'cycle'), w = WEAPONS[this.wid];
+    if (c && w && w.rpm) this.play(c, 'cycle', now + c.delay, (60 / w.rpm) * c.frac);
+    else if (this.clip && this.clip.kind === 'draw') this.clip = null;
   }
-  onReload(now, dur) { this.reloadStart = now; this.reloadDur = dur; this.inspectT = -1; }
-  cancelReload() { this.reloadDur = 0; }
-  onKnife(now, stab) { this.knifeT = now; this.knifeStab = stab; this.inspectT = -1; }
-  onInspect(now) { if (this.reloadDur === 0) this.inspectT = now; }
+  onReload(now, dur) {
+    this.reloadStart = now; this.reloadDur = dur; this.inspectT = -1;
+    this.play(clipFor(this.wid, 'reload'), 'reload', now, dur);
+  }
+  cancelReload() {
+    this.reloadDur = 0;
+    if (this.clip && this.clip.kind === 'reload') this.clip = null;
+  }
+  onKnife(now, stab) { this.knifeT = now; this.knifeStab = stab; if (!stab) this.knifeAlt = !this.knifeAlt; this.inspectT = -1; }
+  onInspect(now) { if (this.reloadDur === 0 && !this.clip) this.inspectT = now; }
   onThrow(now) { this.throwT = now; }
   onLand(v) { this.landKick = Math.min(1, v / 10); }
+  // 手雷：拔拉环
+  onPin(now) {
+    const c = clipFor(this.wid, 'pin');
+    if (c && this.cur && !this.cur.userData.pinGone) this.play(c, 'pin', now, c.dur);
+  }
 
-  // st: {now, speed, onGround, crouch, mdx, mdy, scoped, suppressed, silenced}
+  // st: {now, speed, onGround, crouch, mdx, mdy, scoped, hidden, silenced}
   update(dt, st) {
     const g = this.cur;
     if (!g) return;
-    const now = st.now;
+    const U = g.userData, now = st.now, lay = U.lay, type = U.type, gun = U.gun;
     this.t += dt;
     g.visible = !st.scoped && !st.hidden;
-    const lay = g.userData.lay;
+    const bob = lay.bob ?? 1;
     const sp = clamp(st.speed / 6, 0, 1.2);
     if (st.onGround && sp > 0.05) this.bobT += dt * (5 + sp * 6);
-    const bx = Math.sin(this.bobT) * 0.011 * sp;
-    const by = -Math.abs(Math.cos(this.bobT)) * 0.012 * sp;
+    const bx = Math.sin(this.bobT) * 0.011 * sp * bob;
+    const by = -Math.abs(Math.cos(this.bobT)) * 0.012 * sp * bob;
     this.swayX += (clamp(-st.mdx * 0.00045, -0.05, 0.05) - this.swayX) * Math.min(1, dt * 9);
     this.swayY += (clamp(-st.mdy * 0.00045, -0.05, 0.05) - this.swayY) * Math.min(1, dt * 9);
     this.kick *= Math.exp(-dt * 13);
     this.landKick *= Math.exp(-dt * 9);
-    const idle = Math.sin(this.t * 1.4) * 0.0025;
+    const idle = Math.sin(this.t * 1.4) * 0.0025 * bob;
 
-    let px = lay.pos[0] + bx - this.swayX * 0.6, py = lay.pos[1] + by + idle - this.landKick * 0.03 - (st.crouch ? 0.008 : 0), pz = lay.pos[2];
-    let rx = lay.rot[0] + this.swayY * 0.8, ry = lay.rot[1] + this.swayX, rz = lay.rot[2] + bx * 2;
+    // 位置是相机坐标里的绝对位置；转角是叠在平时拿法上面的偏转（抬头、左转、逆时针侧倾）
+    let px = lay.pos[0] + bx - this.swayX * 0.6 * bob, py = lay.pos[1] + by + idle - this.landKick * 0.03 - (st.crouch ? 0.008 : 0), pz = lay.pos[2];
+    let rx = this.swayY * 0.8, ry = this.swayX, rz = bx * 2;
 
-    const type = g.userData.type;
-    const kfx = g.userData.gun.userData.kfx;
     const kickZ = type === 'sniper' ? 0.07 : type === 'pistol' ? 0.035 : type === 'shotgun' ? 0.07 : 0.028;
     const kickR = type === 'sniper' ? 0.18 : type === 'pistol' ? 0.16 : type === 'shotgun' ? 0.2 : 0.06;
     pz += this.kick * kickZ;
     rx += this.kick * kickR;
 
-    // 拔枪（特殊刀有自己的切刀动作，在后面）
-    if (this.drawDur > 0 && !kfx) {
-      const p = clamp((now - this.drawStart) / this.drawDur, 0, 1);
-      const e = 1 - Math.pow(1 - p, 3);
-      py -= (1 - e) * 0.22;
-      rx -= (1 - e) * 0.7;
-    }
-    // 换弹
-    const gun = g.userData.gun;
-    const mag = gun.userData.mag;
-    if (mag && mag.userData.base === undefined) mag.userData.base = mag.position.clone();
-    // 高精度模型：左手跟着弹匣走（从护木挪到弹匣上，抽出旧的、插上新的，再回到护木）
-    const lh = g.userData.hands ? g.userData.hands.userData.lh : null;
-    if (this.reloadDur > 0) {
-      const p = clamp((now - this.reloadStart) / this.reloadDur, 0, 1);
-      const s = Math.sin(p * Math.PI);
-      rx -= s * 0.35;
-      rz += s * 0.45;
-      py -= s * 0.04;
-      const out = p < 0.2 ? p / 0.2 : p < 0.55 ? 1 : p < 0.75 ? 1 - (p - 0.55) / 0.2 : 0;
-      if (mag) {
-        mag.position.copy(mag.userData.base);
-        mag.position.y -= out * 0.18;
-        mag.visible = !(p > 0.3 && p < 0.5);
-      }
-      if (lh) {
-        const to = sstep(seg(p, 0.02, 0.16)) * (1 - sstep(seg(p, 0.78, 0.96))); // 手挪到弹匣上的程度
-        const v = g.userData.lhTo;
-        if (v) lh.position.set(v.x * to, v.y * to - out * 0.18, v.z * to);
-        else lh.position.set(0, -out * 0.12, 0);
-      }
-      if (p >= 1) this.reloadDur = 0;
-    } else {
-      if (mag) { mag.position.copy(mag.userData.base); mag.visible = true; }
-      if (lh) lh.position.set(0, 0, 0);
-    }
-    // 枪机：开一枪往后一缩再弹回去
-    const bolt = gun.userData.bolt;
-    if (bolt) {
-      this.boltK *= Math.exp(-dt * 26);
-      bolt.position.z = this.boltK * 0.05;
-    }
-    // 挥刀
-    if (this.knifeT >= 0) {
-      const dur = this.knifeStab ? 0.55 : 0.32;
-      const p = (now - this.knifeT) / dur;
-      if (p >= 1) this.knifeT = -1;
-      else if (kfx && KNIFE_FX[kfx.kind].attack) {
-        const o = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
-        KNIFE_FX[kfx.kind].attack(this.knifeStab, p, o);
-        px += o.px; py += o.py; pz += o.pz; rx += o.rx; ry += o.ry; rz += o.rz;
-      } else {
-        const s = Math.sin(p * Math.PI);
-        if (this.knifeStab) { pz -= s * 0.12; rx -= s * 0.5; }
-        else { ry += s * 1.1 - 0.4 * s; rz -= s * 0.9; px -= s * 0.1; }
+    // ---- 正在放的动作（切枪 / 换弹 / 拉栓 / 拔拉环）：算出这一帧各条轨道的值 ----
+    const A = this.A;
+    A.g.fill(0); A.mag.fill(0); A.lh.fill(0);
+    A.magHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = 0;
+    const C = this.clip;
+    if (C) {
+      const u = (now - C.t0) / C.dur, d = C.def;
+      if (u >= 1) {
+        this.clip = null;
+        if (C.kind === 'reload') this.reloadDur = 0;
+        if (C.kind === 'pin') U.pinGone = true;
+      } else if (u >= 0) {
+        if (d.g) sample(d.g, u, A.g);
+        if (d.mag) sample(d.mag, u, A.mag);
+        if (d.lh) sample(d.lh, u, A.lh);
+        if (d.magOff) A.magHide = u > d.magOff[0] && u < d.magOff[1];
+        if (d.bolt) A.bolt = sample(d.bolt, u);
+        if (d.boltUp) A.boltUp = sample(d.boltUp, u);
+        if (d.pump) A.pump = sample(d.pump, u);
+        if (d.pin) A.pin = sample(d.pin, u);
+        if (d.lhMag) A.lhMag = sample(d.lhMag, u);
+        if (d.lhBolt) A.lhBolt = sample(d.lhBolt, u);
+        if (d.rhBolt) A.rhBolt = sample(d.rhBolt, u);
+        if (d.ev) for (const [t, k] of d.ev) if (t > C.last && t <= u && this.sfx && g.visible) this.sfx(k);
+        C.last = u;
+        px += A.g[0]; py += A.g[1]; pz += A.g[2]; rx += A.g[3]; ry += A.g[4]; rz += A.g[5];
       }
     }
+
+    // ---- 会动的零件 ----
+    const mag = U.mag, bolt = U.bolt;
+    if (mag) {
+      const b = mag.userData.base;
+      mag.position.set(b.x, b.y + A.mag[0], b.z + A.mag[1]);
+      mag.rotation.x = mag.userData.rx0 + A.mag[2];
+      mag.visible = !A.magHide;
+    }
+    this.boltK *= Math.exp(-dt * 26);
+    const boltZ = A.bolt * U.travel + this.boltK * U.kickBolt, lift = A.boltUp * U.lift;
+    if (bolt) { bolt.position.z = bolt.userData.base.z + boltZ; bolt.rotation.z = lift; }
+    const pumpZ = A.pump * U.pumpTravel;
+    if (U.pump) U.pump.position.z = U.pump.userData.base.z + pumpZ;
+    if (U.pin) {
+      const b = U.pin.userData.base;
+      U.pin.visible = !U.pinGone;
+      U.pin.position.set(b.x + (A.pin > 0 ? A.lh[0] : 0), b.y + (A.pin > 0 ? A.lh[1] : 0), b.z + (A.pin > 0 ? A.lh[2] : 0));
+    }
+
+    // ---- 两只手：算出手现在握着的那个点，把对应姿势的那只手挪过去 ----
+    const put = (grp, on, home) => { if (grp) { grp.visible = on; if (on) grp.position.subVectors(T1, home); } };
+    if (U.lhG) {
+      const wM = U.magAt ? A.lhMag : 0, wB = U.lhB ? A.lhBolt : 0;
+      T1.copy(U.lhG);
+      if (wM > 0) T1.addScaledVector(T2.subVectors(U.magAt, U.lhG).add(v0(0, A.mag[0], A.mag[1])), wM);
+      if (wB > 0) T1.addScaledVector(T2.subVectors(U.boltAt, U.lhG).add(v0(0, 0, boltZ)), wB);
+      T1.x += A.lh[0]; T1.y += A.lh[1]; T1.z += A.lh[2] + (U.pump ? pumpZ * (1 - wM) : 0); // 霰弹枪：左手一直握着护木
+      const useB = wB > 0.5, useM = !useB && wM > 0.5 && !!U.lhM;
+      put(U.lh, !useB && !useM, U.lhG);
+      put(U.lhM, useM, U.magAt);
+      put(U.lhB, useB, U.boltAt);
+    }
+    if (U.rhB) {
+      const wB = A.rhBolt;
+      T1.copy(U.rhG);
+      if (wB > 0) {
+        // 拉机柄头：绕枪机轴线抬起来，再跟着枪机往后
+        const r = U.knobR, c = Math.cos(lift), s = Math.sin(lift);
+        T2.subVectors(U.knobAt, U.rhG);
+        if (r) { T2.x += r.x * c - r.y * s - r.x; T2.y += r.x * s + r.y * c - r.y; }
+        T2.z += boltZ;
+        T1.addScaledVector(T2, wB);
+      }
+      put(U.rh, wB <= 0.5, U.rhG);
+      put(U.rhB, wB > 0.5, U.knobAt);
+    }
+
     // 投掷
     if (this.throwT >= 0) {
       const p = (now - this.throwT) / 0.4;
       if (p >= 1) this.throwT = -1;
       else { const s = Math.sin(p * Math.PI); pz -= s * 0.1; py += s * 0.08; rx -= s * 0.9; }
     }
-    // 检视
-    if (this.inspectT >= 0) {
-      const p = (now - this.inspectT) / (kfx ? KNIFE_FX[kfx.kind].inspect.dur : 2.6);
-      if (p >= 1) this.inspectT = -1;
-      else if (!kfx) {
-        const s = Math.sin(Math.min(1, p * 2.2) * Math.PI / 2) * (p > 0.8 ? (1 - p) / 0.2 : 1);
-        ry -= s * 1.1;
-        rz += s * 0.5;
-        px -= s * 0.05;
-        py += s * 0.03;
-      }
-    }
-    // 特殊刀：切刀 / 检视的花式动作 + 音效
+
+    // ---- 刀：切刀 / 检视的花式动作、挥刀 ----
+    const kfx = gun.userData.kfx, o = this.O;
+    let showW = 0, rise = 1;
     if (kfx) {
       const F = KNIFE_FX[kfx.kind];
+      o.px = o.py = o.pz = o.rx = o.ry = o.rz = 0;
       let mode = null, e = 0;
       const de = now - this.drawStart;
       if (this.drawDur > 0 && de < F.draw.dur) {
         // 从下面抬上来（挥刀打断时也照样抬）
-        const r = eOut(seg(de, 0, 0.16));
-        py -= (1 - r) * 0.2;
-        rx -= (1 - r) * 0.6;
+        rise = eOut(seg(de, 0, 0.18));
+        py -= (1 - rise) * 0.22;
+        rx -= (1 - rise) * 0.4;
         if (this.knifeT < 0) { mode = 'draw'; e = de; }
       }
-      if (!mode && this.inspectT >= 0) { mode = 'inspect'; e = now - this.inspectT; }
-      F.parts(kfx, mode, e);
+      if (!mode && this.inspectT >= 0) {
+        e = now - this.inspectT;
+        if (e >= F.inspect.dur) this.inspectT = -1; else mode = 'inspect';
+      }
+      showW = F.anim(kfx, mode, e, o) || 0;
       if (mode) {
-        const M = F[mode];
-        const w = mode === 'draw' ? 1 - backOut(seg(e, M.back[0], M.back[1])) : sstep(seg(e, 0, 0.3)) * (1 - sstep(seg(e, M.back[0], M.back[1])));
-        const Wp = (F.wrist && F.wrist[mode]) || WRIST;
-        ry += w * Wp.ry; rz += w * Wp.rz; rx += w * Wp.rx;
-        px += w * Wp.px; py += w * Wp.py; pz += w * Wp.pz;
-        if (F.pose) {
-          const o = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
-          F.pose(mode, e, o);
-          px += o.px; py += o.py; pz += o.pz; rx += o.rx; ry += o.ry; rz += o.rz;
-        }
         const key = mode + (mode === 'draw' ? this.drawStart : this.inspectT);
         if (key !== this.kfxKey) { this.kfxKey = key; this.kfxLast = -1; }
-        for (const ev of M.ev) {
-          if (ev.t <= this.kfxLast || ev.t > e) continue;
-          if (this.sfx && g.visible) this.sfx(ev.k);
-          if (ev.k === 'kn_clack' || ev.k === 'kn_catch') this.joltT = now;
+        for (const [t, k] of F[mode].ev) {
+          if (t <= this.kfxLast || t > e) continue;
+          if (this.sfx && g.visible) this.sfx(k);
+          if (k === 'kn_clack' || k === 'kn_catch') this.joltT = now;
         }
         this.kfxLast = e;
       } else this.kfxKey = '';
+      if (this.knifeT >= 0) {
+        const p = (now - this.knifeT) / (this.knifeStab ? 0.55 : 0.4);
+        if (p >= 1) this.knifeT = -1;
+        else if (F.attack) F.attack(this.knifeStab, p, o);
+        else {
+          sample(KNIFE_HIT[this.knifeStab ? 'stab' : this.knifeAlt ? 'back' : 'slash'], p, G6);
+          o.px += G6[0]; o.py += G6[1]; o.pz += G6[2]; o.rx += G6[3]; o.ry += G6[4]; o.rz += G6[5];
+        }
+      }
+      px += o.px; py += o.py; pz += o.pz; rx += o.rx; ry += o.ry; rz += o.rz;
       // 刀柄拍合 / 接住刀的那一下，手上轻轻一震
-      const j = Math.exp(-(now - this.joltT) / 0.05);
+      const j = now >= this.joltT ? Math.exp(-(now - this.joltT) / 0.05) : 0;
       if (j > 0.01) { py -= j * 0.006; rx += j * 0.05; }
+    } else if (this.inspectT >= 0) {
+      // 枪的检视：转过来看一眼侧面
+      const p = (now - this.inspectT) / 2.6;
+      if (p >= 1) this.inspectT = -1;
+      else {
+        const s = Math.sin(Math.min(1, p * 2.2) * Math.PI / 2) * (p > 0.8 ? (1 - p) / 0.2 : 1);
+        ry -= s * 1.1; rz += s * 0.5; px -= s * 0.05; py += s * 0.03;
+      }
+    }
+
+    // ---- 摆到位：平时的拿法（或者往「亮刀」姿势过渡）上面再叠这一帧的偏转 ----
+    QP.copy(lay.q);
+    if (showW > 0) {
+      const S = KNIFE_SHOW;
+      QP.slerp(layQ(S), showW);
+      px += (S.pos[0] - lay.pos[0]) * showW; py += (S.pos[1] - lay.pos[1]) * showW; pz += (S.pos[2] - lay.pos[2]) * showW;
     }
     g.position.set(px, py, pz);
-    g.rotation.set(rx, ry, rz);
+    g.quaternion.copy(QD.setFromEuler(EU.set(rx, ry, rz))).multiply(QP);
     this.flash.visible = now < this.flashT && !st.silenced;
+
+    // ---- 拿刀时空着的左手：张开放在画面左下 ----
+    const offOn = type === 'knife' && g.visible && !this.noOff;
+    if (offOn && !this.off) {
+      this.off = hdOffHand(armColors(this.team));
+      this.off.traverse((m) => { if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; } });
+      this.root.add(this.off);
+    }
+    if (this.off) {
+      this.off.visible = offOn;
+      if (offOn) {
+        const hit = this.knifeT >= 0 ? Math.sin(clamp((now - this.knifeT) / 0.4, 0, 1) * Math.PI) : 0;
+        this.off.position.set(bx * 0.6 - this.swayX * 0.4, by * 0.6 - idle - (1 - rise) * 0.16 - hit * 0.025 - this.landKick * 0.03, hit * 0.02);
+        this.off.rotation.set(this.swayY * 0.5 - (1 - rise) * 0.3, this.swayX * 0.6, -bx * 1.5 - hit * 0.12);
+      }
+    }
   }
 
   resize(aspect) {
@@ -475,7 +415,8 @@ export class ViewModel {
     g.userData.gun.localToWorld(out);
     // 视图模型场景坐标 -> 相机空间 -> 主场景
     this.camera.worldToLocal(out);
-    out.z *= 1.0;
     return out.applyMatrix4(mainCam.matrixWorld);
   }
 }
+const V0 = new THREE.Vector3();
+function v0(x, y, z) { return V0.set(x, y, z); }

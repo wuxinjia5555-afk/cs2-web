@@ -1,7 +1,7 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH } from './gunsynth.js';
 
 const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
 
@@ -90,7 +90,7 @@ class AudioSys {
     let b = this.fxBufs[key];
     if (!b) {
       const sr = this.ctx.sampleRate;
-      const data = kind.startsWith('kn_') ? synthKnife(kind, sr) : synthFx(kind, sr, { streak, seed: 5 + streak });
+      const data = MECH[kind] ? synthMech(kind, sr) : kind.startsWith('kn_') ? synthKnife(kind, sr) : synthFx(kind, sr, { streak, seed: 5 + streak });
       b = this.fxBufs[key] = this.ctx.createBuffer(1, data.length, sr);
       b.getChannelData(0).set(data);
     }
@@ -251,6 +251,8 @@ class AudioSys {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     let o;
+    // 拉栓、换弹匣这些机械声（跟着第一人称的动作一下一下播）
+    if (MECH[name]) { this._playFx(name, MECH[name].gain * vol); return; }
     switch (name) {
       case 'hit': this._playFx('hit', 0.5 * vol); break;
       case 'kn_swish': case 'kn_tick': case 'kn_clack': case 'kn_catch': this._playFx(name, KNIFE_GAIN[name] * vol); break;
@@ -426,21 +428,6 @@ class AudioSys {
       }
     }
     return h;
-  }
-
-  // 换弹声：几次咔哒声按时间排好
-  reload(wid) {
-    if (!this.ctx) return;
-    const w = WEAPONS[wid];
-    if (!w || !w.reload) return;
-    const o = this._out(null, 1, 0.3, 0);
-    const t = this.ctx.currentTime;
-    const r = w.reload;
-    const click = (at, f) => this._noise(o.input, t + at, { type: 'bandpass', f, q: 3, dec: 0.05, vol: 0.9 });
-    click(r * 0.18, 1800);
-    click(r * 0.55, 2400);
-    click(r * 0.82, 1500);
-    if (w.type === 'rifle' || w.type === 'smg') click(r * 0.9, 2800);
   }
 
   // 其他人换弹（定位）

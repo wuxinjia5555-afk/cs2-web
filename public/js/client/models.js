@@ -1,7 +1,7 @@
 // 程序生成的低多边形模型：士兵、武器、投掷物、C4
 import * as THREE from 'three';
 import { textSprite, flare } from './textures.js';
-import { HD } from './hdmodels.js';
+import { HD, HD_KNIVES } from './hdmodels.js';
 
 const geoCache = new Map();
 const matCache = new Map();
@@ -26,12 +26,6 @@ function cylGeo(r, h, seg = 12) {
   const k = `c${r},${h},${seg}`;
   let g = geoCache.get(k);
   if (!g) { g = new THREE.CylinderGeometry(r, r, h, seg); geoCache.set(k, g); }
-  return g;
-}
-function torGeo(R, r) {
-  const k = `t${R},${r}`;
-  let g = geoCache.get(k);
-  if (!g) { g = new THREE.TorusGeometry(R, r, 6, 16); geoCache.set(k, g); }
   return g;
 }
 function sphGeo(r) {
@@ -222,142 +216,6 @@ function shotgun(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0.055, -0.66);
 }
 
-function knife(g) {
-  g.add(box(0.004, 0.034, 0.17, C.silver, 0, 0.02, -0.13));
-  g.add(box(0.004, 0.02, 0.05, C.silver, 0, 0.028, -0.23, 0.45));
-  g.add(box(0.034, 0.012, 0.014, C.dark, 0, 0.014, -0.04));
-  g.add(box(0.024, 0.03, 0.11, C.black, 0, 0.01, 0.02));
-  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
-}
-
-// 蝴蝶刀：刀身 + 两片刀柄，各自绕刀根的销轴（x 轴）转。刀身朝 -z；刀柄朝 +z 握在手里（手里握的是 hA，翻刀时甩的是 hB）
-// 合起来时刀身转 180° 藏在两片刀柄中间，所以刀身要比刀柄短
-function butterfly(g) {
-  const K = { blade: 0xc9cfd6, edge: 0xf3f5f7, h1: 0x1f2227, h2: 0x30353c, pin: 0xc2a46a, hole: 0x111214 };
-  const pivot = new THREE.Group();
-  pivot.position.set(0, 0.012, -0.046);
-  g.add(pivot);
-  const blade = new THREE.Group();
-  blade.add(box(0.0034, 0.022, 0.108, K.blade, 0, 0.002, -0.06));
-  blade.add(box(0.0036, 0.006, 0.1, K.edge, 0, -0.0085, -0.058));
-  blade.add(box(0.0034, 0.015, 0.032, K.blade, 0, 0.001, -0.122, -0.36));
-  blade.add(box(0.0036, 0.005, 0.026, K.edge, 0, -0.0075, -0.122, -0.12));
-  blade.add(box(0.0048, 0.02, 0.016, K.h2, 0, 0, -0.002));
-  pivot.add(blade);
-  const hA = new THREE.Group(), hB = new THREE.Group();
-  for (const [h, x, col] of [[hA, -0.0058, K.h1], [hB, 0.0058, K.h2]]) {
-    h.add(box(0.0056, 0.024, 0.15, col, x, 0, 0.075));
-    for (let k = 0; k < 5; k++) h.add(box(0.0058, 0.007, 0.015, K.hole, x, 0, 0.026 + k * 0.025));
-    h.add(box(0.0072, 0.0072, 0.0072, K.pin, x, 0, 0));
-    h.add(box(0.0066, 0.013, 0.016, K.pin, x, -0.001, 0.146));
-    pivot.add(h);
-  }
-  g.userData.kfx = { kind: 'butterfly', pivot, blade, hA, hB };
-  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
-}
-
-// 爪子刀（参考 CS2）：食指套在刀尾的圆环里，刀柄横着握在拳头里，弯刀从拳头另一头伸出去、往上弯成爪子（刃口在内弧）
-// 整把刀挂在 spin 组上，spin 的原点就是圆环中心，转刀动作就是绕食指转
-function karambit(g) {
-  const K = { blade: 0xbcc3cb, edge: 0xeef1f4, grip: 0x2b2f35, ring: 0xa3abb5, guard: 0x575f69 };
-  const RC = new THREE.Vector3(0, 0.012, 0.075);
-  const spin = new THREE.Group();
-  spin.position.copy(RC);
-  g.add(spin);
-  const add = (m) => { m.position.sub(RC); spin.add(m); return m; };
-  const ring = new THREE.Mesh(torGeo(0.016, 0.0042), mat(K.ring));
-  ring.rotation.y = Math.PI / 2;
-  ring.position.copy(RC);
-  add(ring);
-  add(box(0.012, 0.024, 0.095, K.grip, 0, 0.012, 0.0115));
-  add(box(0.014, 0.034, 0.008, K.guard, 0, 0.012, -0.034));
-  const p = new THREE.Vector3(0, 0.012, -0.034);
-  // [方向角, 长度, 宽度]：方向角 0 = 朝前，正数朝上；越往前越往上弯，刀尖最后略微勾回来
-  const SEG = [[-0.15, 0.022, 0.026], [0.2, 0.021, 0.026], [0.55, 0.02, 0.024], [0.9, 0.019, 0.021], [1.25, 0.017, 0.017], [1.6, 0.014, 0.012], [1.9, 0.01, 0.006]];
-  for (const [phi, l, h] of SEG) {
-    const d = new THREE.Vector3(0, Math.sin(phi), -Math.cos(phi));
-    const nrm = new THREE.Vector3(0, Math.cos(phi), Math.sin(phi));
-    const c = p.clone().addScaledVector(d, l / 2);
-    add(box(0.0034, h, l + 0.004, K.blade, c.x, c.y, c.z, phi));
-    const ce = c.clone().addScaledVector(nrm, h / 2 - 0.0022);
-    add(box(0.0036, Math.min(0.0045, h * 0.45), l + 0.004, K.edge, ce.x, ce.y, ce.z, phi));
-    p.addScaledVector(d, l);
-  }
-  g.userData.kfx = { kind: 'karambit', spin };
-  g.userData.muzzle = new THREE.Vector3(0, 0.04, -0.1);
-}
-
-// M9 刺刀：宽直刀，刀背一排锯齿，护手上方有套枪口的圆环。spin 组的原点在重心附近，抛刀翻转绕它转
-function m9Bayonet(g) {
-  const K = { blade: 0xc4cbd3, edge: 0xf0f3f6, dark: 0x59616a, grip: 0x1d2024, rib: 0x2c3036, steel: 0x8d959e };
-  const PV = new THREE.Vector3(0, 0.016, -0.03);
-  const spin = new THREE.Group();
-  spin.position.copy(PV);
-  g.add(spin);
-  const add = (m) => { m.position.sub(PV); spin.add(m); return m; };
-  add(box(0.024, 0.028, 0.115, K.grip, 0, 0.01, 0.027));
-  for (let k = 0; k < 5; k++) add(box(0.0256, 0.0296, 0.007, K.rib, 0, 0.01, -0.012 + k * 0.019));
-  add(box(0.026, 0.03, 0.012, K.steel, 0, 0.01, 0.09));
-  add(box(0.03, 0.05, 0.008, K.steel, 0, 0.018, -0.034));
-  const ring = new THREE.Mesh(torGeo(0.0095, 0.0028), mat(K.steel));
-  ring.position.set(0, 0.052, -0.034);
-  add(ring);
-  add(box(0.0045, 0.034, 0.15, K.blade, 0, 0.02, -0.112));
-  add(box(0.0047, 0.008, 0.145, K.edge, 0, 0.0055, -0.11));
-  add(box(0.0049, 0.004, 0.085, K.dark, 0, 0.024, -0.095));
-  for (let k = 0; k < 6; k++) add(box(0.0052, 0.0055, 0.0055, K.dark, 0, 0.037, -0.055 - k * 0.011, Math.PI / 4));
-  add(box(0.0045, 0.024, 0.05, K.blade, 0, 0.02, -0.198, -0.38));
-  add(box(0.0047, 0.007, 0.042, K.edge, 0, 0.0075, -0.2, -0.16));
-  g.userData.kfx = { kind: 'm9', spin, base: PV.clone() };
-  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
-}
-
-// 剥皮小刀（瓦罗兰特「异星猎人」小刀）：银色宽刃，刀背靠近护手一排锯齿、刀尖斜削，刃根有个开孔；
-// 护手下端往前勾；刀柄是镂空的金属框（三角形镂空），刀尾斜切、挂绳孔上吊着一根小绳
-function xenohunter(g) {
-  const K = { blade: 0xc9cfd6, edge: 0xf2f5f8, dark: 0x4a5058, frame: 0x3b4047, frame2: 0x2c3036, bolt: 0xd8dde3, cord: 0x2a2a2a, hole: 0x15181c };
-  const PV = new THREE.Vector3(0, 0.01, 0.03); // 转刀的轴（握刀的位置）
-  const spin = new THREE.Group();
-  spin.position.copy(PV);
-  g.add(spin);
-  const add = (m) => { m.position.sub(PV); spin.add(m); return m; };
-  // 刀柄：上下两根框 + 之字形斜撑（中间就是三角形镂空）
-  add(box(0.012, 0.006, 0.118, K.frame, 0, 0.021, 0.036));
-  add(box(0.012, 0.006, 0.118, K.frame, 0, -0.001, 0.036));
-  const zs = [-0.016, 0.011, 0.038, 0.065, 0.09];
-  for (let i = 0; i < zs.length - 1; i++) {
-    const za = zs[i], zb = zs[i + 1], ya = i % 2 ? 0.021 : -0.001, yb = i % 2 ? -0.001 : 0.021;
-    const len = Math.hypot(zb - za, yb - ya);
-    add(box(0.0115, 0.0055, len + 0.004, K.frame2, 0, (ya + yb) / 2, (za + zb) / 2, Math.atan2(-(yb - ya), zb - za)));
-  }
-  add(box(0.012, 0.028, 0.008, K.frame, 0, 0.01, -0.019));
-  // 刀尾：斜切的尾端 + 挂绳孔 + 小绳（单独一个组，跟着动作晃）
-  add(box(0.0125, 0.03, 0.02, K.frame, 0, 0.012, 0.102, -0.35));
-  add(box(0.013, 0.008, 0.008, K.hole, 0, 0.012, 0.104));
-  const cord = new THREE.Group();
-  cord.position.set(0, 0.006, 0.106);
-  cord.add(box(0.003, 0.03, 0.003, K.cord, 0, -0.015, 0));
-  cord.add(box(0.006, 0.008, 0.006, K.cord, 0, -0.03, 0));
-  cord.add(box(0.0025, 0.012, 0.0025, K.cord, 0.0015, -0.039, 0.001));
-  add(cord);
-  // 刀柄前端的螺栓
-  add(box(0.0135, 0.007, 0.007, K.bolt, 0, 0.01, -0.006));
-  // 护手：薄片，下端往前勾
-  add(box(0.016, 0.046, 0.006, K.dark, 0, 0.006, -0.027));
-  add(box(0.016, 0.007, 0.018, K.dark, 0, -0.016, -0.034, -0.5));
-  // 刀身
-  add(box(0.004, 0.03, 0.125, K.blade, 0, 0.012, -0.093));
-  add(box(0.0042, 0.006, 0.118, K.edge, 0, -0.0005, -0.095));
-  add(box(0.0046, 0.006, 0.012, K.hole, 0, 0.0035, -0.04)); // 刃根开孔
-  for (let k = 0; k < 6; k++) add(box(0.0046, 0.005, 0.005, K.dark, 0, 0.028, -0.042 - k * 0.0085, Math.PI / 4)); // 刀背锯齿
-  add(box(0.004, 0.024, 0.05, K.blade, 0, 0.011, -0.172, -0.32)); // 斜削的刀尖
-  add(box(0.0042, 0.006, 0.044, K.edge, 0, 0.0015, -0.174, -0.12));
-  g.userData.kfx = { kind: 'xeno', spin, base: PV.clone(), cord };
-  g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.25);
-}
-
-const KNIFE_SKINS = { butterfly, karambit, m9: m9Bayonet, xeno: xenohunter };
-
 function grenade(g, type) {
   if (type === 'he') {
     g.add(new THREE.Mesh(sphGeo(0.035), mat(C.olive)));
@@ -388,14 +246,18 @@ function c4(g) {
   g.userData.muzzle = new THREE.Vector3(0, 0, 0);
 }
 
+const WEAPON_IDS = new Set(['ak47', 'galil', 'm4a4', 'm4a1s', 'famas', 'awp', 'ssg08', 'glock', 'usp', 'p250', 'deagle', 'mac10', 'mp9', 'ump45', 'nova',
+  'he', 'flash', 'smoke', 'molotov', 'incgrenade', 'c4']);
 export function makeWeapon(id, merged = false, skin = null) {
   const g = new THREE.Group();
-  if (id === 'knife' && skin && KNIFE_SKINS[skin]) {
-    KNIFE_SKINS[skin](g);
-    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    g.userData.id = id;
-    if (merged) collapse(g, 'w:knife:' + skin);
-    return g;
+  // 刀（按皮肤）：第一人称用完整版，别人手里 / 地上的用简化版
+  if (id === 'knife' || !WEAPON_IDS.has(id)) {
+    const sk = skin && HD_KNIVES[skin] ? skin : 'default';
+    const kg = HD_KNIVES[sk](!merged);
+    kg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    kg.userData.id = id;
+    if (merged) collapse(kg, 'w:knife:' + sk);
+    return kg;
   }
   // 有高精度模型的枪：第一人称用完整版，别人手里 / 地上的用简化版（照旧合并成一个网格）
   if (HD[id]) {
@@ -421,7 +283,6 @@ export function makeWeapon(id, merged = false, skin = null) {
     case 'nova': shotgun(g); break;
     case 'he': case 'flash': case 'smoke': case 'molotov': case 'incgrenade': grenade(g, id); break;
     case 'c4': c4(g); break;
-    default: knife(g);
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.id = id;

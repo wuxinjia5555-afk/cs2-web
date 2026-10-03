@@ -72,6 +72,13 @@ export const HD_MATS = {
   wood: { color: 0x7d4524, metal: 0, rough: 0.46, tex: 'wood', uv: 4.5 },          // 木头护木、枪托
   woodD: { color: 0x5b3219, metal: 0, rough: 0.5, tex: 'wood', uv: 4.5 },        // 深一点的木头（握把）
   bore: { color: 0x030303, metal: 0, rough: 1 },                                  // 枪口里面
+  blade: { color: 0xb4bbc4, metal: 0.95, rough: 0.3, tex: 'metal', uv: 9 },       // 刀面：缎面钢
+  edge: { color: 0xe6eaef, metal: 1, rough: 0.16 },                               // 磨出来的刃面：很亮
+  rubber: { color: 0x1c1d20, metal: 0, rough: 0.86 },                             // 橡胶 / 尼龙刀柄
+  olive: { color: 0x3a4030, metal: 0, rough: 0.8 },                               // 军绿色塑料
+  oliveD: { color: 0x2b3024, metal: 0, rough: 0.82 },
+  brass: { color: 0xb8975a, metal: 0.9, rough: 0.35 },                            // 黄铜（销钉）
+  cord: { color: 0x26272b, metal: 0, rough: 0.95 },                               // 伞绳
 };
 const stdCache = new Map(), flatCache = new Map();
 // 第一人称用的材质（带金属反光和贴图）；extra 可以加自定义材质（比如按队伍上色的手套）
@@ -205,12 +212,15 @@ export class Kit {
     this.extra = extraMats;
     this.items = [];
     this.grp = '';
+    this.meta = {};          // 各个组的设置：{ pivot: 绕哪个点转, parent: 挂在哪个组下面 }
     this.base = null;        // 当前这批零件统一再乘的矩阵（比如整只手摆到握把上）
     this.flip = false;       // base 是镜像矩阵（左手）时要把三角面翻过来
   }
   get seg() { return this.hd ? 2 : 1; }
   get round() { return this.hd ? 14 : 8; }
-  group(name, fn) { const p = this.grp; this.grp = name; fn(); this.grp = p; }
+  // 有名字的组：里面的零件单独成一组（要单独动的零件）。
+  // o.pivot = [x, y, z]：这一组绕这个点转（组的原点放在这里）；o.parent = 另一个组的名字：挂在它下面、跟着它一起动
+  group(name, fn, o) { const p = this.grp; this.grp = name; if (o) this.meta[name] = o; if (fn) fn(); this.grp = p; }
   fine(fn) { if (this.hd) fn(); }
   with(matrix, flip, fn) { const b = this.base, f = this.flip; this.base = matrix; this.flip = flip; fn(); this.base = b; this.flip = f; }
 
@@ -316,6 +326,49 @@ export class Kit {
     geo.scale(rx, ry, rz);
     this.add(mat, geo, m);
   }
+  // 圆环（刀环、拉环）：R 是环的半径，r 是环条的粗细；默认环面朝左右（绕 x 轴的一个圈）
+  torus(mat, R, r, x, y, z, o = {}) {
+    const geo = new THREE.TorusGeometry(R, r, this.hd ? 8 : 5, this.hd ? 22 : 12);
+    geo.rotateY(Math.PI / 2);
+    const m = xform(x, y, z, o.rx, o.ry, o.rz);
+    this.add(mat, geo, o.m ? o.m.clone().multiply(m) : m);
+  }
+  // 刀身：磨出刃面的刀。直刀 st = [[z, 刀背 y, 刀刃 y, 厚度, 刃面高度, 刀背厚度]…]，从刀根排到刀尖；
+  // 弯刀（o.curve）每一站分别写刀背和刀刃的位置：[刀背 z, 刀背 y, 刀刃 z, 刀刃 y, 厚度, 刃面高度, 刀背厚度]
+  // （刃面高度：从刃口往刀背磨到多高；刀背厚度不写就和厚度一样，写小了就是刀背上磨出的假刃）
+  // mat 是刀面的材质，edgeMat 是磨出来的刃面（一般更亮）
+  blade(mat, edgeMat, st, o = {}) {
+    const flat = [], edge = [], x = o.x || 0;
+    const quad = (out, a, b, c, d) => out.push(...a, ...b, ...c, ...a, ...c, ...d);
+    const pts = (s) => {
+      const [zs, ys, ze, ye, t, gh, ts = t] = o.curve ? s : [s[0], s[1], s[0], s[2], s[3], s[4], s[5]];
+      const L = Math.hypot(zs - ze, ys - ye) || 1e-9, f = Math.min(1, gh / L);
+      const zg = ze + (zs - ze) * f, yg = ye + (ys - ye) * f;
+      return { A: [x - ts / 2, ys, zs], B: [x + ts / 2, ys, zs], C: [x - t / 2, yg, zg], D: [x + t / 2, yg, zg], E: [x, ye, ze] };
+    };
+    for (let i = 0; i < st.length - 1; i++) {
+      const p = pts(st[i]), q = pts(st[i + 1]);
+      quad(flat, p.A, p.B, q.B, q.A);   // 刀背
+      quad(flat, p.A, q.A, q.C, p.C);   // 左刀面
+      quad(flat, p.B, p.D, q.D, q.B);   // 右刀面
+      quad(edge, p.C, q.C, q.E, p.E);   // 左刃面
+      quad(edge, p.D, p.E, q.E, q.D);   // 右刃面
+    }
+    const p0 = pts(st[0]);
+    flat.push(...p0.A, ...p0.D, ...p0.B, ...p0.A, ...p0.C, ...p0.D, ...p0.C, ...p0.E, ...p0.D); // 刀根的端面
+    // 上面的三角面是按「刀尖朝前、刀背朝上」排的；刀背在另一侧（比如爪子刀，刃在内弧）就把面翻过来
+    const p1 = pts(st[1]);
+    const tz = p1.A[2] + p1.E[2] - p0.A[2] - p0.E[2], ty = p1.A[1] + p1.E[1] - p0.A[1] - p0.E[1];
+    if (tz * (p0.A[1] - p0.E[1]) - ty * (p0.A[2] - p0.E[2]) > 0) {
+      for (const arr of [flat, edge]) for (let i = 0; i < arr.length; i += 9) for (let k = 0; k < 3; k++) { const v = arr[i + 3 + k]; arr[i + 3 + k] = arr[i + 6 + k]; arr[i + 6 + k] = v; }
+    }
+    for (const [m, arr] of [[mat, flat], [edgeMat, edge]]) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      geo.computeVertexNormals();
+      this.add(m, creaseNormals(geo, 0.12), o.m);
+    }
+  }
   // 胶囊（手指的一节）：沿自己的 +Y，从原点伸出 len
   capsule(mat, r, len, m, r1) {
     const geo = r1 != null && r1 !== r
@@ -327,7 +380,20 @@ export class Kit {
 
   // 合并：每个组里每种材质一个网格。返回 Group，带名字的组挂在 userData 上
   build() {
-    const root = new THREE.Group(), groups = { '': root }, buckets = new Map();
+    const root = new THREE.Group(), groups = { '': root }, buckets = new Map(), meta = this.meta;
+    const pivotOf = (name) => (meta[name] && meta[name].pivot) || [0, 0, 0];
+    // 建一个组：原点放在它的转轴上，挂到上一级的组里
+    const mk = (name) => {
+      let g = groups[name];
+      if (g) return g;
+      g = groups[name] = new THREE.Group();
+      g.name = name;
+      const par = meta[name] && meta[name].parent, pv = pivotOf(name), pp = par ? pivotOf(par) : [0, 0, 0];
+      g.position.set(pv[0] - pp[0], pv[1] - pp[1], pv[2] - pp[2]);
+      (par ? mk(par) : root).add(g);
+      root.userData[name] = g;
+      return g;
+    };
     for (const it of this.items) {
       const k = it.grp + '|' + it.mat;
       let b = buckets.get(k);
@@ -335,6 +401,7 @@ export class Kit {
       const geo = it.geo.index ? it.geo.toNonIndexed() : it.geo;
       const P = geo.attributes.position.array, N = geo.attributes.normal.array;
       const def = (this.extra && this.extra[it.mat]) || HD_MATS[it.mat], s = def.uv || 6;
+      const pv = pivotOf(it.grp);
       for (let f = 0; f < P.length; f += 9) {
         // 镜像过的零件（左手）要把每个三角形的顶点顺序倒过来，不然面会朝里
         const ord = it.flip ? [0, 6, 3] : [0, 3, 6];
@@ -343,7 +410,7 @@ export class Kit {
         const nx = Math.abs(ay * bz - az * by), ny = Math.abs(az * bx - ax * bz), nz = Math.abs(ax * by - ay * bx);
         for (const o of ord) {
           const x = P[f + o], y = P[f + o + 1], z = P[f + o + 2];
-          b.pos.push(x, y, z);
+          b.pos.push(x - pv[0], y - pv[1], z - pv[2]);
           b.nor.push(N[f + o], N[f + o + 1], N[f + o + 2]);
           // 贴图按面的朝向从三个方向里挑一个投上去；木纹、拉丝都顺着枪管方向
           if (nx >= ny && nx >= nz) b.uv.push(z * s, y * s);
@@ -353,9 +420,9 @@ export class Kit {
       }
       it.geo.dispose();
     }
+    for (const name in meta) mk(name); // 没有零件的空组（只当转轴用）也要建出来
     for (const b of buckets.values()) {
-      let g = groups[b.grp];
-      if (!g) { g = groups[b.grp] = new THREE.Group(); g.name = b.grp; root.add(g); root.userData[b.grp] = g; }
+      const g = mk(b.grp);
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));

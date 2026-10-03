@@ -80,7 +80,7 @@ function ak47(k) {
     k.prof('blued', band(R - h, R + h, t0, t1), 27 * U, { bevel: 0.0025 });
     k.prof('blued', band(R - h - 1.5 * U, R + h + 1.5 * U, t1 + 0.012, t1 - 0.03, 2), 29 * U, { bevel: 0.001 }); // 底板
     k.fine(() => { for (const r of [R - h * 0.56, R, R + h * 0.56]) k.prof('blued', band(r - 2.2 * U, r + 2.2 * U, t0 - 0.13, t1 + 0.05), 29.6 * U, { bevel: 0.0008 }); });
-  });
+  }, { pivot: [0, Y(-30), Z(478)] }); // 转轴在弹匣前上角的卡榫：卸弹匣时先往前掰
   // ---- 弹匣卡笋、扳机护圈、扳机 ----
   k.prof('blued', P([540, -39], [548, -39], [550, -62], [543, -66], [540, -60]), 11 * U, { bevel: 0.0006 });
   k.prof('blued', P([552, -78], [632, -78], [632, -75], [552, -75]), 14 * U, { bevel: 0.0005 });
@@ -94,6 +94,7 @@ function ak47(k) {
 
   const g = k.build();
   g.userData.muzzle = new THREE.Vector3(0, YB, Z(0) - 0.012);
+  g.userData.boltTravel = 0.07; // 拉机柄能往后拉多远
   return g;
 }
 
@@ -219,19 +220,22 @@ function arm(k, name, o, style) {
 }
 
 // ---------------- 各种握法 ----------------
-// 手指弯多少：握握把（食指伸出去搭扳机）、攥紧细刀柄、托着粗护木、握一个圆罐子
+// 手指弯多少：握握把（食指伸出去搭扳机）、攥紧细刀柄、托着粗护木、握一个圆罐子、勾住拉机柄、张开放松
 const CURL = {
   grip: [[0.35, 0.75, 0.45], [1.25, 1.5, 0.8], [1.3, 1.5, 0.8], [1.3, 1.45, 0.75]],
   fist: [[1.3, 1.6, 0.9], [1.32, 1.6, 0.9], [1.34, 1.6, 0.9], [1.36, 1.55, 0.85]],
   cup: [[0.75, 1.0, 0.55], [0.8, 1.0, 0.55], [0.82, 1.0, 0.55], [0.85, 1.0, 0.5]],
   wrap: [[0.95, 1.2, 0.6], [1.0, 1.2, 0.6], [1.02, 1.2, 0.6], [1.05, 1.15, 0.55]],
   can: [[0.8, 1.0, 0.55], [0.85, 1.0, 0.55], [0.87, 1.0, 0.55], [0.9, 0.95, 0.5]],
+  hook: [[0.55, 1.25, 0.85], [0.6, 1.3, 0.85], [0.65, 1.3, 0.85], [0.7, 1.25, 0.8]],
+  open: [[0.2, 0.28, 0.16], [0.27, 0.36, 0.2], [0.34, 0.44, 0.24], [0.44, 0.52, 0.3]],
 };
-// 大拇指：绕过去扣住（握把、刀柄）/ 顺着枪身往前贴着（托护木）/ 翘起来压在上面（C4）
+// 大拇指：绕过去扣住（握把、刀柄）/ 顺着枪身往前贴着（托护木）/ 翘起来压在上面（C4）/ 放松张着
 const THUMB = {
   wrap: [[0.35, 0.45, 0.82], [-0.15, 0.6, 0.78], [-0.3, 0.85, 0.42]],
   along: [[0.45, 0.3, 0.84], [0.75, 0.2, 0.62], [0.9, 0.1, 0.42]],
   top: [[0.5, 0.2, 0.85], [0.3, 0.55, 0.78], [0.05, 0.85, 0.55]],
+  open: [[0.72, 0.5, 0.48], [0.66, 0.68, 0.32], [0.55, 0.8, 0.22]],
 };
 const SPLAY = [-0.1, 0, 0.04, 0.1];
 
@@ -250,14 +254,30 @@ const lWrap = (y, z, o = {}) => ({
   left: true, grip: [0, y, z], thumbDir: [0, 1, -0.25], palmDir: [1, 0, 0.12], hold: [0, 0.095, 0.05], elbow: [-0.2, -0.3, 0.3],
   pose: { curl: CURL.wrap, splay: SPLAY, thumb: [[0.4, 0.5, 0.75], [0.3, 0.8, 0.5], [0.2, 0.95, 0.25]] }, ...o,
 });
-// 右手攥着一根朝前的刀柄（大拇指那一侧朝刀尖）
+// 左手从上面扣住（拉机柄、手枪套筒）：手心朝下压在枪顶 (0, y, z) 上，四指搭到右边去
+const lOver = (y, z, o = {}) => ({
+  left: true, grip: [0, y, z], fingerDir: [1, -0.1, 0.14], palmDir: [0, -1, 0.1], hold: [0, 0.088, 0.016], elbow: [-0.5, -0.2, 0.06],
+  pose: { curl: CURL.wrap, splay: SPLAY, thumb: THUMB.wrap }, ...o,
+});
+// 左手手心朝上托着弹匣底（手枪换弹：从下面把弹匣推进握把）
+const lPush = (y, z, o = {}) => ({
+  left: true, grip: [0, y, z], fingerDir: [0.55, 0.1, -0.83], palmDir: [0.25, 0.95, 0.15], hold: [0, 0.07, 0.02], elbow: [-0.25, -0.4, 0.25],
+  pose: { curl: CURL.cup, splay: SPLAY, thumb: THUMB.along }, ...o,
+});
+// 右手握住栓动步枪右边的拉机柄头 (x, y, z)
+const rKnob = (x, y, z, o = {}) => ({
+  grip: [x, y, z], fingerDir: [-0.1, 0.55, -0.83], palmDir: [-0.86, 0.3, -0.4], hold: [0, 0.092, 0.024], elbow: [0.24, -0.3, 0.36],
+  pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.top }, ...o,
+});
+// 右手攥着刀柄（照 CS:GO：手背对着自己，四指从刀刃那一侧绕过去，大拇指那一侧朝刀尖，小臂从下面伸上来）
 const rKnife = (y, z, o = {}) => ({
-  grip: [0, y, z], thumbDir: [0, 0, -1], palmDir: [0.7, 0.7, 0], hold: [0, 0.1, 0.03], elbow: [0.27, -0.36, 0.3],
+  grip: [0, y, z], thumbDir: [0, 0, -1], palmDir: [-1, 0, 0], hold: [0, 0.1, 0.028], elbow: [0.05, 0.36, 0.21],
   pose: { curl: CURL.fist, splay: SPLAY, thumb: THUMB.wrap }, ...o,
 });
 
-const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026) };
-// 每把枪的握法（位置对着各自模型上的握把、护木）
+const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lOver(0.087, -0.113) };
+// 每把枪的握法（位置对着各自模型上的握把、护木）。
+// leftAct：左手去拉拉机柄 / 套筒时的姿势；leftMag：左手拿弹匣的姿势（不写就用平时托枪的手）；rightAct：右手拉栓的姿势
 const POSES = {
   ak47: RIFLE_POSE,
   galil: { right: rGrip(-0.04, 0.02, -0.3), left: lCup(0.03, -0.33, 0.025) },
@@ -271,7 +291,10 @@ const POSES = {
   mp9: { right: rGrip(-0.04, 0.01, -0.15), left: lWrap(-0.045, -0.2, { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] }) },
   mac10: { right: rGrip(-0.04, 0.01, -0.1), left: lWrap(-0.055, 0.0) },
   pistol: { right: rGrip(-0.045, 0.02, -0.25), left: lWrap(-0.06, 0.012) },
-  knife: { right: rKnife(0.01, 0.03) },
+  knife: { right: rKnife(0.011, 0.028) },
+  knife_m9: { right: rKnife(0.017, 0.022) },
+  knife_butterfly: { right: rKnife(0.012, 0.036) },
+  knife_xeno: { right: rKnife(0.01, 0.038) },
   knife_karambit: {
     // 爪子刀横着握：刀柄左右走向，刀环在拳头左边（食指那一侧），手背对着自己
     right: { grip: [0.0085, -0.018, 0.03], thumbDir: [-1, 0, 0], palmDir: [0, 0.2, -1], hold: [0, 0.1, 0.03], elbow: [0.14, -0.42, 0.3],
@@ -290,10 +313,180 @@ const POSES = {
   },
 };
 
+// ============================== 刀 ==============================
+// 刀尖朝 -Z，刀背朝 +Y。会转的零件放在有转轴的组里（spin：整把刀在手里转；蝴蝶刀还有 blade / hB）。
+// 样子都是照真实刀具的大致形状自己搭的。
+const RX90 = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+// 沿 +Y 的放样件（loft）转成沿 +Z：从 (0, y, z) 往后伸，做刀柄
+const back = (y, z) => new THREE.Matrix4().makeTranslation(0, y, z).multiply(RX90);
+// 刀背上的一排锯齿（侧面轮廓）：从 z0 往刀尖方向排 n 个，齿距 p、齿高 h，y 是刀背的高度
+function sawTeeth(z0, n, p, h, y) {
+  const pts = [[z0, y - 0.0006]];
+  for (let i = 0; i < n; i++) pts.push([z0 - i * p - 0.0004, y + h], [z0 - (i + 1) * p, y + 0.0004]);
+  pts.push([z0 - n * p, y - 0.0006]);
+  return pts;
+}
+function knifeDone(g, kind, extra) {
+  const U = g.userData;
+  U.kfx = { kind, spin: U.spin || null, base: U.spin ? U.spin.position.clone() : null, ...extra };
+  U.muzzle = new THREE.Vector3(0, 0.02, -0.25);
+  return g;
+}
+
+// 默认匕首：水滴头直刀，橡胶刀柄
+function knifeDefault(k) {
+  k.group('spin', () => {
+    k.blade('blade', 'edge', [
+      [-0.040, 0.0300, -0.0060, 0.0046, 0.013],
+      [-0.125, 0.0300, -0.0065, 0.0046, 0.014],
+      [-0.165, 0.0285, -0.0040, 0.0044, 0.014, 0.0030],
+      [-0.198, 0.0235, 0.0030, 0.0038, 0.012, 0.0016],
+      [-0.220, 0.0165, 0.0100, 0.0024, 0.005, 0.0008],
+      [-0.231, 0.0130, 0.0125, 0.0004, 0.0004, 0.0003],
+    ]);
+    k.fine(() => k.box('blued', 0.0052, 0.0042, 0.09, 0, 0.0215, -0.095, { r: 0.002 })); // 血槽
+    k.box('steel', 0.032, 0.05, 0.0085, 0, 0.012, -0.0375, { r: 0.003 });               // 护手
+    k.loft('rubber', [[0, 0.0215, 0.029], [0.022, 0.0235, 0.0315], [0.058, 0.025, 0.033], [0.092, 0.0235, 0.031], [0.112, 0.0215, 0.0285]], back(0.011, -0.033), { exp: 3.4 });
+    k.fine(() => { for (let i = 0; i < 6; i++) k.box('black', 0.0262, 0.0338, 0.0032, 0, 0.011, -0.016 + i * 0.0165, { r: 0.0012 }); }); // 防滑纹
+    k.box('steel', 0.023, 0.031, 0.011, 0, 0.011, 0.0845, { r: 0.004 });                 // 刀尾
+    k.fine(() => k.pin('bore', 0.003, -0.0118, 0.0118, 0.011, 0.0855));                  // 挂绳孔
+  }, { pivot: [0, 0.012, -0.005] });
+  return knifeDone(k.build(), 'plain');
+}
+
+// M9 刺刀：宽直刀，刀背一排锯齿，护手上方有套枪口的圆环，圆柱刀柄
+function knifeM9(k) {
+  k.group('spin', () => {
+    k.blade('blade', 'edge', [
+      [-0.043, 0.0360, 0.0020, 0.0050, 0.012],
+      [-0.135, 0.0360, 0.0012, 0.0050, 0.013],
+      [-0.165, 0.0350, 0.0020, 0.0048, 0.013, 0.0026],
+      [-0.198, 0.0300, 0.0075, 0.0042, 0.011, 0.0013],
+      [-0.221, 0.0235, 0.0145, 0.0026, 0.006, 0.0007],
+      [-0.233, 0.0190, 0.0182, 0.0004, 0.0005, 0.0003],
+    ]);
+    k.prof('blade', sawTeeth(-0.05, 8, 0.0085, 0.0045, 0.036), 0.0044, { bevel: 0.0006 });
+    k.fine(() => {
+      k.box('blued', 0.0056, 0.0048, 0.085, 0, 0.0262, -0.098, { r: 0.002 });   // 血槽
+      k.ball('bore', 0.0029, 0.0034, 0.0085, new THREE.Matrix4().makeTranslation(0, 0.022, -0.186)); // 刀尖附近的长圆孔
+    });
+    k.box('steel', 0.03, 0.052, 0.0095, 0, 0.019, -0.0385, { r: 0.003 });      // 护手
+    k.torus('steel', 0.0105, 0.0032, 0, 0.0565, -0.0385, { ry: Math.PI / 2 }); // 套枪口的圆环
+    k.tube('olive', 0.0148, -0.034, 0.076, { y: 0.017 });                      // 刀柄
+    for (let i = 0; i < 5; i++) k.tube('oliveD', 0.0157, -0.018 + i * 0.019, -0.0125 + i * 0.019, { y: 0.017 }); // 防滑环
+    k.tube('steel', 0.0152, 0.076, 0.088, { y: 0.017 });                       // 刀尾的卡座
+    k.fine(() => k.box('steel', 0.011, 0.01, 0.014, 0, 0.034, 0.081, { r: 0.002 }));
+  }, { pivot: [0, 0.017, -0.012] });
+  return knifeDone(k.build(), 'm9');
+}
+
+// 爪子刀：食指套在刀尾的圆环里，弯刀从拳头另一头伸出去、往上弯成爪子（刃口在内弧）。
+// 整把刀挂在 spin 组上，转轴就是圆环中心，转刀动作就是绕食指转
+function knifeKarambit(k) {
+  k.group('spin', () => {
+    k.torus('steel', 0.016, 0.0046, 0, 0.012, 0.075);                          // 刀环
+    k.loft('rubber', [[0, 0.0125, 0.027], [0.03, 0.0138, 0.0285], [0.066, 0.013, 0.026], [0.093, 0.011, 0.021]], back(0.012, -0.036), { exp: 3 });
+    k.fine(() => { for (let i = 0; i < 3; i++) k.pin('brass', 0.0027, -0.0074, 0.0074, 0.012, -0.02 + i * 0.027); });
+    k.box('steel', 0.0145, 0.037, 0.008, 0, 0.012, -0.036, { r: 0.002 });      // 护手
+    // 弯刀：中线从护手往前走，越走越往上弯，最后刀尖略微勾回来
+    const N = k.hd ? 16 : 7, L = 0.124, st = [];
+    let z = -0.04, y = 0.012;
+    for (let i = 0; i <= N; i++) {
+      const s = i / N, phi = -0.18 + 2.15 * Math.pow(s, 0.92);
+      const h = 0.027 * (s < 0.35 ? 1 : 1 - Math.pow((s - 0.35) / 0.65, 1.5) * 0.93);
+      const nz = Math.sin(phi), ny = Math.cos(phi); // 往内弧那一侧
+      st.push([z - (nz * h) / 2, y - (ny * h) / 2, z + (nz * h) / 2, y + (ny * h) / 2,
+        0.0036 * (s > 0.85 ? 1 - (s - 0.85) * 5.5 : 1), h * 0.38, 0.0036 * (s > 0.5 ? 1 - (s - 0.5) * 1.6 : 1)]);
+      z -= (Math.cos(phi) * L) / N; y += (Math.sin(phi) * L) / N;
+    }
+    k.blade('blade', 'edge', st, { curve: true });
+  }, { pivot: [0, 0.012, 0.075] });
+  const g = knifeDone(k.build(), 'karambit');
+  g.userData.muzzle.set(0, 0.04, -0.1);
+  return g;
+}
+
+// 蝴蝶刀：刀身 + 两片刀柄。两片刀柄上下并排，各有一根销轴穿在刀根上：
+// 上面那片（hA）握在手里；刀身绕它的销轴转；下面那片（hB，咬柄）装在刀根上、绕自己的销轴转。
+// 合起来时刀身转 180° 夹在两片刀柄中间
+function knifeButterfly(k) {
+  const PA = [0, 0.018, -0.046], PB = [0, 0.006, -0.046];
+  const handle = (mat, y0, y1) => {
+    const yc = (y0 + y1) / 2, holes = [];
+    for (let i = 0; i < 5; i++) holes.push(arcPts(-0.018 + i * 0.026, yc, 0.0033, 0, Math.PI * 2, 10).slice(0, -1)); // 一排减重孔
+    k.prof(mat, rrect(-0.0525, y0, 0.104, y1, 0.0045), 0.0105, { bevel: 0.0016, holes });
+    k.pin('brass', 0.0034, -0.0062, 0.0062, yc, -0.046);
+  };
+  k.group('pivot', null, { pivot: PA });
+  k.group('hA', () => handle('black', 0.012, 0.024), { pivot: PA, parent: 'pivot' });
+  k.group('blade', () => {
+    k.blade('blade', 'edge', [
+      [-0.054, 0.0232, 0.0008, 0.0036, 0.008],
+      [-0.130, 0.0238, 0.0004, 0.0036, 0.009],
+      [-0.158, 0.0218, 0.0030, 0.0034, 0.008, 0.0020],
+      [-0.176, 0.0172, 0.0088, 0.0022, 0.004, 0.0008],
+      [-0.185, 0.0138, 0.0130, 0.0004, 0.0004, 0.0003],
+    ]);
+    k.box('blade', 0.0036, 0.0225, 0.018, 0, 0.012, -0.049, { r: 0.002 }); // 刀根
+  }, { pivot: PA, parent: 'pivot' });
+  k.group('hB', () => {
+    handle('blued', 0, 0.012);
+    k.box('brass', 0.008, 0.006, 0.012, 0, 0.004, 0.106, { r: 0.002 });    // 锁扣
+  }, { pivot: PB, parent: 'blade' });
+  const g = k.build(), U = g.userData;
+  return knifeDone(g, 'butterfly', { pivot: U.pivot, blade: U.blade, hA: U.hA, hB: U.hB });
+}
+
+// 剥皮小刀：银色宽刃，刀背靠近护手一排锯齿、刀尖斜削；护手下端往前勾；
+// 刀柄是镂空的金属框（三角形镂空），刀尾斜切、挂绳孔上吊着一根小绳
+function knifeXeno(k) {
+  k.group('spin', () => {
+    k.blade('blade', 'edge', [
+      [-0.028, 0.0270, -0.0035, 0.0044, 0.010],
+      [-0.130, 0.0270, -0.0040, 0.0044, 0.011],
+      [-0.160, 0.0235, -0.0010, 0.0040, 0.010, 0.0020],
+      [-0.186, 0.0130, 0.0060, 0.0026, 0.005, 0.0008],
+      [-0.197, 0.0088, 0.0082, 0.0004, 0.0004, 0.0003],
+    ]);
+    k.prof('blade', sawTeeth(-0.036, 6, 0.0085, 0.0042, 0.027), 0.0038, { bevel: 0.0006 });
+    k.fine(() => k.ball('bore', 0.0026, 0.0045, 0.0045, new THREE.Matrix4().makeTranslation(0, 0.005, -0.042))); // 刃根开孔
+    // 护手：薄片，下端往前勾
+    k.box('steel', 0.016, 0.046, 0.006, 0, 0.006, -0.025, { r: 0.0015 });
+    k.box('steel', 0.016, 0.007, 0.018, 0, -0.016, -0.034, { r: 0.002, rx: -0.5 });
+    // 刀柄：一整块板，掏出一排三角形的孔
+    const holes = [
+      [[-0.010, 0.002], [0.014, 0.002], [0.002, 0.017]], [[0.006, 0.018], [0.030, 0.018], [0.018, 0.003]],
+      [[0.022, 0.002], [0.046, 0.002], [0.034, 0.017]], [[0.038, 0.018], [0.062, 0.018], [0.050, 0.003]],
+      [[0.054, 0.002], [0.078, 0.002], [0.066, 0.017]], [[0.070, 0.018], [0.092, 0.018], [0.082, 0.003]],
+    ];
+    k.prof('blued', [[-0.022, -0.004], [0.096, -0.004], [0.113, 0.005], [0.107, 0.024], [-0.022, 0.024]], 0.0115, { bevel: 0.0022, holes });
+    k.fine(() => {
+      k.pin('bright', 0.0034, -0.0068, 0.0068, 0.01, -0.012);  // 刀柄前端的螺栓
+      k.pin('bore', 0.0028, -0.0062, 0.0062, 0.012, 0.104);    // 挂绳孔
+    });
+  }, { pivot: [0, 0.01, 0.03] });
+  // 小绳（单独一个组，挂在挂绳孔上，跟着动作晃）
+  k.group('cord', () => {
+    k.rod('cord', 0.0016, [0, 0.012, 0.104], [0, -0.02, 0.106]);
+    k.ball('cord', 0.0034, 0.0045, 0.0034, new THREE.Matrix4().makeTranslation(0, -0.022, 0.106));
+    k.rod('cord', 0.0013, [0, -0.024, 0.106], [0.002, -0.038, 0.107]);
+  }, { pivot: [0, 0.012, 0.104], parent: 'spin' });
+  const g = k.build();
+  return knifeDone(g, 'xeno', { cord: g.userData.cord });
+}
+
 // ============================== 对外 ==============================
 // 有高精度模型的武器。gun(hd)：hd=true 是第一人称用的，false 是远处看的简化版
 export const HD = {
   ak47: { gun: (hd) => ak47(new Kit(hd)), lay: { pos: [0.18, -0.185, -0.34], rot: [0.02, 0.06, 0] } },
+};
+// 刀（按皮肤）
+export const HD_KNIVES = {
+  default: (hd) => knifeDefault(new Kit(hd)),
+  m9: (hd) => knifeM9(new Kit(hd)),
+  karambit: (hd) => knifeKarambit(new Kit(hd)),
+  butterfly: (hd) => knifeButterfly(new Kit(hd)),
+  xeno: (hd) => knifeXeno(new Kit(hd)),
 };
 
 export { POSES as HAND_POSES }; // 预览页调姿势用
@@ -303,20 +496,36 @@ export function handPose(wid, type, skin) {
   return POSES[wid] || POSES[type] || null;
 }
 
-// 握着这把武器的手（第一人称）。cols：{ glove, sleeve, skin, fingerless }。返回的组里 userData.rh / lh 是两只手
-export function hdHands(pose, cols) {
-  if (!pose) return null;
-  const k = new Kit(true, {
+function handKit(cols) {
+  return new Kit(true, {
     glove: { color: cols.glove, metal: 0, rough: 0.82, tex: 'cloth', uv: 60 },
     pad: { color: cols.pad ?? 0x0e0f11, metal: 0.05, rough: 0.42 },
     sleeve: { color: cols.sleeve, metal: 0, rough: 0.9, tex: 'cloth', uv: 40 },
     skin: { color: cols.skin, metal: 0, rough: 0.78 },
     nail: { color: 0xe3c4b4, metal: 0, rough: 0.35 },
   });
-  const style = { fingerless: !!cols.fingerless, pads: !cols.fingerless };
+}
+const handStyle = (cols) => ({ fingerless: !!cols.fingerless, pads: !cols.fingerless });
+
+// 握着这把武器的手（第一人称）。cols：{ glove, sleeve, skin, fingerless }。
+// 返回的组里 userData.rh / lh 是两只手；lhB / lhM / rhB 是做动作时换上的姿势（拉栓、拿弹匣），平时不显示
+export function hdHands(pose, cols) {
+  if (!pose) return null;
+  const k = handKit(cols), style = handStyle(cols);
   arm(k, 'rh', pose.right, style);
   if (pose.left) arm(k, 'lh', pose.left, style);
-  const g = k.build();
-  g.userData.lhGrip = pose.left ? pose.left.grip : null;
-  return g;
+  if (pose.leftMag) arm(k, 'lhM', pose.leftMag, style);
+  if (pose.leftAct) arm(k, 'lhB', pose.leftAct, style);
+  if (pose.rightAct) arm(k, 'rhB', pose.rightAct, style);
+  return k.build();
+}
+
+// 拿刀时空着的左手：张开、手心朝下放在画面左下（位置直接写在相机坐标里）
+export function hdOffHand(cols) {
+  const k = handKit(cols);
+  arm(k, 'lh', {
+    left: true, grip: [-0.105, -0.112, -0.25], fingerDir: [0.66, -0.1, -0.74], palmDir: [0.12, -0.92, -0.37], hold: [0, 0.1, 0],
+    elbow: [-0.36, -0.42, 0.18], pose: { curl: CURL.open, splay: [-0.16, -0.05, 0.06, 0.18], thumb: THUMB.open },
+  }, handStyle(cols));
+  return k.build();
 }

@@ -1276,8 +1276,7 @@ export class Game {
     W.reloadEnd = this.now + w.reload;
     W.reloadSlot = me.slot;
     if (W.scope) { W.scope = 0; W.resume = 0; }
-    this.vm.onReload(this.now, w.reload);
-    audio.reload(w.id);
+    this.vm.onReload(this.now, w.reload); // 卸弹匣、装弹匣、拉栓的声音跟着动作走（viewmodel 里触发）
     this.net.send({ t: 'reload' });
   }
 
@@ -1472,6 +1471,7 @@ export class Game {
     } else if (w.type === 'grenade') {
       if (canAct && ready && !W.nadeHold && (inp.mDown[0] || inp.mDown[2])) {
         W.nadeHold = { t0: now, l: false, r: false };
+        this.vm.onPin(now);
         audio.play('pin');
       }
       if (W.nadeHold) {

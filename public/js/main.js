@@ -684,10 +684,10 @@ $('btn-help').addEventListener('click', () => { audio.init(); showMenu('menu-hel
 
 // ---------------- 背包（皮肤） ----------------
 const KNIVES = [
-  { id: 'default', name: '默认匕首', rarity: '普通', cls: 'r-common', desc: '警察和匪徒的默认刀具。' },
+  { id: 'default', name: '默认匕首', rarity: '普通', cls: 'r-common', desc: '警察和匪徒的默认刀具。从下面甩上来，手腕一拧握稳；按 F 检视会亮刀看两面。' },
   { id: 'butterfly', name: '★ 蝴蝶刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时甩开刀柄、“咔”一声合进手里；按 F 检视会连续开合两次。' },
   { id: 'karambit', name: '★ 爪子刀', rarity: '隐秘', cls: 'r-covert', desc: '食指套着刀环，拔刀时绕手指转两圈接住；按 F 检视会正转、反转再甩一圈。' },
-  { id: 'm9', name: '★ M9 刺刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时把刀抛起来翻一圈再接住；按 F 检视会转刀给你看两面，再抛一次。' },
+  { id: 'm9', name: '★ M9 刺刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时反握着抬起来，刀在手里转半圈握正，再一翻手腕落到位；按 F 检视会亮刀看两面，再抛起来翻一圈接住。' },
   { id: 'xeno', name: '★ 剥皮小刀', rarity: '隐秘', cls: 'r-covert', desc: '瓦罗兰特「异星猎人」小刀：锯齿刀背、镂空刀柄、刀尾挂绳。拔刀时在手里翻一圈握住；检视会翻面看两面，再在指间转两圈。' },
 ];
 let inv = null;
@@ -738,7 +738,7 @@ function invShow(id) {
 // 不同的刀在第一人称里的位置不一样，预览时都挪到画面中间
 function invCenter() {
   const lay = inv.vm.cur && inv.vm.cur.userData.lay;
-  if (lay) inv.vm.root.position.set(0.04 - lay.pos[0], -0.05 - lay.pos[1], -0.18 - lay.pos[2]);
+  if (lay) inv.vm.root.position.set(0.03 - lay.pos[0], -0.03 - lay.pos[1], -0.3 - lay.pos[2]);
 }
 
 function invLoop() {
@@ -762,6 +762,7 @@ function openInventory() {
     r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     const vm = new ViewModel();
     vm.setTeam('CT');
+    vm.noOff = true; // 预览里只看握刀的手，不画空着的左手
     vm.sfx = (k) => audio.play(k);
     inv = { r, vm, sel: 'default' };
   }

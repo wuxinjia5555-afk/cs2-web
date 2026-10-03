@@ -24,8 +24,8 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="ui">模型预览 · 网址参数：w=武器 team=T/CT view=fp（第一人称）/orbit（转着看） yaw pitch dist
-  <div><a data-a="fire">开火</a><a data-a="reload">换弹</a><a data-a="inspect">检视</a><a data-a="draw">拔枪</a></div></div>
+<div id="ui">模型预览 · 网址参数：w=武器 skin=刀的皮肤 team=T/CT view=fp（第一人称）/orbit（转着看） yaw pitch dist
+  <div><a data-a="fire">开火</a><a data-a="reload">换弹</a><a data-a="inspect">检视</a><a data-a="draw">拔枪</a><a data-a="slash">挥刀</a><a data-a="stab">捅</a><a data-a="pin">拔拉环</a></div></div>
 <script type="module">
 // 开发用的模型预览页：/dev/vm.html?w=ak47&team=CT&view=fp
 import * as THREE from 'three';
@@ -55,6 +55,7 @@ const bgCam = new THREE.PerspectiveCamera(74, 1, 0.1, 500);
 
 const vm = new ViewModel();
 vm.team = team;
+vm.knifeSkin = q.get('skin') || 'default';
 vm.setWeapon(wid, 0, 0);
 const now = () => performance.now() / 1000;
 
@@ -67,8 +68,8 @@ function zoomTo(cam, w, h) {
   cam.updateProjectionMatrix();
 }
 function render() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (canvas.width !== Math.floor(w * renderer.getPixelRatio())) renderer.setSize(w, h, false);
+  const w = S.w || canvas.clientWidth || 1280, h = S.h || canvas.clientHeight || 720;
+  if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) renderer.setSize(w, h, false);
   renderer.autoClear = false;
   renderer.clear();
   bgCam.aspect = w / h; bgCam.updateProjectionMatrix();
@@ -100,20 +101,44 @@ function tick() {
   if (S.view !== 'orbit') vm.update(dt, { now: t, speed: 0, onGround: true, crouch: false, mdx: 0, mdy: 0, scoped: false, hidden: false, silenced: false });
   render();
 }
-function loop() { tick(); requestAnimationFrame(loop); }
+function loop() { if (!S.pause) tick(); requestAnimationFrame(loop); }
 loop();
+// 调试用：直接画出 t 时刻的画面（st 可以带 speed、mdx 这些状态）
+function at(t, st) {
+  vm.update((st && st.dt) || 0.016, { now: t, speed: 0, onGround: true, crouch: false, mdx: 0, mdy: 0, scoped: false, hidden: false, silenced: false, ...st });
+  render();
+}
+// 调试用：把一串画面拼成一张图。frames = [[标题, 准备这一帧的函数]…]，crop = [左, 上, 右, 下]（0~1）
+function sheet(frames, cols = 4, crop = [0, 0, 1, 1]) {
+  let c = document.getElementById('sheet');
+  if (!c) { c = document.createElement('canvas'); c.id = 'sheet'; c.style.cssText = 'position:fixed;left:0;top:0;z-index:9;width:auto;height:auto'; document.body.appendChild(c); }
+  if (!frames) { c.remove(); return; }
+  const tw = Math.floor((innerWidth || 1280) / cols);
+  let g = null, th = 0;
+  frames.forEach(([label, fn], i) => {
+    fn();
+    const sw = canvas.width * (crop[2] - crop[0]), sh = canvas.height * (crop[3] - crop[1]);
+    if (!g) { th = Math.round((tw * sh) / sw); c.width = tw * cols; c.height = th * Math.ceil(frames.length / cols); g = c.getContext('2d'); }
+    const x = (i % cols) * tw, y = Math.floor(i / cols) * th;
+    g.drawImage(canvas, canvas.width * crop[0], canvas.height * crop[1], sw, sh, x, y, tw, th);
+    g.fillStyle = '#ff0'; g.font = 'bold 15px sans-serif'; g.fillText(label, x + 5, y + 17);
+  });
+}
 
 const acts = {
   fire: () => vm.onFire(now(), 1),
   reload: () => vm.onReload(now(), (WEAPONS[wid] && WEAPONS[wid].reload) || 2.5),
   inspect: () => vm.onInspect(now()),
-  draw: () => { vm.wid = null; vm.setWeapon(wid, 0.6, now()); },
+  draw: () => { vm.wid = null; vm.setWeapon(wid, (WEAPONS[wid] && WEAPONS[wid].deploy) || 0.5, now()); },
+  slash: () => vm.onKnife(now(), false),
+  stab: () => vm.onKnife(now(), true),
+  pin: () => vm.onPin(now()),
 };
 document.getElementById('ui').addEventListener('click', (e) => { const a = e.target.dataset && e.target.dataset.a; if (a && acts[a]) acts[a](); });
 // 给调试脚本用
 // 调姿势：改 __POSES 里的数，再调 __rebuild() 重新搭一遍手
 function rebuild() { for (const g of vm.cache.values()) vm.root.remove(g); vm.cache.clear(); const w = vm.wid; vm.wid = null; vm.cur = null; vm.setWeapon(w, 0, 0); }
-Object.assign(window, { __vm: vm, __S: S, __tick: tick, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild });
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild });
 </script>
 </body>
 </html>

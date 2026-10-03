@@ -336,3 +336,45 @@ export function synthKnife(kind, sr, seed = 9) {
   for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / (peak || 1)) * 1.3) / Math.tanh(1.3)) * 0.9 * (i > n - fade ? (n - i) / fade : 1);
   return out;
 }
+// 枪械的机械动作声（拉栓、换弹匣、拉套筒、霰弹枪上膛……）：几下金属撞击 + 一段摩擦声 + 一点余响。
+// hits：[开始时间, 音量, 频率, Q, 衰减]；scrape：[开始, 结束, 频率, 音量]（零件滑动的摩擦声）；ring：[基频, 泛音倍数, 各自音量, 各自衰减]
+export const MECH = {
+  magout: { len: 0.24, gain: 0.34, hits: [[0, 1, 1900, 1.4, 0.006], [0, 0.6, 600, 1, 0.012], [0.05, 0.35, 3200, 2, 0.004]], scrape: [0.02, 0.15, 1400, 0.3], ring: [2100, [1, 1.6], [0.25, 0.12], [0.02, 0.012]] },
+  magin: { len: 0.26, gain: 0.4, hits: [[0, 0.5, 2600, 2, 0.004], [0.045, 1, 800, 0.9, 0.014], [0.045, 0.8, 2300, 1.5, 0.006]], scrape: [0, 0.045, 1700, 0.25], ring: [1500, [1, 1.7, 2.6], [0.3, 0.2, 0.1], [0.03, 0.02, 0.012]] },
+  boltback: { len: 0.2, gain: 0.36, hits: [[0, 0.7, 2500, 1.5, 0.005], [0.085, 1, 1300, 1.1, 0.01]], scrape: [0.005, 0.085, 2200, 0.55] },
+  boltfwd: { len: 0.24, gain: 0.46, hits: [[0, 1, 1700, 1.0, 0.009], [0, 0.9, 3600, 1.6, 0.004], [0.004, 0.6, 500, 0.8, 0.02]], ring: [2400, [1, 1.45, 2.2], [0.35, 0.22, 0.12], [0.035, 0.025, 0.015]] },
+  slideback: { len: 0.16, gain: 0.3, hits: [[0, 0.6, 3200, 1.6, 0.004], [0.06, 1, 1800, 1.2, 0.007]], scrape: [0.004, 0.06, 2900, 0.5] },
+  slidefwd: { len: 0.2, gain: 0.4, hits: [[0, 1, 2300, 1.1, 0.007], [0, 0.8, 4400, 1.8, 0.003], [0.003, 0.4, 700, 0.8, 0.014]], ring: [3100, [1, 1.5, 2.3], [0.3, 0.18, 0.1], [0.028, 0.02, 0.012]] },
+  boltup: { len: 0.1, gain: 0.28, hits: [[0, 1, 2800, 2, 0.005], [0, 0.4, 900, 1, 0.01]] },
+  boltdown: { len: 0.14, gain: 0.34, hits: [[0, 1, 1900, 1.5, 0.007], [0, 0.6, 700, 1, 0.014]], ring: [2000, [1, 1.6], [0.2, 0.1], [0.02, 0.012]] },
+  pumpback: { len: 0.22, gain: 0.46, hits: [[0, 0.5, 1500, 1.2, 0.006], [0.075, 1, 900, 0.9, 0.016], [0.075, 0.7, 2600, 1.5, 0.006]], scrape: [0, 0.075, 1100, 0.75] },
+  pumpfwd: { len: 0.24, gain: 0.5, hits: [[0.065, 1, 1100, 0.9, 0.014], [0.065, 0.8, 3000, 1.5, 0.005]], scrape: [0, 0.065, 1300, 0.65], ring: [1800, [1, 1.5], [0.2, 0.1], [0.03, 0.02]] },
+  shell: { len: 0.16, gain: 0.34, hits: [[0, 0.6, 2200, 1.5, 0.005], [0.035, 1, 1000, 1, 0.012]], scrape: [0, 0.035, 1500, 0.3] },
+  pinpull: { len: 0.32, gain: 0.3, hits: [[0, 1, 4200, 2, 0.003]], ring: [3900, [1, 1.52, 2.4], [0.5, 0.3, 0.15], [0.09, 0.06, 0.03]] },
+};
+export function synthMech(kind, sr, seed = 17) {
+  const M = MECH[kind], R = rng(seed + kind.length * 13);
+  const n = Math.ceil(M.len * sr), out = new Float32Array(n);
+  const hits = M.hits.map((h) => ({ t0: h[0], g: h[1], f: new Biquad(sr).set('bp', h[2], h[3]), d: h[4] }));
+  const ring = M.ring ? M.ring[1].map((r, i) => ({ f: M.ring[0] * r, a: M.ring[2][i], d: M.ring[3][i], ph: R() * 6.28 })) : [];
+  const ringAt = M.hits[M.hits.length - 1][0]; // 余响跟着最后一下撞击
+  const sc = M.scrape, scF = sc ? new Biquad(sr) : null;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = R() * 2 - 1;
+    let s = 0;
+    for (const h of hits) { const y = h.f.p(w); if (t >= h.t0) s += y * h.g * 3 * Math.exp(-(t - h.t0) / h.d); }
+    if (sc) {
+      const q = (t - sc[0]) / (sc[1] - sc[0]);
+      if ((i & 15) === 0) scF.set('bp', sc[2] * (0.8 + 0.5 * Math.min(1, Math.max(0, q))), 1.6);
+      const y = scF.p(w);
+      if (q > 0 && q < 1) s += y * sc[3] * 1.6 * Math.sin(q * Math.PI);
+    }
+    if (t >= ringAt) for (const p of ring) { p.ph += (2 * Math.PI * p.f) / sr; s += Math.sin(p.ph) * p.a * 0.5 * env(t - ringAt, 0.0005, p.d); }
+    out[i] = s;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  const fade = Math.round(0.012 * sr);
+  for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / (peak || 1)) * 1.4) / Math.tanh(1.4)) * 0.9 * (i > n - fade ? (n - i) / fade : 1);
+  return out;
+}
