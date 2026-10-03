@@ -274,6 +274,8 @@ export class ViewModel {
       }
     }
 
+    if (this.reloadDur > 0 && now - this.reloadStart >= this.reloadDur) this.reloadDur = 0; // 换弹动作被别的动作顶掉了也要算换完
+
     // ---- 会动的零件 ----
     const mag = U.mag, bolt = U.bolt;
     if (mag) {
@@ -324,7 +326,7 @@ export class ViewModel {
     // 投掷
     if (this.throwT >= 0) {
       const p = (now - this.throwT) / 0.4;
-      if (p >= 1) this.throwT = -1;
+      if (p >= 1) { this.throwT = -1; U.pinGone = false; } // 扔出去了：手里换成下一颗（拉环还在）
       else { const s = Math.sin(p * Math.PI); pz -= s * 0.1; py += s * 0.08; rx -= s * 0.9; }
     }
 
