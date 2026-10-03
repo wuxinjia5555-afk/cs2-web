@@ -173,7 +173,7 @@ function hand(k, pose, style) {
       for (const x of [-0.011, 0.012]) k.box('pad', 0.004, 0.03, 0.0026, x, 0.052, -0.0176, { r: 0.0011 });
     } else {
       // 露指皮手套：手背开一个椭圆口，每个指关节上一个小圆孔，露出皮肤
-      k.ball('skin', 0.0125, 0.0165, 0.0022, new THREE.Matrix4().makeTranslation(0, 0.054, -0.0142));
+      k.ball('skin', 0.0095, 0.0125, 0.002, new THREE.Matrix4().makeTranslation(0, 0.054, -0.0142));
       for (const f of FINGERS) k.ball('skin', f.w * 0.3, f.w * 0.3, 0.0018, new THREE.Matrix4().makeTranslation(f.x, f.y - 0.004, -0.0142));
     }
     // 手腕上的搭扣带，带一个扣片
