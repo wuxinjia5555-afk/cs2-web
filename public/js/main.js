@@ -99,6 +99,23 @@ function showMenu(id) {
 
 function hideMenus() { for (const m of document.querySelectorAll('.menu')) m.classList.add('hidden'); }
 
+// 子页面（联机、背包、好友、设置……）顶上那条导航：哪个页面开着就亮哪个；在游戏里打开设置时不显示
+function syncNav() {
+  const cur = [...document.querySelectorAll('.menu')].find((m) => !m.classList.contains('hidden'));
+  const on = !!cur && cur.id !== 'menu-main' && !game;
+  $('subnav').classList.toggle('hidden', !on);
+  $('menus').classList.toggle('sub', on);
+  if (on) for (const t of document.querySelectorAll('#subnav [data-for]')) t.classList.toggle('on', t.dataset.for.split(' ').includes(cur.id));
+}
+new MutationObserver(syncNav).observe($('menus'), { attributes: true, attributeFilter: ['class'], subtree: true });
+$('subnav').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  audio.init();
+  if (b.dataset.go) $(b.dataset.go).click();
+  else if ('nav' in b.dataset) { audio.play('click'); showMenu('menu-main'); }
+});
+
 function loading(on, text) {
   $('loading').classList.toggle('hidden', !on);
   if (text) $('loading-text').textContent = text;

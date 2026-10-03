@@ -200,6 +200,18 @@
 
 <!-- ================= 主菜单 ================= -->
 <div id="menus">
+  <!-- 子页面（联机、背包、好友、设置……）共用的顶部导航，和开始界面是同一条 -->
+  <header id="subnav" class="home-top hidden">
+    <button class="home-logo" data-nav title="回到开始界面">DEFUSE<small>爆破行动</small></button>
+    <nav class="home-nav">
+      <button class="home-tab" data-nav data-for="menu-offline menu-online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg><span>开始游戏</span></button>
+      <button class="home-tab" data-go="btn-inv" data-for="menu-inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12l-1 10.5H7z"/><path d="M9 9V7.2a3 3 0 016 0V9"/><path d="M9.5 13h5"/></svg><span>背包</span></button>
+      <button class="home-tab" data-go="btn-friends" data-for="menu-friends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19c.5-3.4 2.6-5 5.5-5s5 1.6 5.5 5"/><circle cx="17" cy="8.2" r="2.3"/><path d="M15.8 13.3c2.7-.1 4.3 1.5 4.7 4.7"/></svg><span>好友</span></button>
+      <button class="home-tab" data-go="btn-settings" data-for="menu-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>设置</span></button>
+      <button class="home-tab" data-go="btn-help" data-for="menu-help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.6a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 3.9"/><path d="M12 16.9v.2"/></svg><span>操作说明</span></button>
+    </nav>
+    <div class="home-user"><button class="btn small" data-go="btn-account" data-for="menu-account">账号</button><button class="btn small ghost" data-nav>‹ 返回</button></div>
+  </header>
   <div id="menu-main" class="menu home">
     <!-- 顶部导航 -->
     <header class="home-top">
@@ -225,10 +237,10 @@
       <section class="home-panel home-news">
         <div class="home-h">最近更新</div>
         <ul>
-          <li>手和 AK-47 换了新模型，所有武器都有带手指的手</li>
-          <li>观战队友时能看到他的手和枪</li>
-          <li>蹲着开枪更稳；手机辅助瞄准不再吸附</li>
-          <li>荒漠迷城的机器人不再卡住</li>
+          <li>刀重做：照 CS:GO 的拿法，五把刀都是新模型，M9 切刀照原版</li>
+          <li>所有武器换成高精度模型；切枪会拉栓 / 拉套筒，换弹有卸弹匣、装弹匣的动作</li>
+          <li>AWP、鸟狙每开一枪要拉栓，Nova 每开一枪要上膛</li>
+          <li>登录后联机打比赛能挣金币；建房间可以选炸弹倒计时</li>
         </ul>
       </section>
       <!-- 右边：好友 -->

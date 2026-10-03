@@ -131,6 +131,32 @@ kbd { background: #2b3647; border: 1px solid #435066; border-bottom-width: 3px; 
   .home-body { grid-template-columns: 1fr; }
   .home-friends, .home-logo small { display: none; }
 }
+
+/* ---------------- 子页面（联机、人机、背包、好友、设置、账号、说明）：和开始界面同一套风格 ---------------- */
+#subnav { position: fixed; left: 0; right: 0; top: 0; z-index: 3; }
+#subnav .home-logo { border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.home-tab.on { color: #fff; background: rgba(255, 255, 255, .07); border-bottom-color: var(--acc); }
+#menus.sub .menu:not(.home) { justify-content: flex-start; padding: 78px 22px 18px;
+  background: linear-gradient(180deg, rgba(6, 9, 13, .62), rgba(6, 9, 13, .34) 40%, rgba(6, 9, 13, .62)); }
+#menus.sub .menu:not(.home) .menu-box { margin: 0 auto; }
+#menus.sub .menu-box.wide { max-height: calc(100vh - 96px); }
+.menu-box { background: rgba(11, 15, 21, .84); border-radius: 0; border-top: 2px solid var(--acc); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); }
+.menu-box h2 { font-size: 19px; letter-spacing: 3px; padding-bottom: 10px; margin-bottom: 2px; border-bottom: 1px solid var(--line); }
+.menu-box h3 { font-size: 13px; letter-spacing: 3px; color: var(--dim); font-weight: 600; }
+.menu :is(.btn, .map-card, .inv-item, .set-tab, .fr-row, input:not([type=range]):not([type=color]), select), .panel, .panel :is(.btn, .buy-item, .team-card) { border-radius: 2px; }
+.menu .btn { border-color: rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .07); letter-spacing: 1px; }
+.menu .btn:hover { background: rgba(255, 255, 255, .16); }
+.menu .btn.accent { background: linear-gradient(180deg, #f3c552, #dba42c); border-color: transparent; }
+.menu .btn.accent:hover { background: linear-gradient(180deg, #ffd66a, #e8b43c); }
+.menu .btn.ghost { background: transparent; }
+.menu .btn.danger { background: rgba(170, 50, 50, .45); }
+.menu .btn.big.accent { background: linear-gradient(180deg, #7cc94f, #4f9a2f); color: #fff; letter-spacing: 4px; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+.menu .btn.big.accent:hover { background: linear-gradient(180deg, #92dd62, #5cae38); }
+.menu .field :is(input:not([type=range]):not([type=color]), select), .menu #join-code { background: rgba(0, 0, 0, .38); }
+.menu .map-card { background: rgba(255, 255, 255, .04); border-width: 1px; border-bottom-width: 3px; transition: background .15s, border-color .15s; }
+.menu .map-card:hover { background: rgba(255, 255, 255, .1); }
+.menu .map-card.sel { background: rgba(232, 180, 60, .12); border-color: var(--acc); }
+@media (max-width: 760px) { #menus.sub .menu:not(.home) { padding: 66px 8px 10px; } }
 .map-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 .map-card { background: #121922; border: 2px solid var(--line); border-radius: 8px; padding: 8px; cursor: pointer; text-align: left; }
 .map-card canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px; background: #0a0e13; image-rendering: pixelated; }
