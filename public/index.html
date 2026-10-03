@@ -199,21 +199,43 @@
 
 <!-- ================= 主菜单 ================= -->
 <div id="menus">
-  <div id="menu-main" class="menu">
-    <div class="logo"><span>DEFUSE</span><small>爆破行动 · 网页版 CS2 风格战术射击</small></div>
-    <div class="menu-box">
-      <div class="acct-bar"><span id="acct-status">未登录 · 设置只存在这台设备上</span><button class="btn small" id="btn-account">登录 / 注册</button></div>
-      <label class="field"><span>昵称</span><input id="name-input" maxlength="16" placeholder="输入你的昵称"></label>
-      <button class="btn big" id="btn-offline">🎯 单机练习（人机对战）</button>
-      <button class="btn big" id="btn-online">🌐 联机对战</button>
-      <button class="btn big" id="btn-range">🏹 靶场（打假人练枪）</button>
-      <div class="row">
-        <button class="btn" id="btn-settings">⚙ 设置</button>
-        <button class="btn" id="btn-help">⌨ 操作说明</button>
-        <button class="btn" id="btn-qr">📱 手机扫码</button>
-        <button class="btn" id="btn-inv">🎒 背包</button>
-        <button class="btn" id="btn-friends">👥 好友</button>
-      </div>
+  <div id="menu-main" class="menu home">
+    <!-- 顶部导航 -->
+    <header class="home-top">
+      <div class="home-logo">DEFUSE<small>爆破行动</small></div>
+      <nav class="home-nav">
+        <button class="home-tab" id="btn-inv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12l-1 10.5H7z"/><path d="M9 9V7.2a3 3 0 016 0V9"/><path d="M9.5 13h5"/></svg><span>背包</span></button>
+        <button class="home-tab" id="btn-friends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19c.5-3.4 2.6-5 5.5-5s5 1.6 5.5 5"/><circle cx="17" cy="8.2" r="2.3"/><path d="M15.8 13.3c2.7-.1 4.3 1.5 4.7 4.7"/></svg><span>好友</span></button>
+        <button class="home-tab" id="btn-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>设置</span></button>
+        <button class="home-tab" id="btn-help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.6a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 3.9"/><path d="M12 16.9v.2"/></svg><span>操作说明</span></button>
+        <button class="home-tab" id="btn-qr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span>手机扫码</span></button>
+      </nav>
+      <div class="home-user"><span id="acct-status">未登录</span><button class="btn small" id="btn-account">登录 / 注册</button></div>
+    </header>
+    <div class="home-body">
+      <!-- 左边：选模式 -->
+      <section class="home-panel home-play">
+        <div class="home-h">开始游戏</div>
+        <button class="mode-card primary" id="btn-online"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3 3.2 14 0 17M12 3.5c-3.2 3-3.2 14 0 17"/></svg></span><span class="mode-t"><b>联机对战</b><small>开房间或输入房间码，和朋友一起打</small></span><i>›</i></button>
+        <button class="mode-card" id="btn-offline"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8.5" width="14" height="10" rx="2"/><circle cx="9.5" cy="13.5" r="1.2"/><circle cx="14.5" cy="13.5" r="1.2"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4.3" r="1.1"/><path d="M3 12.5v3M21 12.5v3"/></svg></span><span class="mode-t"><b>人机练习</b><small>单机打机器人，从新手到专家 6 档难度</small></span><i>›</i></button>
+        <button class="mode-card" id="btn-range"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.1"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg></span><span class="mode-t"><b>靶场</b><small>打假人练枪：压枪、急停、定位</small></span><i>›</i></button>
+        <label class="home-name"><span>昵称</span><input id="name-input" maxlength="16" placeholder="输入你的昵称"></label>
+      </section>
+      <section class="home-panel home-news">
+        <div class="home-h">最近更新</div>
+        <ul>
+          <li>手和 AK-47 换了新模型，所有武器都有带手指的手</li>
+          <li>观战队友时能看到他的手和枪</li>
+          <li>蹲着开枪更稳；手机辅助瞄准不再吸附</li>
+          <li>荒漠迷城的机器人不再卡住</li>
+        </ul>
+      </section>
+      <!-- 右边：好友 -->
+      <aside class="home-panel home-friends">
+        <div class="home-h">好友<small id="home-fr-count"></small></div>
+        <div id="home-fr-list"></div>
+        <button class="btn small" id="home-fr-more">登录 / 注册</button>
+      </aside>
     </div>
     <div class="foot">地图、模型、音效均为原创程序生成 · 玩法规则参考 CS2</div>
   </div>

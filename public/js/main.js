@@ -876,7 +876,7 @@ function syncText() {
 }
 function renderAccount() {
   const on = !!account.name;
-  $('acct-status').innerHTML = on ? `👤 <b>${esc(account.name)}</b> · ${coinText()} · ${esc(syncText())}` : account.state === 'loading' ? '登录中…' : '未登录 · 设置只存在这台设备上';
+  $('acct-status').innerHTML = on ? `<b>${esc(account.name)}</b> · ${coinText()}` : account.state === 'loading' ? '登录中…' : '未登录';
   $('btn-account').textContent = on ? '账号' : '登录 / 注册';
   $('name-input').disabled = on;
   $('name-input').value = on ? account.name : settings.name || '';
@@ -892,6 +892,17 @@ function renderAccount() {
   $('dev-on-box').classList.toggle('hidden', !account.dev);
   renderInv();
   renderFriends();
+  renderHome();
+}
+// 开始界面右边的好友栏：在线的排前面，最多显示 7 个
+function renderHome() {
+  const on = !!account.name, live = (f) => f.seen && Date.now() - f.seen < 150e3;
+  const fs = (account.friends || []).slice().sort((a, b) => (b.seen || 0) - (a.seen || 0));
+  $('home-fr-count').textContent = on && fs.length ? `${fs.filter(live).length} / ${fs.length} 在线` : '';
+  $('home-fr-list').innerHTML = !on ? '<div class="fr-empty">登录后可以加好友，互相送金币和皮肤。</div>'
+    : fs.length ? fs.slice(0, 7).map((f) => `<div class="home-fr-row"><span class="fr-dot${live(f) ? ' on' : ''}"></span><b>${esc(f.name)}</b><small>${seenText(f.seen)}</small></div>`).join('')
+      : '<div class="fr-empty">还没有好友，去搜索名称添加吧。</div>';
+  $('home-fr-more').textContent = on ? (fs.length ? '管理好友 / 赠送' : '添加好友') : '登录 / 注册';
 }
 function openAccount() {
   audio.init();
@@ -1015,6 +1026,7 @@ function openFriends() {
   refreshAccount();
 }
 $('btn-friends').addEventListener('click', openFriends);
+$('home-fr-more').addEventListener('click', () => (account.name ? openFriends() : openAccount()));
 $('fr-login').addEventListener('click', openAccount);
 $('fr-search').addEventListener('click', doSearch);
 $('fr-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
