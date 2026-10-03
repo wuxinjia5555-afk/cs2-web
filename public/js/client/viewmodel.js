@@ -7,7 +7,7 @@ import { flare } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
 
-const HANDS_ALL = false; // 改成 true：所有武器都换成带手指的手
+const HANDS_ALL = true; // 所有武器都用带手指的手（改成 false 就只有高精度模型的枪用）
 const LAYOUT = {
   rifle: { pos: [0.19, -0.19, -0.36], rot: [0.02, 0.06, 0] },
   sniper: { pos: [0.19, -0.195, -0.34], rot: [0.02, 0.05, 0] },

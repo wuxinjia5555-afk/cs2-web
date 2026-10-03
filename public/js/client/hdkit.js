@@ -238,7 +238,33 @@ export class Kit {
     const r = Math.min(o.r ?? 0.0015, h / 2 - 1e-4, d / 2 - 1e-4);
     const geo = extrude(rrect(-d / 2, -h / 2, d / 2, h / 2, r, this.hd ? 2 : 1), w, o.bevel ?? r, this.seg);
     geo.rotateY(-Math.PI / 2);
-    this.add(mat, creaseNormals(geo), xform(x, y, z, o.rx, o.ry, o.rz));
+    const m = xform(x, y, z, o.rx, o.ry, o.rz);
+    this.add(mat, creaseNormals(geo), o.m ? o.m.clone().multiply(m) : m); // o.m：先在自己的小坐标里摆好，再整体搬过去
+  }
+  // 放样：一串「圆角方」的截面沿 +Y 连起来，做手指、手腕这种略扁、一头粗一头细的东西。
+  // rings = [[y, 宽, 厚]…]：宽沿 X，厚沿 Z；exp 越大截面越方
+  loft(mat, rings, m, o = {}) {
+    const n = o.seg ?? (this.hd ? 12 : 6), e = 2 / (o.exp ?? 2.6), pos = [], idx = [];
+    for (const r of rings) {
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2, c = Math.cos(a), s2 = Math.sin(a);
+        pos.push((Math.sign(c) * Math.pow(Math.abs(c), e) * r[1]) / 2, r[0], (Math.sign(s2) * Math.pow(Math.abs(s2), e) * r[2]) / 2);
+      }
+    }
+    for (let j = 0; j < rings.length - 1; j++) {
+      for (let k = 0; k < n; k++) {
+        const a = j * n + k, b = j * n + ((k + 1) % n);
+        idx.push(a, a + n, b, b, a + n, b + n);
+      }
+    }
+    const c0 = pos.length / 3, top = (rings.length - 1) * n;
+    pos.push(0, rings[0][0], 0, 0, rings[rings.length - 1][0], 0);
+    for (let k = 0; k < n; k++) idx.push(c0, k, (k + 1) % n, c0 + 1, top + ((k + 1) % n), top + k);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    this.add(mat, geo, m);
   }
   // 沿枪管方向的圆管：z0 那头半径 r，z1 那头半径 r1
   tube(mat, r, z0, z1, o = {}) {

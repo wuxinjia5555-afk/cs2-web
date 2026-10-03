@@ -32,6 +32,7 @@ import * as THREE from 'three';
 import { ViewModel } from '../js/client/viewmodel.js';
 import { makeWeapon } from '../js/client/models.js';
 import { WEAPONS } from '../js/shared/weapons.js';
+import { HAND_POSES } from '../js/client/hdmodels.js';
 
 const q = new URLSearchParams(location.search);
 const wid = q.get('w') || 'ak47', team = q.get('team') || 'CT';
@@ -110,7 +111,9 @@ const acts = {
 };
 document.getElementById('ui').addEventListener('click', (e) => { const a = e.target.dataset && e.target.dataset.a; if (a && acts[a]) acts[a](); });
 // 给调试脚本用
-Object.assign(window, { __vm: vm, __S: S, __tick: tick, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer });
+// 调姿势：改 __POSES 里的数，再调 __rebuild() 重新搭一遍手
+function rebuild() { for (const g of vm.cache.values()) vm.root.remove(g); vm.cache.clear(); const w = vm.wid; vm.wid = null; vm.cur = null; vm.setWeapon(w, 0, 0); }
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild });
 </script>
 </body>
 </html>
