@@ -206,6 +206,11 @@ export function moveSpeed(w, scoped) {
   return scoped && w.scopedSpeed ? w.scopedSpeed : w.speed;
 }
 
+// 蹲稳在地上开枪更稳（玩家和机器人共用）：后坐力小一些，连射时越打越散的幅度也小一些。跳起来蹲不算
+export const CROUCH_RECOIL = 0.78; // 蹲着时每一枪的后坐力乘这个
+export const CROUCH_FIRE = 0.6;    // 蹲着时每一枪增加的散布乘这个
+export const steady = (crouched, onGround) => !!crouched && !!onGround;
+
 // 当前不精确度（弧度）。st: {speed, onGround, crouched, scoped, fireAcc, maxSpeed}
 export function inaccuracy(w, st) {
   const s = w.spread;

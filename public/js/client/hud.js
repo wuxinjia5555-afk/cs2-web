@@ -193,7 +193,7 @@ export class Hud {
     $('fx-smoke').style.opacity = g.smokeAlpha.toFixed(3);
     $('fx-hurt').style.opacity = Math.max(0, g.hurtT - now).toFixed(3);
     $('fx-heal').style.opacity = Math.max(0, ((g.healT || 0) - now) * 1.6).toFixed(3);
-    this.toggle('scope', me.alive && g.w.scope > 0);
+    this.toggle('scope', (me.alive && g.w.scope > 0) || (!me.alive && !!g.specScoped));
     // 进度条
     let prog = null;
     if (g.w.planting) prog = ['正在安放炸弹…', (now - g.w.plantStart) / 3.2];

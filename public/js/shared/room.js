@@ -1,7 +1,7 @@
 // 房间：权威游戏逻辑（回合、经济、伤害、炸弹、投掷物、掉落、机器人）
 // 服务端与"离线练习"共用同一份代码。io = { send(pid, msg), broadcast(msg, exceptPid) }
 import { P, TICK_RATE, F, ECON, TIMES, HG, HG_MULT, otherTeam } from './constants.js';
-import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray } from './weapons.js';
+import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from './weapons.js';
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
 import { NADE, NADE_STEP, makeProjectile, stepProjectile } from './grenades.js';
@@ -617,12 +617,14 @@ export class Room {
     p.protectUntil = 0;
     const speed = Math.hypot(p.vx, p.vz);
     const inacc = inaccuracy(w, { speed, onGround: p.onGround, crouched: p.crouched, scoped: p.scoped, fireAcc: p.fireAcc, maxSpeed: moveSpeed(w, p.scoped) });
-    p.fireAcc = Math.min(w.spread.cap, p.fireAcc + w.spread.fire);
+    const calm = steady(p.crouched, p.onGround); // 蹲着打更稳（和玩家一样的规则）
+    p.fireAcc = Math.min(w.spread.cap, p.fireAcc + w.spread.fire * (calm ? CROUCH_FIRE : 1));
     const comp = p.bot ? p.bot.d.comp : 0;
     const yaw = p.yaw + p.punchY * (1 - comp), pitch = p.pitch + p.punchP * (1 - comp);
     const pat = patternKick(w, p.spray);
-    p.punchY += pat[0] * DEG;
-    p.punchP += pat[1] * DEG;
+    const rs = calm ? CROUCH_RECOIL : 1;
+    p.punchY += pat[0] * DEG * rs;
+    p.punchP += pat[1] * DEG * rs;
     p.spray = nextSpray(w, p.spray);
     const ox = p.x, oy = eyeOf(p), oz = p.z;
     const targets = this.targetList(p);

@@ -1,7 +1,7 @@
 // 客户端游戏主循环：本地预测移动、武器、命中判定、插值、观战、特效与界面联动
 import * as THREE from 'three';
 import { P, PHYS_DT, F, INTERP_DELAY, HG } from '../shared/constants.js';
-import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil, patternKick, nextSpray } from '../shared/weapons.js';
+import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from '../shared/weapons.js';
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
@@ -84,6 +84,8 @@ export class Game {
     this.bombLed = null;
     this.nextBeep = 0;
     this.specId = null;
+    this.specView = null; // 这一帧镜头正贴在哪个队友的眼睛上（观战）
+    this.svm = null; this.svmId = null; // 观战时用的第一人称武器（显示队友手里的枪和动作）
     this.deathT = -1;
     this.deathPos = null;
     this.corpses = [];
@@ -493,7 +495,12 @@ export class Game {
       case 'hit': this.onHit(m); break;
       case 'shot': this.onShot(m); break;
       case 'rangeopts': this.rangeOpts = m.o; if (!$('rangepanel').classList.contains('hidden')) this.syncRangePanel(); break;
-      case 'rl': { const p = this.players.get(m.id); if (p && p.rp) audio.reloadAt([p.rp.x, p.rp.y + 1.2, p.rp.z]); break; }
+      case 'rl': {
+        const p = this.players.get(m.id);
+        if (p && p.rp) audio.reloadAt([p.rp.x, p.rp.y + 1.2, p.rp.z]);
+        if (this.svm && m.id === this.svmId && WEAPONS[m.w]) this.svm.onReload(this.now, WEAPONS[m.w].reload || 2);
+        break;
+      }
       case 'gthrow': this.onNadeThrow(m); break;
       case 'gdet': this.onNadeDet(m); break;
       case 'fireout': this.fx.removeFire(m.id); break;
@@ -885,6 +892,11 @@ export class Game {
   onShot(m) {
     const p = this.players.get(m.id);
     if (p) p.lastShotT = this.now;
+    // 正在观战这个人：他的枪跟着后坐 / 挥刀
+    if (this.svm && m.id === this.svmId && this.specView) {
+      if (m.w === 'knife') this.svm.onKnife(this.now, !!m.stab);
+      else { const sw = WEAPONS[m.w]; this.svm.onFire(this.now, sw && sw.type === 'sniper' ? 1.4 : 1); }
+    }
     if (m.w === 'knife') { audio.play('knife', m.o); return; }
     audio.shot(m.w, m.o);
     if (p && this.isEnemyId(p.id)) {
@@ -916,6 +928,7 @@ export class Game {
   }
 
   onNadeThrow(m) {
+    if (this.svm && m.by === this.svmId && this.specView) this.svm.onThrow(this.now);
     if (m.by === this.myId) {
       for (const [id, n] of this.nades) {
         if (n.local && n.type === m.g) {
@@ -1495,7 +1508,8 @@ export class Game {
     W.nextFire = now + 60 / w.rpm;
     W.lastShot = now;
     const inacc = this.currentInacc(w);
-    W.fireAcc = Math.min(w.spread.cap, W.fireAcc + w.spread.fire);
+    const calm = steady(this.sim.crouched, this.sim.onGround); // 蹲着打更稳
+    W.fireAcc = Math.min(w.spread.cap, W.fireAcc + w.spread.fire * (calm ? CROUCH_FIRE : 1));
     if (this.rangeStats) { this.rangeStats.shots++; this.hud.rangeStats(this.rangeStats); }
     const eye = this.eyePos();
     const yaw = this.yaw + W.punchY, pitch = this.pitch + W.punchP;
@@ -1518,8 +1532,9 @@ export class Game {
       if (k < 3 && (w.type !== 'pistol' || Math.random() < 0.5)) this.fx.tracer(muz.x, muz.y, muz.z, res.x, res.y, res.z);
     }
     const pat = patternKick(w, W.spray);
-    W.punchY += pat[0] * DEG * (0.9 + Math.random() * 0.2);
-    W.punchP += pat[1] * DEG;
+    const rs = calm ? CROUCH_RECOIL : 1;
+    W.punchY += pat[0] * DEG * (0.9 + Math.random() * 0.2) * rs;
+    W.punchP += pat[1] * DEG * rs;
     W.spray = nextSpray(w, W.spray);
     this.vm.onFire(now, w.type === 'sniper' ? 1.4 : 1);
     audio.shot(w.id, null);
@@ -1774,6 +1789,7 @@ export class Game {
     const sh = this.shake > 0.01 ? this.shake : 0;
     const sx = sh ? (Math.random() - 0.5) * sh * 0.05 : 0, sy = sh ? (Math.random() - 0.5) * sh * 0.05 : 0;
     let roll = 0;
+    this.specView = null;
     if (this.me.alive) {
       const a = clamp(this.acc / PHYS_DT, 0, 1);
       cam.position.set(lerp(this.prev.x, this.sim.x, a), lerp(this.prev.y, this.sim.y, a) + this.eyeOff, lerp(this.prev.z, this.sim.z, a));
@@ -1806,6 +1822,7 @@ export class Game {
         cam.position.set(sp.rp.x, sp.rp.y + (f & F.CROUCH ? P.crouchEye : P.standEye), sp.rp.z);
         cam.rotation.set(sp.rp.pitch, sp.rp.yaw, 0);
         this.freeCamActive = false;
+        this.specView = sp;
       } else if (this.me.team === 'T' || this.me.team === 'CT') {
         // 没有活着的队友可看：镜头留在自己倒下的地方（可以转视角，不能乱飞）；还没出生过就在自家出生点
         const sp0 = (this.map.spawns[this.me.team] || [])[0];
@@ -1821,6 +1838,10 @@ export class Game {
     const w = this.curWeapon();
     let fov = BASE_FOV;
     if (this.me.alive && W.scope > 0 && w.scope) fov = w.scope[W.scope - 1];
+    // 观战的队友开着镜：跟着放大（不知道他开的是几倍，按一倍算）
+    const sv = this.specView, svw = sv && WEAPONS[sv.rp.w];
+    this.specScoped = !!(sv && sv.rp.f & F.SCOPED && svw && svw.scope);
+    if (this.specScoped) fov = svw.scope[0];
     if (Math.abs(cam.fov - fov) > 0.01) {
       cam.fov += (fov - cam.fov) * Math.min(1, dt * 30);
       if (Math.abs(cam.fov - fov) < 0.05) cam.fov = fov;
@@ -1848,7 +1869,48 @@ export class Game {
     if (this.me.alive && this.w.scope === 0) {
       r.clearDepth();
       r.render(this.vm.scene, this.vm.camera);
+    } else if (!this.me.alive && this.specView && this.svm && this.svmId === this.specView.id && !this.specScoped) {
+      r.clearDepth();
+      r.render(this.svm.scene, this.svm.camera);
     }
+  }
+
+  // 观战队友（第一人称）时，把他手里的枪和动作画出来：切枪、开火后坐、换弹、挥刀、扔雷
+  updateSpecVm(dt, sp) {
+    const now = this.now, rp = sp.rp;
+    if (!this.svm) {
+      this.svm = new ViewModel();
+      this.svm.resize(innerWidth / innerHeight);
+    }
+    const vm = this.svm;
+    const wid = WEAPONS[rp.w] ? rp.w : 'knife';
+    const skin = sp.skin || 'default';
+    if (sp.team === 'T' || sp.team === 'CT') vm.setTeam(sp.team);
+    if (this.svmId !== sp.id) {
+      // 换了观战对象：直接拿着他现在的枪，轻轻抬一下
+      this.svmId = sp.id;
+      this.svmYaw = rp.yaw; this.svmPitch = rp.pitch; this.svmRl = false;
+      vm.knifeSkin = skin;
+      vm.wid = null;
+      vm.setWeapon(wid, 0.25, now);
+    } else if (vm.wid !== wid || (wid === 'knife' && vm.knifeSkin !== skin)) {
+      // 他切枪了：放拔枪动作
+      vm.knifeSkin = skin;
+      vm.wid = null;
+      vm.setWeapon(wid, WEAPONS[wid].deploy || 0.5, now);
+    }
+    // 换弹：一般靠服务器的换弹消息；没收到消息（比如机器人）就看状态标记
+    const rl = !!(rp.f & F.RELOADING);
+    if (rl && !this.svmRl && vm.reloadDur === 0) vm.onReload(now, WEAPONS[wid].reload || 2);
+    if (!rl && this.svmRl && vm.reloadDur > 0 && now - vm.reloadStart < vm.reloadDur * 0.85) vm.cancelReload();
+    this.svmRl = rl;
+    // 他转视角时枪跟着晃一下（把转过的角度换算成差不多的鼠标移动量）
+    const mdx = clamp(-angleDiff(this.svmYaw, rp.yaw) / 0.00096, -400, 400), mdy = clamp(-(rp.pitch - this.svmPitch) / 0.00096, -400, 400);
+    this.svmYaw = rp.yaw; this.svmPitch = rp.pitch;
+    vm.update(dt, {
+      now, speed: sp.speed || 0, onGround: !!(rp.f & F.GROUND), crouch: !!(rp.f & F.CROUCH),
+      mdx, mdy, scoped: this.specScoped, silenced: !!WEAPONS[wid].silenced,
+    });
   }
 
   resize() {
@@ -1858,6 +1920,7 @@ export class Game {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.vm.resize(w / h);
+    if (this.svm) this.svm.resize(w / h);
     this.fx.setPointScale(this.renderer.domElement.height, this.camera.fov);
   }
 
@@ -1913,7 +1976,8 @@ export class Game {
           now, speed: Math.hypot(this.sim.vx, this.sim.vz), onGround: this.sim.onGround, crouch: this.sim.crouched,
           mdx: this.mdx, mdy: this.mdy, scoped: this.w.scope > 0, silenced: !!this.curWeapon().silenced,
         });
-      }
+      } else if (this.specView) this.updateSpecVm(dt, this.specView);
+      else this.svmId = null;
       this.hud.update(dt);
       if (this.touch) this.touch.update();
       this.render();
