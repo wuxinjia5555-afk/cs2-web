@@ -47,6 +47,9 @@ export const RECOIL = {
   pistol: { back: [0.01, 0.012, 0.09], pitch: 0.2, hit: 0.55, kick: 10, max: 1.15, w: 15, yaw: 0.02, roll: 0.04, x: 0.003 },
   sniper: { back: [0.02, 0.03, 0.17], pitch: 0.14, hit: 0.12, kick: 22, max: 1.3, w: 9, yaw: 0.02, roll: 0.05, x: 0.004 },
   shotgun: { back: [0.03, 0.025, 0.17], pitch: 0.16, hit: 0.3, kick: 20, max: 1.3, w: 11, yaw: 0.03, roll: 0.06, x: 0.005 },
+  // 单独一把枪的（没写的按上面的类别来）：沙鹰一枪枪口翻得老高、0.3 秒才落回来；鸟狙比 AWP 轻得多
+  deagle: { back: [0.01, 0.06, 0.1], pitch: 0.6, hit: 0.5, kick: 14, max: 1.2, w: 11, yaw: 0.03, roll: 0.05, x: 0.003 },
+  ssg08: { back: [0.015, 0.02, 0.1], pitch: 0.09, hit: 0.15, kick: 20, max: 1.2, w: 11, yaw: 0.02, roll: 0.04, x: 0.003 },
 };
 // 刀在手里的摆法（相对手的位置）：爪子刀横着握，刀柄穿过拳头
 const GRIP = { karambit: { rot: [0, -Math.PI / 2, 0], pos: [0.02, -0.03, 0.03] } };
@@ -239,7 +242,7 @@ export class ViewModel {
   onFire(now, strength = 1) {
     this.boltK = 1;
     // 后坐：瞬间往后一顿，再带着往后冲一小段（之后弹簧把它拉回来）；每一枪随机晃一个方向
-    const R = this.cur && RECOIL[this.cur.userData.type];
+    const R = this.cur && (RECOIL[this.cur.userData.wid] || RECOIL[this.cur.userData.type]);
     if (R) { this.rk = Math.min(R.max, this.rk + R.hit * strength); this.rv += R.kick * strength; }
     this.jit[0] = Math.random() * 2 - 1; this.jit[1] = Math.random(); this.jit[2] = Math.random() * 2 - 1;
     this.jitK = 1;
@@ -292,7 +295,7 @@ export class ViewModel {
     this.swayX += (clamp(-st.mdx * 0.00045, -0.05, 0.05) - this.swayX) * Math.min(1, dt * 9);
     this.swayY += (clamp(-st.mdy * 0.00045, -0.05, 0.05) - this.swayY) * Math.min(1, dt * 9);
     // 后坐的弹簧（不来回弹）：顶上去之后平滑地落回原位
-    const R = RECOIL[type], rw = R ? R.w : 17;
+    const R = RECOIL[U.wid] || RECOIL[type], rw = R ? R.w : 17;
     for (let n = Math.max(1, Math.ceil(dt / 0.006)), h = dt / n; n > 0; n--) {
       this.rv += (-rw * rw * this.rk - 2 * rw * this.rv) * h;
       this.rk += this.rv * h;
