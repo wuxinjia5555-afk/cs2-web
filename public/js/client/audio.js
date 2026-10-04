@@ -1,7 +1,7 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH, HS, synthHs } from './gunsynth.js';
 import { GUN_SAMPLES } from './gunsamples.js';
 
 const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
@@ -118,7 +118,7 @@ class AudioSys {
     let b = this.fxBufs[key];
     if (!b) {
       const sr = this.ctx.sampleRate;
-      const data = MECH[kind] ? synthMech(kind, sr) : kind.startsWith('kn_') ? synthKnife(kind, sr) : synthFx(kind, sr, { streak, seed: 5 + streak });
+      const data = MECH[kind] ? synthMech(kind, sr) : HS[kind] ? synthHs(kind, sr) : kind.startsWith('kn_') ? synthKnife(kind, sr) : synthFx(kind, sr, { streak, seed: 5 + streak });
       b = this.fxBufs[key] = this.ctx.createBuffer(1, data.length, sr);
       b.getChannelData(0).set(data);
     }
@@ -136,7 +136,7 @@ class AudioSys {
 
   warmGuns() {
     for (const s of ['hard', 'sand', 'metal']) for (let i = 0; i < 6; i++) this._stepBuf(s);
-    for (const k of ['hit', 'hs_helmet', 'hs_nohelm', 'kill', 'kill_hs', ...Object.keys(KNIFE_GAIN)]) this._fxBuf(k, 1);
+    for (const k of ['hit', 'hs_helmet', 'hs_nohelm', 'hs_nohelm2', 'kill', 'kill_hs', ...Object.keys(KNIFE_GAIN)]) this._fxBuf(k, 1);
     const keys = Object.keys(GUN_PROFILES);
     let k = 0;
     const step = () => {
@@ -292,8 +292,9 @@ class AudioSys {
         this._tone(o.input, t + 0.09, { f: 930, f2: 1400, dec: 0.28, vol: 0.45, type: 'triangle' });
         this._noise(o.input, t, { type: 'highpass', f: 5000, dec: 0.2, vol: 0.12 });
         break;
+      // 爆头（照 CS:GO）：打中头盔是金属的一声「叮」；没头盔 / 打死了是骨头碎裂的脆响，有两种轮着来
       case 'headshot': this._playFx('hs_helmet', 0.62 * vol); break;
-      case 'headshot_nohelm': this._playFx('hs_nohelm', 0.66 * vol); break;
+      case 'headshot_nohelm': this._playFx(Math.random() < 0.5 ? 'hs_nohelm' : 'hs_nohelm2', 0.6 * vol); break;
       case 'killconfirm':
         // 击杀：低音冲击 + 碎裂声 + 金属“锵”，连杀越多音越高；爆头击杀多一层清脆的“叮”
         this._playFx(opts.hs ? 'kill_hs' : 'kill', 0.85 * vol, Math.max(1, Math.min(5, opts.streak || 1)));

@@ -744,8 +744,14 @@ export class Game {
       this.hud.rangeStats(st);
     }
     this.hud.hitmarker(head, kill);
-    if (!kill) audio.play(head ? (m.hm ? 'headshot' : 'headshot_nohelm') : 'hit');
     const v = this.players.get(m.v);
+    if (head) {
+      // 爆头声照 CS:GO 的用法：打中头盔是「叮」；对方没戴头盔、或者这一枪打死了，再加一声脆响。离得越远越轻
+      const d = v && v.rp ? Math.hypot(v.rp.x - this.sim.x, v.rp.z - this.sim.z) : 10;
+      const vol = clamp(1.1 - d / 60, 0.45, 1);
+      if (m.hm) audio.play('headshot', null, vol);
+      if (!m.hm || kill) audio.play('headshot_nohelm', null, vol * (m.hm ? 0.75 : 1));
+    } else if (!kill) audio.play('hit');
     if (v && v.model) v.model.hitT = this.now;
     if (head && v) {
       // 爆头闪光：在敌人头的位置闪一下（一直开着）
@@ -802,7 +808,7 @@ export class Game {
       const paid = this.mode === 'bomb' && this.round.ph !== 'warmup';
       const reward = paid ? ((w && w.killReward) ?? 300) : 0;
       this.hud.killConfirm({ name: v ? v.name : '', team: v ? v.team : 'T', weapon: m.w, hs: !!m.hs, streak: n, reward });
-      audio.play('killconfirm', null, 1, { streak: n, hs: !!m.hs });
+      audio.play('killconfirm', null, m.hs ? 0.8 : 1, { streak: n }); // 爆头击杀：爆头声自己已经响了（见 onHit），击杀提示音就用普通的那种、轻一点
       this.vibrate(n >= 2 ? [30, 30, 30, 30, 60] : [30, 30, 50]);
     } else if (m.as === this.myId) {
       this.hud.assistNote(v ? v.name : '');
