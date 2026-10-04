@@ -11,15 +11,16 @@ export const backOut = (x, c = 1.6) => 1 + (c + 1) * Math.pow(x - 1, 3) + c * Ma
 // ---------- 关键帧 ----------
 // 一条轨道 = [[时刻, 值…, 缓动?]…]。时刻是 0~1（整段动作的进度）；两帧之间默认平滑过渡，
 // 最后一项可以写缓动：'out' 先快后慢（拉开），'in' 先慢后快（松手弹回去），'lin' 匀速
-const EASE = { lin: (x) => x, in: (x) => x * x, out: (x) => 1 - (1 - x) * (1 - x), io: sstep };
+const EASE = { lin: (x) => x, in: (x) => x * x, out: (x) => 1 - (1 - x) * (1 - x), io: sstep, back: (x) => backOut(x, 1.3) };
+// 关键帧最后一项写的缓动（不写就是平滑过渡）
+export const easeOf = (key) => { const e = key[key.length - 1]; return (typeof e === 'string' && EASE[e]) || sstep; };
 export function sample(keys, u, out) {
   const n = keys.length;
   let a = keys[0], b = a, x = 0;
   if (u >= keys[n - 1][0]) a = b = keys[n - 1];
   else if (u > a[0]) {
     for (let i = 1; i < n; i++) if (u < keys[i][0]) { a = keys[i - 1]; b = keys[i]; break; }
-    const e = b[b.length - 1];
-    x = (typeof e === 'string' ? EASE[e] : sstep)((u - a[0]) / (b[0] - a[0]));
+    x = easeOf(b)((u - a[0]) / (b[0] - a[0]));
   }
   if (!out) return a[1] + (b[1] - a[1]) * x;
   for (let i = 0; i < out.length; i++) out[i] = a[i + 1] + (b[i + 1] - a[i + 1]) * x;
@@ -60,9 +61,10 @@ const CLIPS = {
       bolt: [[0.3, 0], [0.45, 1, 'out'], [0.5, 1], [0.555, 0, 'in']],
       ev: [[0.3, 'boltback'], [0.54, 'boltfwd']],
     },
-    // 卸弹匣（往前一掰再抽出来）→ 换上新的（先挂住前面再往后一扣）→ 左手绕到枪下面拉一下拉机柄
+    // 卸弹匣（往前一掰再抽出来）→ 换上新的（先挂住前面再往后一扣）→ 左手绕到枪下面拉一下拉机柄。
+    // 换弹匣的时候枪口抬得很高、枪身侧过来把弹匣井亮给左手（照 CS 的样子），拉栓时再放平
     reload: {
-      g: [[0, ...Z6], [0.1, -0.01, 0.0, 0.01, 0.14, 0.05, -0.45], [0.63, -0.01, -0.002, 0.01, 0.12, 0.05, -0.43], [0.74, 0.006, -0.008, 0.006, 0.03, 0.02, 0.26], [0.9, 0.004, 0, 0, 0.01, 0, 0.2], [1, ...Z6]],
+      g: [[0, ...Z6], [0.1, -0.04, -0.05, 0.05, 0.62, 0.18, -0.5], [0.63, -0.04, -0.052, 0.05, 0.6, 0.18, -0.48], [0.74, 0.006, -0.008, 0.006, 0.03, 0.02, 0.26], [0.9, 0.004, 0, 0, 0.01, 0, 0.2], [1, ...Z6]],
       lhMag: [[0.02, 0], [0.13, 1], [0.64, 1], [0.74, 0]],
       mag: [[0.15, 0, 0, 0], [0.2, -0.012, -0.012, 0.3, 'out'], [0.3, -0.25, -0.05, 0.48, 'in'], [0.46, -0.25, -0.05, 0.48], [0.56, -0.016, -0.014, 0.32, 'out'], [0.63, 0, 0, 0, 'in']],
       magOff: [0.3, 0.46],
@@ -81,7 +83,7 @@ const CLIPS = {
       ev: [[0.28, 'boltback'], [0.52, 'boltfwd']],
     },
     reload: {
-      g: [[0, ...Z6], [0.09, -0.01, 0.0, 0.01, 0.14, 0.05, -0.42], [0.6, -0.01, -0.002, 0.01, 0.12, 0.05, -0.4], [0.7, 0.004, -0.004, 0.004, 0.04, 0.02, 0.12], [0.88, 0.003, 0, 0, 0.01, 0, 0.08], [1, ...Z6]],
+      g: [[0, ...Z6], [0.09, -0.03, -0.035, 0.035, 0.45, 0.14, -0.46], [0.6, -0.03, -0.037, 0.035, 0.43, 0.14, -0.44], [0.7, 0.004, -0.004, 0.004, 0.04, 0.02, 0.12], [0.88, 0.003, 0, 0, 0.01, 0, 0.08], [1, ...Z6]],
       lhMag: [[0.02, 0], [0.11, 1], [0.6, 1], [0.69, 0]],
       mag: [[0.13, 0, 0, 0], [0.25, -0.26, 0, 0, 'in'], [0.43, -0.26, 0, 0], [0.53, -0.03, 0, 0, 'out'], [0.585, 0, 0, 0, 'in']],
       magOff: [0.26, 0.42],
@@ -129,7 +131,7 @@ const CLIPS = {
       ev: [[0.32, 'boltup'], [0.43, 'boltback'], [0.62, 'boltfwd'], [0.8, 'boltdown']],
     },
     reload: {
-      g: [[0, ...Z6], [0.08, -0.01, 0.0, 0.01, 0.12, 0.04, -0.38], [0.5, -0.01, -0.002, 0.01, 0.1, 0.04, -0.36], [0.62, -0.045, 0.022, 0.006, 0.05, 0.04, 0.3], [0.88, -0.045, 0.02, 0, 0.03, 0.04, 0.28], [1, ...Z6]],
+      g: [[0, ...Z6], [0.08, -0.03, -0.035, 0.035, 0.42, 0.12, -0.42], [0.5, -0.03, -0.037, 0.035, 0.4, 0.12, -0.4], [0.62, -0.045, 0.022, 0.006, 0.05, 0.04, 0.3], [0.88, -0.045, 0.02, 0, 0.03, 0.04, 0.28], [1, ...Z6]],
       lhMag: [[0.02, 0], [0.1, 1], [0.5, 1], [0.58, 0]],
       mag: [[0.12, 0, 0, 0], [0.22, -0.24, 0, 0, 'in'], [0.36, -0.24, 0, 0], [0.45, -0.03, 0, 0, 'out'], [0.49, 0, 0, 0, 'in']],
       magOff: [0.23, 0.35],
@@ -187,13 +189,42 @@ export function clipFor(wid, kind) {
 }
 
 // ---------- 刀 ----------
-// 「亮刀」的姿势：拳头举在画面中间偏右，刀尖朝上，握刀的手心对着镜头（检视、花式切刀时用）
-export const KNIFE_SHOW = { pos: [0.075, -0.1, -0.27], dir: [-0.1, 0.96, -0.26], face: [0.12, 0.26, -0.96] };
-// 挥刀（照 CS：左键是横着一划，一左一右轮着来；右键是往前一捅）
+const ramp = (e, a, b) => sstep(seg(e, a, b));
+// a~b 这段时间里从 0 升到 1，c~d 再落回 0
+const win = (e, a, b, c, d) => ramp(e, a, b) * (1 - ramp(e, c, d));
+
+// 刀的姿势（相机坐标：右、上、后）：pos = 刀在画面里的位置，dir = 刀尖朝哪，elbow = 手肘大概在哪。
+// 手和小臂是连在一起的一整块，所以由「手肘在哪」定出手腕怎么转：手肘一律写在右下方，
+// 画面里的小臂就一定是从右下角伸上来的（要是照着「刀转多少度」去摆，小臂会甩到左边去，右手看着就像左手）。
+// 'idle' 是平时的拿法（viewmodel.js 里的 LAYOUT），不用写在这里
+export const KNIFE_POSES = {
+  // 亮刀：手举到面前，手心对着自己，刀尖朝上、略往右歪
+  palm: { pos: [0.04, -0.105, -0.3], dir: [0.3, 0.92, -0.25], elbow: [0.42, -0.6, -0.1] },
+  // 翻过来看另一面：手背对着自己，刀尖朝左上
+  back: { pos: [0.11, -0.125, -0.3], dir: [-0.75, 0.6, -0.28], elbow: [0.16, -0.7, 0.05] },
+  // 切刀的起手：刀立着拿上来，刀面对着自己，小臂从右下方伸上来
+  up: { pos: [0.13, -0.11, -0.3], dir: [0.05, 0.97, -0.24], elbow: [0.42, -0.55, -0.05] },
+  // M9 切刀：从立着往左前方一划，划过头一点（刀放平、比平时低），再收回来
+  m9cut: { pos: [0.09, -0.118, -0.29], dir: [-0.96, 0.02, -0.28], elbow: [0.14, -0.55, 0.12] },
+  // 左键横划：先往右后方一收（cutR），划到左边（cutL），顺势再带一点（cutL2）
+  cutR: { pos: [0.2, -0.07, -0.26], dir: [-0.35, 0.5, -0.79], elbow: [0.34, -0.5, 0.12] },
+  cutL: { pos: [-0.07, -0.035, -0.33], dir: [-0.93, 0.12, 0.34], elbow: [0.3, -0.45, -0.02] },
+  cutL2: { pos: [-0.09, -0.05, -0.32], dir: [-0.9, 0.02, 0.44], elbow: [0.3, -0.45, -0.02] },
+  // 第二下反手划回来：从左边（bkL）划到右边（bkR），再带一点（bkR2）
+  bkL: { pos: [0.0, -0.045, -0.3], dir: [-0.92, 0.1, 0.38], elbow: [0.3, -0.45, 0] },
+  bkR: { pos: [0.22, -0.05, -0.28], dir: [-0.2, 0.45, -0.87], elbow: [0.36, -0.5, 0.12] },
+  bkR2: { pos: [0.235, -0.06, -0.27], dir: [-0.12, 0.48, -0.87], elbow: [0.36, -0.5, 0.12] },
+  // 右键捅：往右后方一收（stb0），朝准星捅出去（stb1），停一下（stb2）
+  stb0: { pos: [0.19, -0.13, -0.2], dir: [-0.55, 0.3, -0.78], elbow: [0.34, -0.55, 0.22] },
+  stb1: { pos: [0.02, -0.045, -0.44], dir: [-0.22, 0.1, -0.97], elbow: [0.3, -0.45, -0.1] },
+  stb2: { pos: [0.03, -0.05, -0.42], dir: [-0.24, 0.1, -0.96], elbow: [0.3, -0.45, -0.1] },
+};
+// 姿势轨道 = [[时刻, 姿势名, 缓动?]…]：到这个时刻摆成这个姿势，相邻两个之间平滑过渡。
+// 挥刀（照 CS：左键横着一划，一左一右轮着来；右键往前一捅）。时刻是 0~1（整段动作的进度）
 export const KNIFE_HIT = {
-  slash: [[0, ...Z6], [0.14, 0.045, 0.01, 0.02, 0, -1.0, -0.15], [0.42, -0.22, 0.025, -0.07, -0.08, 0.5, 0.3, 'out'], [0.56, -0.23, 0.02, -0.06, -0.08, 0.55, 0.32], [1, ...Z6]],
-  back: [[0, ...Z6], [0.14, -0.1, 0.012, -0.02, 0, 0.5, 0.2], [0.42, 0.09, 0.01, -0.07, -0.05, -1.25, -0.3, 'out'], [0.56, 0.1, 0.008, -0.06, -0.05, -1.3, -0.32], [1, ...Z6]],
-  stab: [[0, ...Z6], [0.2, 0.035, -0.012, 0.06, 0.1, -0.45, -0.1], [0.42, -0.07, 0.03, -0.2, -0.05, -0.75, 0.15, 'out'], [0.62, -0.07, 0.03, -0.19, -0.05, -0.75, 0.15], [1, ...Z6]],
+  slash: [[0, 'idle'], [0.13, 'cutR', 'out'], [0.4, 'cutL', 'out'], [0.56, 'cutL2', 'out'], [1, 'idle']],
+  back: [[0, 'idle'], [0.14, 'bkL', 'out'], [0.4, 'bkR', 'out'], [0.56, 'bkR2', 'out'], [1, 'idle']],
+  stab: [[0, 'idle'], [0.2, 'stb0', 'out'], [0.4, 'stb1', 'out'], [0.62, 'stb2'], [1, 'idle']],
 };
 
 // 分段转角：[{t0, t1, a0, a1, ease}]
@@ -206,37 +237,53 @@ function track(tr, e) {
   }
   return a;
 }
-// 蝴蝶刀的一次翻刀。open：刀身连着咬柄一起甩出去 180°（刀身到位“嗒”），咬柄再自己转 180° 拍回手心（“咔”）；close 反过来。
-// k > 1：越转越快，最后拍合那一下最快最脆。返回 [刀身转角, 咬柄转角]（都是相对握在手里的那片刀柄）
-const bfSeg = (open, t0, t1, k) => ({ open, t0, t1, k, mid: t0 + (t1 - t0) * Math.pow(0.5, 1 / k) });
-function bfAngles(segs, closed, e) {
-  for (const s of segs) {
-    if (e < s.t0) break;
-    if (e < s.t1) {
-      const f = Math.pow((e - s.t0) / (s.t1 - s.t0), s.k) * TAU;
-      return s.open ? [Math.PI - Math.min(Math.PI, f), -f] : [Math.max(0, f - Math.PI), f];
-    }
-    closed = !s.open;
-  }
-  return closed ? [Math.PI, 0] : [0, 0];
+// 抛刀：刀离手往刀尖方向飞出去 high 米、转 turns 圈再落回手里。q：0~1（抛出去 → 接住）。
+// 手心对着自己亮刀的时候，刀尖方向就是上，所以是往上抛；同时离开手心一点，转的时候不蹭手
+function toss(P, q, turns, high) {
+  P.spin.position.copy(P.base);
+  if (q <= 0 || q >= 1) { P.spin.rotation.x = 0; return; }
+  P.spin.rotation.x = TAU * turns * q; // 刀尖往手腕这边翻
+  P.spin.position.z -= high * 4 * q * (1 - q);
+  P.spin.position.x -= 0.024 * Math.sin(q * Math.PI);
 }
-const bfEv = (segs) => segs.flatMap((s) => [[s.t0, 'kn_swish'], [s.mid, 'kn_tick'], [s.t1, 'kn_clack']]);
-const BF_DRAW = [bfSeg(true, 0.05, 0.3, 1.6)];
-// 蝴蝶刀检视：抬手把刀亮到画面中间 → 整把刀在指间甩一圈（咬柄被甩开、最后“咔”地合上）→ 合刀、再开刀
-// → 捏着销轴把咬柄张开成 Y 字展示一会儿 → “咔”合上放下
-const BF_INSP_FLIP = [bfSeg(false, 1.35, 1.8, 1.4), bfSeg(true, 1.9, 2.4, 1.5)];
-function bfInspect(e) {
-  let P = 0, b = 0, h = 0;
-  const q = seg(e, 0.45, 1.25);
-  if (q > 0 && q < 1) { P = -TAU * sstep(q); h = Math.sin(q * Math.PI) * 1.9; }
-  if (e >= 1.35 && e < 2.4) [b, h] = bfAngles(BF_INSP_FLIP, false, e);
-  if (e >= 2.5 && e < 3.6) {
-    const yIn = sstep(seg(e, 2.5, 2.8)), shut = seg(e, 3.3, 3.45);
-    h = 1.75 * yIn * (1 - shut * shut); // 张开，最后越合越快“咔”一声
-    P = (-0.5 + Math.sin((e - 2.5) * 3) * 0.06) * yIn * (1 - sstep(seg(e, 3.3, 3.6)));
+
+// ---- 蝴蝶刀 ----
+// 两片刀柄各有一根销轴穿在刀根上。握在手里的那片（安全柄）不动；刀身绕它的销轴转（b：0 = 打开，π = 合上），
+// 另一片（咬柄）装在刀根上、绕自己的销轴转（c：0 = 和安全柄并排，π = 贴在刀身上）。
+// 哪片都只能往「外」甩：合刀 = 咬柄先从手指这一侧甩出去贴到刀身上，再连着刀身一起从大拇指这一侧翻下来、合进安全柄；
+// 开刀反过来。咬柄前后正好绕了一整圈。
+// 手也跟着换：刀身从大拇指这一侧过的时候，四指握着安全柄、大拇指让开（bfGrip）；
+// 咬柄从手指这一侧过的时候，大拇指压住安全柄、四指伸直让开（bfPinch）。
+// 一段甩动 = [t0, t1, 起, 止]：越转越快，到头撞上限位销一下停住
+function swings(tr, e, v) {
+  for (const s of tr) {
+    if (e < s[0]) break;
+    v = e < s[1] ? s[2] + (s[3] - s[2]) * Math.pow((e - s[0]) / (s[1] - s[0]), 1.7) : s[3];
   }
-  return [P, b, h];
+  return v;
 }
+// 甩的那一下手腕跟着一抖：正在甩的那一段里按 sin 起伏
+function flick(tr, e, k) {
+  for (const s of tr) if (e >= s[0] && e < s[1]) return Math.sin(((e - s[0]) / (s[1] - s[0])) * Math.PI) * (s[3] > s[2] ? k : -k);
+  return 0;
+}
+const PI = Math.PI;
+const BF = {
+  draw: {
+    blade: [[0.1, 0.3, PI, 0]], bite: [[0.3, 0.5, PI, 0]], b0: PI, c0: PI,
+    hand: [[0, 'bfGrip', 'bfGrip'], [0.24, 'bfGrip', 'bfPinch', 0.24, 0.33], [0.4, 'bfPinch', 'fist', 0.5, 0.6]],
+  },
+  inspect: {
+    // 合刀 → 停一下 → 开刀 → 咬柄来回甩两下 → 握住
+    blade: [[0.78, 1.0, 0, PI], [1.3, 1.52, PI, 0]],
+    bite: [[0.5, 0.72, 0, PI], [1.58, 1.8, PI, 0], [1.95, 2.13, 0, PI], [2.15, 2.33, PI, 0], [2.38, 2.54, 0, PI], [2.56, 2.72, PI, 0]],
+    b0: 0, c0: 0,
+    hand: [[0, 'fist', 'bfPinch', 0.28, 0.42], [0.6, 'bfPinch', 'bfGrip', 0.68, 0.8], [1.2, 'bfGrip', 'bfPinch', 1.48, 1.6], [1.7, 'bfPinch', 'fist', 2.74, 2.86]],
+  },
+};
+// 每段甩动：开始时一声风声；刀身到位「嗒」，咬柄拍回手里「咔」
+const bfEv = (m) => [...m.blade.flatMap((s) => [[s[0], 'kn_swish'], [s[1], 'kn_tick']]), ...m.bite.flatMap((s) => [[s[0], 'kn_swish'], [s[1], s[3] === 0 ? 'kn_clack' : 'kn_tick']])].sort((a, b) => a[0] - b[0]);
+
 // 爪子刀（参考 CS2）：拔刀时绕食指往里转一圈，先快后慢地停住；
 // 检视：往里转大半圈，刀身朝下挂在手指上晃一晃，再甩回来、最后再转一圈接住
 const HANG = Math.PI * 1.5;
@@ -245,70 +292,53 @@ const KA_INSP = [{ t0: 0.35, t1: 0.95, a0: 0, a1: HANG, ease: sstep }, { t0: 1.5
   { t0: 1.95, t1: 2.4, a0: TAU, a1: 2 * TAU, ease: (x) => eOut(x, 2) }];
 const KA_WRIST = { draw: { ry: 0, rz: 0.12, rx: 0.05, px: -0.03, py: 0.035, pz: 0.03, back: [0.48, 0.66] },
   inspect: { ry: 0, rz: 0.15, rx: -0.05, px: -0.05, py: 0.07, pz: 0, back: [2.38, 2.7] } };
-// 剥皮小刀（瓦罗兰特的路子）：切刀时刀尖朝上亮出来，在手里飞快转一整圈，再绕刀身拧一圈露出刀背锯齿，然后放下
-const XE_DRAW = [{ t0: 0.06, t1: 0.28, a0: 0, a1: TAU, ease: sstep }];
-const XE_DRAW_ROLL = [{ t0: 0.3, t1: 0.56, a0: 0, a1: TAU, ease: (x) => eOut(x, 2) }];
-const XE_ROLL = [{ t0: 0.5, t1: 1.05, a0: 0, a1: Math.PI, ease: sstep }, { t0: 1.35, t1: 1.9, a0: Math.PI, a1: TAU, ease: sstep }];
-const XE_TWIRL = [{ t0: 2.0, t1: 2.55, a0: 0, a1: 2 * TAU, ease: (x) => eOut(x, 1.8) }];
 
-// 每种刀：draw / inspect = { dur 秒, ev [[秒, 声音]…] }；
-// anim(P, mode, e, o)：摆好刀上会动的零件（P），往 o 里加整只手的偏移，返回往「亮刀」姿势过渡多少（0~1）
+// 每种刀：draw / inspect = { dur 秒, ev [[秒, 声音]…], pose 姿势轨道（时刻是秒；不写就一直是平时的拿法） }；
+// anim(P, mode, e, o)：摆好刀上会动的零件（P），往 o 里写整只手的小偏移（px…rz）和手型：
+//   o.hand0 → o.hand 过渡 o.handW（0~1）；不写 hand0 就是从握拳开始
 export const KNIFE_FX = {
-  // 默认匕首：从下面甩上来，手腕一拧落到位
+  // 默认匕首：立着从下面拿上来，手腕一翻落到位。检视：看一面、翻过来看另一面
   plain: {
-    draw: { dur: 0.5, ev: [[0.04, 'kn_swish'], [0.36, 'kn_catch']] },
-    inspect: { dur: 2.8, ev: [[0.1, 'kn_swish'], [1.0, 'kn_swish'], [2.35, 'kn_swish']] },
+    draw: { dur: 0.46, ev: [[0.04, 'kn_swish'], [0.34, 'kn_catch']], pose: [[0, 'up'], [0.1, 'up'], [0.46, 'idle', 'back']] },
+    inspect: { dur: 2.55, ev: [[0.1, 'kn_swish'], [1.05, 'kn_swish'], [2.1, 'kn_swish']],
+      pose: [[0, 'idle'], [0.42, 'palm'], [1.0, 'palm'], [1.45, 'back'], [2.05, 'back'], [2.55, 'idle']] },
     anim(P, mode, e, o) {
-      if (mode === 'draw') {
-        const s = 1 - backOut(seg(e, 0.1, 0.5), 1.4);
-        o.rz -= s * 0.9; o.rx -= s * 0.2; o.px += s * 0.03; o.py -= s * 0.04;
-        return 0;
-      }
-      if (mode !== 'inspect') return 0;
-      // 亮出一面 → 手腕转过去看另一面 → 放下
-      const w = sstep(seg(e, 0, 0.4)) * (1 - sstep(seg(e, 2.35, 2.8)));
-      o.ry += w * (0.35 - (sstep(seg(e, 0.9, 1.35)) - sstep(seg(e, 1.9, 2.3))) * 1.0);
-      return w;
+      if (mode === 'inspect') o.ry += Math.sin(e * 2.2) * 0.04 * win(e, 0.3, 0.5, 2.0, 2.3);
     },
   },
-  // M9 刺刀（照 CS:GO 的切刀拆帧做的）：反握着从下面抬上来、手心对着镜头 → 刀在手里转半圈变成正握（刀尖从朝下转到朝上）
-  // → 手腕一翻，落到平时的拿法。检视：亮刀看两面，往上抛着翻一圈接住
+  // M9 刺刀：立着拿上来，往左前方一划、划过头一点再收住。
+  // 检视：看一面、翻过来看另一面，再转回来往上一抛，刀翻一圈落回手里
   m9: {
-    draw: { dur: 0.66, ev: [[0.08, 'kn_swish'], [0.38, 'kn_catch'], [0.42, 'kn_swish']] },
-    inspect: { dur: 2.9, ev: [[0.1, 'kn_swish'], [0.9, 'kn_swish'], [1.62, 'kn_swish'], [2.02, 'kn_catch'], [2.45, 'kn_swish']] },
+    draw: { dur: 0.62, ev: [[0.03, 'kn_swish'], [0.2, 'kn_swish'], [0.42, 'kn_catch']], pose: [[0, 'up'], [0.16, 'up'], [0.4, 'm9cut', 'in'], [0.62, 'idle', 'out']] },
+    inspect: { dur: 3.3, ev: [[0.1, 'kn_swish'], [1.02, 'kn_swish'], [1.96, 'kn_swish'], [2.38, 'kn_swish'], [2.8, 'kn_catch'], [2.95, 'kn_swish']],
+      pose: [[0, 'idle'], [0.4, 'palm'], [1.0, 'palm'], [1.4, 'back'], [1.95, 'back'], [2.3, 'palm'], [2.92, 'palm'], [3.3, 'idle']] },
     anim(P, mode, e, o) {
-      let spin = 0, toss = 0, w = 0;
-      if (mode === 'draw') {
-        spin = -Math.PI * (1 - sstep(seg(e, 0.1, 0.38)));
-        w = 1 - sstep(seg(e, 0.38, 0.66));
-        const over = Math.sin(seg(e, 0.3, 0.6) * Math.PI); // 转到位后惯性往右多摆一点再回来
-        o.rz -= over * 0.3 * w; o.py -= w * 0.03; o.px += w * 0.02;
-      } else if (mode === 'inspect') {
-        w = sstep(seg(e, 0, 0.4)) * (1 - sstep(seg(e, 2.45, 2.9)));
-        o.ry += w * (0.3 - sstep(seg(e, 0.85, 1.3)) * 0.9);
-        const q = seg(e, 1.62, 2.02);
-        if (q > 0 && q < 1) { spin = TAU * q; toss = 0.09 * 4 * q * (1 - q); }
+      let q = 0;
+      if (mode === 'inspect') {
+        q = seg(e, 2.38, 2.8);
+        o.hand = 'flat'; o.handW = win(e, 2.34, 2.41, 2.75, 2.83);
+        // 抛之前手往下一沉再往上一送；接住的时候往下一坠
+        o.py += -0.016 * win(e, 2.2, 2.33, 2.33, 2.42) + 0.014 * win(e, 2.33, 2.42, 2.45, 2.7) - 0.014 * win(e, 2.78, 2.83, 2.83, 3.0);
+        o.ry += Math.sin(e * 2.2) * 0.04 * win(e, 0.3, 0.5, 2.0, 2.25);
       }
-      P.spin.rotation.x = spin;
-      P.spin.position.copy(P.base);
-      P.spin.position.z -= toss; // 亮刀时刀尖朝上：往刀尖方向抛就是往上抛
-      return w;
+      toss(P, q, 1, 0.1);
     },
   },
   butterfly: {
-    draw: { dur: 0.5, ev: bfEv(BF_DRAW) },
-    inspect: { dur: 4.0, ev: [[0.05, 'kn_swish'], [0.45, 'kn_swish'], [1.25, 'kn_clack'], ...bfEv(BF_INSP_FLIP), [2.55, 'kn_tick'], [3.45, 'kn_clack']] },
+    draw: { dur: 0.86, ev: bfEv(BF.draw), pose: [[0, 'palm'], [0.5, 'palm'], [0.86, 'idle', 'out']] },
+    inspect: { dur: 3.3, ev: bfEv(BF.inspect), pose: [[0, 'idle'], [0.4, 'palm'], [2.78, 'palm'], [3.3, 'idle']] },
     anim(P, mode, e, o) {
-      const [a, b, h] = mode === 'draw' ? [0, ...bfAngles(BF_DRAW, true, e)] : mode === 'inspect' ? bfInspect(e) : [0, 0, 0];
-      // 两片刀柄各有一根销轴：刀身绕握在手里那片的销轴转，咬柄装在刀根上、绕自己的销轴转。
-      // 转的方向是从指关节那一侧翻过去（手腕那一侧有小臂挡着）
-      P.pivot.rotation.x = -a;
-      P.blade.rotation.x = -b;
-      P.hB.rotation.x = -(h - b);
-      if (mode !== 'inspect') return 0;
-      const w = sstep(seg(e, 0, 0.45)) * (1 - sstep(seg(e, 3.5, 4.0)));
-      o.ry += w * Math.sin(e * 1.7) * 0.05;
-      return w;
+      const m = BF[mode];
+      if (!m) { P.blade.rotation.x = P.hB.rotation.x = 0; return; }
+      P.blade.rotation.x = swings(m.blade, e, m.b0);
+      P.hB.rotation.x = swings(m.bite, e, m.c0);
+      // 手型：找到现在这一段 [从什么时候起, 手型 a, 手型 b, 过渡 t0, t1]
+      let h = m.hand[0];
+      for (const s of m.hand) if (e >= s[0]) h = s;
+      o.hand0 = h[1]; o.hand = h[2]; o.handW = h[3] == null ? 1 : ramp(e, h[3], h[4]);
+      // 每甩一下，手腕跟着一抖（刀身往一边、咬柄往另一边）
+      const k = flick(m.blade, e, 0.16) - flick(m.bite, e, 0.11);
+      o.rz += k; o.py += Math.abs(k) * 0.05; o.px -= k * 0.02;
     },
   },
   karambit: {
@@ -328,32 +358,39 @@ export const KNIFE_FX = {
       let a = mode === 'draw' ? track(KA_DRAW, e) : mode === 'inspect' ? track(KA_INSP, e) : 0;
       if (mode === 'inspect' && e > 0.95 && e < 1.5) a += Math.sin((e - 0.95) * 11) * 0.16 * (1 - (e - 0.95) / 0.55); // 挂着晃
       P.spin.rotation.x = a;
+      // 转的时候只有食指勾着刀环，其余手指张开让刀转过去；转完再握住
+      o.hand = 'ring';
+      o.handW = mode === 'draw' ? 1 - ramp(e, 0.4, 0.52) : mode === 'inspect' ? win(e, 0.27, 0.37, 2.32, 2.44) : 0;
       const W = KA_WRIST[mode];
       if (W) {
         // 刀面本来就对着屏幕，手腕只要稍微抬一下
         const w = mode === 'draw' ? 1 - backOut(seg(e, W.back[0], W.back[1])) : sstep(seg(e, 0, 0.3)) * (1 - sstep(seg(e, W.back[0], W.back[1])));
         o.ry += w * W.ry; o.rz += w * W.rz; o.rx += w * W.rx; o.px += w * W.px; o.py += w * W.py; o.pz += w * W.pz;
       }
-      return 0;
     },
   },
+  // 剥皮小刀（瓦罗兰特的路子）：切刀时手心朝自己把刀拿上来，往上一抛转一圈接住，再翻手落到位。
+  // 检视：看一面、翻过来看刀背上的锯齿，再转回来往上抛、连转两圈接住
   xeno: {
-    draw: { dur: 0.62, ev: [[0.06, 'kn_swish'], [0.28, 'kn_tick'], [0.3, 'kn_swish'], [0.54, 'kn_catch']] },
-    inspect: { dur: 3.1, ev: [[0.5, 'kn_swish'], [1.35, 'kn_swish'], [2.0, 'kn_swish'], [2.55, 'kn_catch']] },
+    draw: { dur: 0.7, ev: [[0.08, 'kn_swish'], [0.42, 'kn_catch'], [0.46, 'kn_swish']], pose: [[0, 'palm'], [0.46, 'palm'], [0.7, 'idle', 'out']] },
+    inspect: { dur: 3.35, ev: [[0.1, 'kn_swish'], [1.02, 'kn_swish'], [1.96, 'kn_swish'], [2.36, 'kn_swish'], [2.88, 'kn_catch'], [3.0, 'kn_swish']],
+      pose: [[0, 'idle'], [0.4, 'palm'], [1.0, 'palm'], [1.4, 'back'], [1.95, 'back'], [2.3, 'palm'], [2.98, 'palm'], [3.35, 'idle']] },
     anim(P, mode, e, o) {
-      let w = 0, a = 0, roll = 0;
+      let q = 0, turns = 1, high = 0.075;
       if (mode === 'draw') {
-        w = 1 - sstep(seg(e, 0.42, 0.62));
-        a = track(XE_DRAW, e); roll = track(XE_DRAW_ROLL, e);
+        q = seg(e, 0.1, 0.42);
+        o.hand = 'flat'; o.handW = win(e, 0.05, 0.12, 0.37, 0.46);
+        o.py += 0.012 * win(e, 0.08, 0.16, 0.2, 0.36) - 0.012 * win(e, 0.4, 0.45, 0.45, 0.6);
       } else if (mode === 'inspect') {
-        w = sstep(seg(e, 0, 0.35)) * (1 - sstep(seg(e, 2.65, 3.1)));
-        a = track(XE_TWIRL, e); roll = track(XE_ROLL, e);
+        q = seg(e, 2.36, 2.88); turns = 2; high = 0.13;
+        o.hand = 'flat'; o.handW = win(e, 2.32, 2.39, 2.83, 2.91);
+        o.py += -0.016 * win(e, 2.2, 2.31, 2.31, 2.4) + 0.014 * win(e, 2.31, 2.4, 2.45, 2.75) - 0.014 * win(e, 2.86, 2.91, 2.91, 3.08);
+        o.ry += Math.sin(e * 2.2) * 0.04 * win(e, 0.3, 0.5, 2.0, 2.25);
       }
-      P.spin.rotation.set(a, 0, roll);
-      // 挂绳跟着转动甩一甩
-      const sw = mode && a % TAU > 0.01 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
+      toss(P, q, turns, high);
+      // 挂绳跟着甩一甩
+      const sw = q > 0 && q < 1 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
       if (P.cord) P.cord.rotation.set(sw, 0, sw * 0.4);
-      return w;
     },
   },
 };

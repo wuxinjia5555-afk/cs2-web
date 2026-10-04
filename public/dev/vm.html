@@ -32,7 +32,8 @@ import * as THREE from 'three';
 import { ViewModel, RECOIL } from '../js/client/viewmodel.js';
 import { makeWeapon } from '../js/client/models.js';
 import { WEAPONS } from '../js/shared/weapons.js';
-import { HAND_POSES } from '../js/client/hdmodels.js';
+import { HAND_POSES, HAND_SHAPES } from '../js/client/hdmodels.js';
+import { KNIFE_POSES } from '../js/client/vmanims.js';
 
 const q = new URLSearchParams(location.search);
 const wid = q.get('w') || 'ak47', team = q.get('team') || 'CT';
@@ -147,6 +148,19 @@ function box() {
   return { left: +(left / W).toFixed(3), top: +(top / H).toFixed(3), area: +(n / (W * H)).toFixed(4) };
 }
 
+// 调试用：拿刀的右手，手腕和手肘现在在画面的什么位置（-1~1，右、上为正；z > 0 是在镜头后面）。
+// 小臂应该一直是从右下方伸上来的：手肘在手腕的右边 / 下边
+function armAt() {
+  const g = vm.cur, pose = HAND_POSES['knife_' + vm.knifeSkin] || HAND_POSES.knife;
+  g.updateMatrixWorld(true);
+  const pt = (a) => {
+    const v = new THREE.Vector3(a[0], a[1], a[2]).applyMatrix4(g.matrixWorld).applyMatrix4(vm.camera.matrixWorldInverse);
+    const k = Math.tan((vm.camera.fov * Math.PI) / 360);
+    return [+(v.x / -v.z / k / vm.camera.aspect).toFixed(2), +(v.y / -v.z / k).toFixed(2), +v.z.toFixed(2)];
+  };
+  return { grip: pt(pose.right.grip), elbow: pt(pose.right.elbow) };
+}
+
 const acts = {
   fire: () => vm.onFire(now(), 1),
   reload: () => vm.onReload(now(), (WEAPONS[wid] && WEAPONS[wid].reload) || 2.5),
@@ -160,7 +174,7 @@ document.getElementById('ui').addEventListener('click', (e) => { const a = e.tar
 // 给调试脚本用
 // 调姿势：改 __POSES 里的数，再调 __rebuild() 重新搭一遍手
 function rebuild() { for (const g of vm.cache.values()) vm.root.remove(g); vm.cache.clear(); const w = vm.wid; vm.wid = null; vm.cur = null; vm.setWeapon(w, 0, 0); }
-Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild, __box: box, __RECOIL: RECOIL });
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild, __box: box, __RECOIL: RECOIL, __KP: KNIFE_POSES, __SH: HAND_SHAPES, __armAt: armAt });
 </script>
 </body>
 </html>
