@@ -92,6 +92,8 @@ export const HD_MATS = {
   c4: { color: 0xa49066, metal: 0, rough: 0.85, tex: 'cloth', uv: 30 },           // C4 的油纸包
   lcd: { color: 0x3cff6e, metal: 0, rough: 0.4 },
   keys: { color: 0x9aa0a8, metal: 0.2, rough: 0.5 },
+  tan: { color: 0x9a8560, metal: 0.25, rough: 0.55, tex: 'metal', uv: 7 },        // 沙色涂装（SCAR-20）
+  magC: { color: 0x5a666d, metal: 0.15, rough: 0.28 },                            // 半透明的烟色塑料弹匣（SG 553、AUG、P90）
   // 三把花刀用的（glow：自己发光的颜色，glowK：多亮）
   gold: { color: 0xd8a23c, metal: 1, rough: 0.27 },                               // 鎏金
   goldD: { color: 0x9a6a24, metal: 1, rough: 0.36 },

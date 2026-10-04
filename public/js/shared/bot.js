@@ -68,16 +68,20 @@ export class BotBrain {
     const T = p.team === 'T';
     const pistolRound = r.round === 1 || r.round === r.opts.maxRounds / 2 + 1;
     if (!p.inv[1]) {
-      const rifle = T ? 'ak47' : rnd() < 0.5 ? 'm4a4' : 'm4a1s';
+      const x = rnd();
+      const rifle = T ? (x < 0.82 ? 'ak47' : 'sg553') : x < 0.42 ? 'm4a4' : x < 0.84 ? 'm4a1s' : 'aug';
       if (p.money >= 5750 && rnd() < 0.2) r.onBuy(p, 'awp');
+      else if (p.money >= 6200 && rnd() < 0.04) r.onBuy(p, T ? 'g3sg1' : 'scar20');
       else if (p.money >= WEAPONS[rifle].price + 1000) r.onBuy(p, rifle);
       else if (!pistolRound && p.money >= 2300 && rnd() < 0.6) r.onBuy(p, T ? 'galil' : 'famas');
-      else if (!pistolRound && p.money >= 1900 && rnd() < 0.5) r.onBuy(p, pick(T ? ['mac10', 'ump45', 'nova'] : ['mp9', 'ump45', 'nova'], rnd));
+      else if (!pistolRound && p.money >= 2700 && rnd() < 0.35) r.onBuy(p, pick(['p90', 'negev'], rnd));
+      else if (!pistolRound && p.money >= 1900 && rnd() < 0.55) r.onBuy(p, pick(T ? ['mac10', 'ump45', 'mp7', 'bizon', 'mp5sd', 'nova', 'sawedoff'] : ['mp9', 'ump45', 'mp7', 'bizon', 'mp5sd', 'nova', 'mag7'], rnd));
     }
     if (pistolRound && !p.inv[1]) {
       if (p.money >= 700 && rnd() < 0.25) r.onBuy(p, 'deagle');
       else if (p.money >= 650 && rnd() < 0.6) r.onBuy(p, 'vest');
-      else if (p.money >= 300 && rnd() < 0.5) r.onBuy(p, 'p250');
+      else if (p.money >= 500 && rnd() < 0.25) r.onBuy(p, pick(T ? ['tec9', 'cz75'] : ['fiveseven', 'cz75'], rnd));
+      else if (p.money >= 300 && rnd() < 0.5) r.onBuy(p, pick(['p250', 'p250', 'elite'], rnd));
     }
     if (p.armor < 60 && !pistolRound) {
       if (p.money >= 1000) r.onBuy(p, 'vesthelm');
@@ -211,7 +215,7 @@ export class BotBrain {
     if (t >= this.reactAt && off < tol) {
       if (w.type === 'knife') {
         if (dist < 1.8) r.botShoot(p);
-      } else if (w.auto) {
+      } else if (w.auto && w.type !== 'sniper') {
         if (this.burst <= 0 && t >= this.nextBurst) {
           this.burst = dist > 25 ? 1 + Math.floor(r.rng() * 2) : this.d.burst[0] + Math.floor(r.rng() * (this.d.burst[1] - this.d.burst[0] + 1));
         }

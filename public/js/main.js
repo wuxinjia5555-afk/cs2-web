@@ -4,6 +4,8 @@ import { settings, saveSettings, resetSettings, applyCrosshair, useTouch, BIND_A
 import { TouchControls } from './client/touch.js';
 import { ViewModel } from './client/viewmodel.js';
 import { audio } from './client/audio.js';
+import { WEAPONS, LOADOUT_KEYS, LOADOUT_POOL, START_PISTOLS, fixLoadout } from './shared/weapons.js';
+import { weaponIcon, iconsDone } from './client/icons.js';
 import { WsNet, LocalNet, defaultServerUrl } from './client/net.js';
 import { Game } from './client/game.js';
 import { MAP_LIST, getMap } from './shared/maps.js';
@@ -701,6 +703,68 @@ $('btn-settings-back').addEventListener('click', () => {
 });
 $('btn-settings-reset').addEventListener('click', () => { resetSettings(); bindSettings(); audio.setVolume(settings.volume); toast('已恢复默认设置'); });
 $('btn-help').addEventListener('click', () => { audio.init(); showMenu('menu-help'); });
+
+// ---------------- 配装 ----------------
+// 照 CS2：每个阵营的手枪、中级武器、步枪各 5 个栏位。点一个栏位，右边列出这一栏能带的枪，点一把换上（已经带着的就和它对调）
+const LO_CAT = { pistol: '手枪', mid: '中级武器', rifle: '步枪' };
+const lo = { team: 'T', sel: null, data: null };
+function renderLoadout() {
+  const d = lo.data[lo.team];
+  for (const b of document.querySelectorAll('[data-lo-team]')) b.classList.toggle('on', b.dataset.loTeam === lo.team);
+  $('lo-slots').innerHTML = LOADOUT_KEYS.map((key) => `<div class="lo-col"><h4>${LO_CAT[key]}</h4>` + d[key].map((id, i) => {
+    const w = WEAPONS[id], start = key === 'pistol' && i === 0;
+    return `<button class="lo-slot${lo.sel && lo.sel[0] === key && lo.sel[1] === i ? ' sel' : ''}" data-lo-key="${key}" data-lo-i="${i}">
+      <img alt="" src="${weaponIcon(id)}" draggable="false"><b>${esc(w.name)}</b><span>$${w.price}</span>${start ? '<i>起始手枪</i>' : ''}</button>`;
+  }).join('') + '</div>').join('');
+  if (!lo.sel) {
+    $('lo-pool-h').textContent = '点左边的一个栏位，再从这里挑一把换上';
+    $('lo-pool').innerHTML = '';
+  } else {
+    const [key, i] = lo.sel, start = key === 'pistol' && i === 0;
+    // 起始手枪那一格只能放起始手枪，别的格子不能放起始手枪
+    const list = LOADOUT_POOL[lo.team][key].filter((id) => key !== 'pistol' || START_PISTOLS[lo.team].includes(id) === start);
+    $('lo-pool-h').textContent = start ? '起始手枪：出生时手里的那把' : `${LO_CAT[key]}：点一把放进选中的栏位`;
+    $('lo-pool').innerHTML = list.map((id) => {
+      const w = WEAPONS[id], at = d[key].indexOf(id);
+      return `<button class="lo-item${at === i ? ' cur' : at >= 0 ? ' in' : ''}" data-lo-w="${id}"><img alt="" src="${weaponIcon(id)}" draggable="false"><b>${esc(w.name)}</b><span>$${w.price}</span>${at === i ? '<i>当前</i>' : at >= 0 ? '<i>已带 · 点了对调</i>' : ''}</button>`;
+    }).join('');
+  }
+  iconsDone();
+}
+function openLoadout() {
+  audio.init();
+  showMenu('menu-loadout');
+  lo.data = fixLoadout(settings.loadout);
+  lo.sel = null;
+  renderLoadout();
+}
+$('btn-loadout').addEventListener('click', openLoadout);
+$('menu-loadout').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-lo-team]');
+  if (t) { lo.team = t.dataset.loTeam; lo.sel = null; audio.play('click'); renderLoadout(); return; }
+  const sl = e.target.closest('[data-lo-key]');
+  if (sl) { lo.sel = [sl.dataset.loKey, +sl.dataset.loI]; audio.play('click'); renderLoadout(); return; }
+  const it = e.target.closest('[data-lo-w]');
+  if (it && lo.sel) {
+    const [key, i] = lo.sel, list = lo.data[lo.team][key], id = it.dataset.loW, at = list.indexOf(id);
+    if (at === i) return;
+    if (at >= 0) list[at] = list[i];
+    list[i] = id;
+    lo.data = fixLoadout(lo.data);
+    settings.loadout = lo.data;
+    saveSettings();
+    audio.play('buy');
+    renderLoadout();
+  }
+});
+$('lo-reset').addEventListener('click', () => {
+  settings.loadout = null;
+  saveSettings();
+  lo.data = fixLoadout(null);
+  lo.sel = null;
+  renderLoadout();
+  toast('已恢复默认配装');
+});
 
 // ---------------- 背包（皮肤） ----------------
 const KNIVES = [

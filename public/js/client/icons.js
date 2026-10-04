@@ -6,7 +6,7 @@ import { WEAPONS } from '../shared/weapons.js';
 
 const W = 420, H = 140;
 // 画面至少这么宽（米）：短的东西别放得和长枪一样大，同一类武器之间还能看出大小
-const MIN_W = { pistol: 0.36, smg: 0.62, shotgun: 0.95, rifle: 0.95, sniper: 0.95, grenade: 0.26 };
+const MIN_W = { pistol: 0.36, smg: 0.62, shotgun: 0.95, rifle: 0.95, sniper: 0.95, mg: 0.95, grenade: 0.26 };
 const cache = new Map();
 let R = null, scene = null, cam = null;
 

@@ -1,7 +1,7 @@
 // 房间：权威游戏逻辑（回合、经济、伤害、炸弹、投掷物、掉落、机器人）
 // 服务端与"离线练习"共用同一份代码。io = { send(pid, msg), broadcast(msg, exceptPid) }
 import { P, TICK_RATE, F, ECON, TIMES, HG, HG_MULT, otherTeam } from './constants.js';
-import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, tagOf, capSpeed, TAG_RECOVER, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from './weapons.js';
+import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, tagOf, capSpeed, TAG_RECOVER, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE, START_PISTOLS } from './weapons.js';
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
 import { NADE, NADE_STEP, makeProjectile, stepProjectile } from './grenades.js';
@@ -94,13 +94,13 @@ export class Room {
     const w = WEAPONS[wid];
     return { w: wid, clip: w.mag, res: w.res };
   }
-  defaultInv(team) {
-    return { 1: null, 2: this.item(defaultPistol(team)), 4: [], 5: false };
+  defaultInv(team, sp) {
+    return { 1: null, 2: this.item(defaultPistol(team, sp)), 4: [], 5: false };
   }
   dmInv(p) {
     let prim = p.dmLoadout[1];
-    if (!prim) prim = p.isBot ? pick(['ak47', 'm4a4', 'm4a1s', 'galil', 'famas', 'ak47', 'mp9', 'ump45', 'awp'], this.rng) : p.team === 'CT' ? 'm4a4' : 'ak47';
-    return { 1: this.item(prim), 2: this.item(p.dmLoadout[2] || defaultPistol(p.team)), 4: [], 5: false };
+    if (!prim) prim = p.isBot ? pick(['ak47', 'm4a4', 'm4a1s', 'galil', 'famas', 'ak47', 'mp9', 'ump45', 'awp', 'sg553', 'aug', 'p90', 'mp7', 'bizon', 'mp5sd', 'xm1014', 'negev'], this.rng) : p.team === 'CT' ? 'm4a4' : 'ak47';
+    return { 1: this.item(prim), 2: this.item(p.dmLoadout[2] || defaultPistol(p.team, p.sp)), 4: [], 5: false };
   }
 
   pubInfo(q) {
@@ -142,7 +142,7 @@ export class Room {
     const base = free.length ? pick(free, this.rng) : null; // 每局随机抽名字
     const p = this.newPlayer('BOT ' + (base || this.nextId), true);
     p.team = team;
-    p.inv = this.defaultInv(team);
+    p.inv = this.defaultInv(team, p.sp);
     p.bot = new BotBrain(this, p);
     this.players.set(p.id, p);
     this.bcast({ t: 'pjoin', p: this.pubInfo(p) });
@@ -203,7 +203,7 @@ export class Room {
       p.dirty = true;
     }
     p.team = team;
-    p.inv = this.defaultInv(team);
+    p.inv = this.defaultInv(team, p.sp);
     p.armor = 0; p.helmet = false; p.kit = false; p.slot = 2;
     this.bcast({ t: 'pteam', id: p.id, team });
     this.send(p, { t: 'teamok', team });
@@ -278,7 +278,7 @@ export class Room {
       if (p.defusing) p.defusing = false;
       p.kills = p.deaths = p.assists = p.score = p.mvps = 0;
       p.money = ECON.start;
-      p.inv = this.defaultInv(p.team);
+      p.inv = this.defaultInv(p.team, p.sp);
       p.armor = 0; p.helmet = false; p.kit = false;
       p.alive = false;
       p.dirty = true;
@@ -364,7 +364,7 @@ export class Room {
     let iT = 0, iC = 0;
     for (const p of this.players.values()) {
       if (p.team !== 'T' && p.team !== 'CT') continue;
-      if (!p.alive) { p.inv = this.defaultInv(p.team); p.armor = 0; p.helmet = false; p.kit = false; }
+      if (!p.alive) { p.inv = this.defaultInv(p.team, p.sp); p.armor = 0; p.helmet = false; p.kit = false; }
       // 活下来的人：枪留着，但弹匣和备弹补满（不继承上回合打掉的子弹）
       for (const s of [1, 2]) if (p.inv[s]) { const w = WEAPONS[p.inv[s].w]; p.inv[s].clip = w.mag; p.inv[s].res = w.res; }
       p.inv[5] = false;
@@ -395,7 +395,7 @@ export class Room {
       if (p.team !== 'T' && p.team !== 'CT') continue;
       p.team = otherTeam(p.team);
       p.money = ECON.start;
-      p.inv = this.defaultInv(p.team);
+      p.inv = this.defaultInv(p.team, p.sp);
       p.armor = 0; p.helmet = false; p.kit = false;
       p.alive = false;
       p.dirty = true;
@@ -557,7 +557,7 @@ export class Room {
       if (p.dummy) { p.armor = this.rangeOpts.armor === 'none' ? 0 : 100; this.spawnPlayer(p, p.dummy); continue; }
       if (this.phase === 'dm') p.inv = this.dmInv(p);
       else {
-        if (!p.inv[1] && !p.inv[2]) p.inv = this.defaultInv(p.team);
+        if (!p.inv[1] && !p.inv[2]) p.inv = this.defaultInv(p.team, p.sp);
         for (const s of [1, 2]) if (p.inv[s]) { const w = WEAPONS[p.inv[s].w]; p.inv[s].clip = w.mag; p.inv[s].res = w.res; }
         p.money = ECON.max;
       }
@@ -836,6 +836,15 @@ export class Room {
       case 'team': this.setTeam(p, String(m.team)); break;
       case 'start': if (p.id === this.hostId && this.phase === 'warmup') this.startMatch(); break;
       case 'range': if (this.opts.mode === 'range') this.setRangeOpts(m.o); break;
+      // 配装里选的起始手枪（警察：USP-S / P2000）。手里还是另一把起始手枪的话当场换过来
+      case 'lo': {
+        const sp = m.sp === 'p2000' ? 'p2000' : null;
+        if (p.sp === sp) break;
+        p.sp = sp;
+        const it = p.inv && p.inv[2], want = defaultPistol(p.team, sp);
+        if (p.alive && it && it.w !== want && START_PISTOLS[p.team] && START_PISTOLS[p.team].includes(it.w) && !it.rf) { p.inv[2] = this.item(want); p.dirty = true; }
+        break;
+      }
       case 'skin': {
         const k = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon'].includes(m.k) ? m.k : null;
         if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }

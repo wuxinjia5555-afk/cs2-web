@@ -128,9 +128,19 @@ export const GUN_PROFILES = {
   },
 };
 
+// 第二批枪没有单独的录音：借一种现成的音色，播放时变一点调（小于 1 更低沉、更慢），听起来就不是同一把枪了
+export const GUN_ALIAS = {
+  p2000: ['pistol', 0.96], fiveseven: ['pistol', 1.1], tec9: ['pistol', 0.9], cz75: ['pistol', 1.05], elite: ['pistol', 0.93], revolver: ['deagle', 0.88],
+  mp7: ['smg', 1.1], p90: ['smg', 1.2], bizon: ['ump45', 1.08],
+  xm1014: ['shotgun', 1.1], sawedoff: ['shotgun', 0.9], mag7: ['shotgun', 0.98],
+  m249: ['ak47', 0.9], negev: ['rifle', 0.86],
+  sg553: ['rifle', 1.07], aug: ['m4a4', 0.93], g3sg1: ['ssg08', 0.85], scar20: ['ssg08', 0.93],
+};
+export const gunRate = (w) => (w && GUN_ALIAS[w.id] ? GUN_ALIAS[w.id][1] : 1);
 export function gunProfileKey(w) {
   if (!w) return 'rifle';
   if (w.silenced) return w.type === 'rifle' ? 'silenced_rifle' : 'silenced';
+  if (GUN_ALIAS[w.id]) return GUN_ALIAS[w.id][0];
   if (GUN_PROFILES[w.id]) return w.id;
   if (w.type === 'sniper') return 'ssg08';
   return GUN_PROFILES[w.type] ? w.type : 'rifle';
@@ -410,6 +420,7 @@ export const MECH = {
   pumpback: { len: 0.22, gain: 0.46, hits: [[0, 0.5, 1500, 1.2, 0.006], [0.075, 1, 900, 0.9, 0.016], [0.075, 0.7, 2600, 1.5, 0.006]], scrape: [0, 0.075, 1100, 0.75] },
   pumpfwd: { len: 0.24, gain: 0.5, hits: [[0.065, 1, 1100, 0.9, 0.014], [0.065, 0.8, 3000, 1.5, 0.005]], scrape: [0, 0.065, 1300, 0.65], ring: [1800, [1, 1.5], [0.2, 0.1], [0.03, 0.02]] },
   shell: { len: 0.16, gain: 0.34, hits: [[0, 0.6, 2200, 1.5, 0.005], [0.035, 1, 1000, 1, 0.012]], scrape: [0, 0.035, 1500, 0.3] },
+  cock: { len: 0.14, gain: 0.3, hits: [[0, 0.6, 3200, 2, 0.004], [0.06, 1, 2100, 1.6, 0.006], [0.06, 0.5, 900, 1, 0.012]], ring: [2600, [1, 1.5], [0.2, 0.1], [0.02, 0.012]] },
   pinpull: { len: 0.32, gain: 0.3, hits: [[0, 1, 4200, 2, 0.003]], ring: [3900, [1, 1.52, 2.4], [0.5, 0.3, 0.15], [0.09, 0.06, 0.03]] },
 };
 export function synthMech(kind, sr, seed = 17) {

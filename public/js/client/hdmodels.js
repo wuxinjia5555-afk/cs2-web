@@ -2,7 +2,7 @@
 // 零件都是照真枪的大致尺寸自己搭出来的（见 hdkit.js），没有用任何游戏的模型或贴图。
 import * as THREE from 'three';
 import { Kit, arcPts, rrect } from './hdkit.js';
-import { GUNS } from './hdguns.js';
+import { GUNS, ELITE_X } from './hdguns.js';
 
 const U = 0.00116; // 真枪的 1 毫米 = 模型里的这么多米（比真枪略大一点，第一人称里更饱满）
 const YB = 0.045;  // 枪管轴线的高度（和旧模型一致，枪口火光、曳光弹的位置不用改）
@@ -426,6 +426,8 @@ const rKnifeRev = (y, z, o = {}) => ({
   pose: HAND_SHAPES.fist, rig: true, ...o,
 });
 
+// 左手握一个竖着的前握把 / 弹匣（冲锋枪）：小臂从左下方来
+const LFORE = { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] };
 const NADE_R = { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
   pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } };
 const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lRack(0.0476, 0.065, -0.113) };
@@ -447,6 +449,34 @@ const POSES = {
   mac10: { right: rGrip(-0.055, 0.011, -0.05), left: lWrap(-0.06, 0.008), leftAct: lOver(0.086, -0.07) },
   pistol: { right: rGrip(-0.045, 0.022, -0.34), left: lWrap(-0.06, 0.012), leftAct: lOver(0.052, -0.004), leftMag: lPush(-0.112, 0.045) },
   deagle: { right: rGrip(-0.052, 0.025, -0.34, { pose: HAND_SHAPES.grip, rig: true }), left: lWrap(-0.068, 0.014), leftAct: lOver(0.064, -0.004), leftMag: lPush(-0.128, 0.05) },
+  // CZ75：左手握着枪管下面倒挂的备用弹匣
+  cz75: { right: rGrip(-0.045, 0.022, -0.34), left: lWrap(-0.045, -0.118, LFORE), leftAct: lOver(0.05, -0.004), leftMag: lPush(-0.112, 0.045) },
+  // TEC-9：左手握着扳机护圈前面的弹匣井，拉机柄在左边
+  tec9: { right: rGrip(-0.048, 0.022, -0.2), left: lWrap(-0.062, -0.116, LFORE), leftAct: lSide(-0.037, 0.045, -0.065), leftMag: lPush(-0.144, -0.105) },
+  // 左轮：双手握；换弹时左手拿着装弹器凑到甩出来的弹巢后面
+  revolver: { right: rGrip(-0.045, 0.022, -0.34), left: lWrap(-0.06, 0.012), leftMag: lPush(0.0, -0.04, { grip: [-0.05, 0.0, -0.035] }) },
+  // 双持伯莱塔：一手一把，握法左右对称
+  elite: {
+    right: rGrip(-0.045, 0.022, -0.34, { grip: [ELITE_X, -0.045, 0.022], elbow: [0.15 + ELITE_X, -0.27, 0.32] }),
+    left: { left: true, grip: [-ELITE_X, -0.045, 0.022], thumbDir: [0, Math.cos(-0.34), Math.sin(-0.34)], palmDir: [0.82, 0, -0.57], elbow: [-0.15 - ELITE_X, -0.27, 0.32],
+      pose: { curl: CURL.grip, splay: SPLAY, thumb: THUMB.wrap } },
+  },
+  sg553: { right: rGrip(-0.065, 0.045, -0.2), left: lCup(0.045, -0.299, 0.031), leftAct: lRack(0.036, 0.0566, -0.111) },
+  aug: { right: rGrip(-0.066, -0.063, -0.18), left: lWrap(-0.014, -0.232, LFORE), leftAct: lSide(-0.042, 0.078, -0.165) },
+  g3sg1: { right: rGrip(-0.077, 0.133, -0.22), left: lCup(0.039, -0.259, 0.03), leftAct: lSide(-0.035, 0.0844, -0.415) },
+  scar20: { right: rGrip(-0.071, 0.114, -0.22), left: lCup(0.041, -0.288, 0.03), leftAct: lSide(-0.04, 0.0705, -0.184) },
+  m249: { right: rGrip(-0.066, 0.078, -0.2), left: lCup(0.035, -0.288, 0.024), leftAct: lRack(0.044, 0.0407, -0.09) },
+  negev: { right: rGrip(-0.061, 0.0685, -0.2), left: lCup(0.0396, -0.293, 0.0245), leftAct: lRack(0.044, 0.0454, -0.108) },
+  // P90：左手握大扳机护圈的前沿；弹匣横在顶上，换弹时左手从上面抓
+  p90: { right: rGrip(-0.047, 0, -0.15), left: lWrap(-0.053, -0.118, LFORE), leftAct: lSide(-0.036, 0.061, -0.076), leftMag: lOver(0.1, 0.133) },
+  // MP7：左手握前面的小握把；弹匣在握把里，从下面推进去；拉机柄在最后面
+  mp7: { right: rGrip(-0.053, 0.032, -0.17), left: lWrap(-0.0435, -0.147, LFORE), leftAct: lOver(0.07, 0.16), leftMag: lPush(-0.2, 0.055) },
+  mp5sd: { right: rGrip(-0.071, 0.045, -0.2), left: lCup(0.045, -0.3145, 0.025), leftAct: lSide(-0.033, 0.081, -0.27) },
+  // 野牛：左手握着枪管下面的圆筒弹匣
+  bizon: { right: rGrip(-0.065, 0.036, -0.22), left: lCup(0.009, -0.284, 0.0267), leftAct: lRack(0.036, 0.054, -0.0845) },
+  xm1014: { right: rGrip(-0.06, 0.105, -0.22), left: lCup(0.0363, -0.257, 0.031), leftAct: lRack(0.042, 0.058, -0.031) },
+  sawedoff: { right: rGrip(-0.02, 0.055, -0.5), left: lCup(0.0187, -0.3164, 0.0244) },
+  mag7: { right: rGrip(-0.0466, 0.0426, -0.12), left: lCup(0.0056, -0.222, 0.0232), leftMag: lPush(-0.134, 0.059) },
   knife: { right: rKnife(0.011, 0.028) },
   knife_m9: { right: rKnife(0.017, 0.022) },
   knife_butterfly: { right: rKnife(0.012, 0.036) },
@@ -813,6 +843,22 @@ export const HD = {
   ump45: more('ump45', { pos: [0.18, -0.167, -0.33], rot: [0.02, 0.07, 0] }),
   mac10: more('mac10'), mp9: more('mp9'),
   glock: more('glock'), usp: more('usp'), p250: more('p250'), deagle: more('deagle'),
+  p2000: more('p2000'), fiveseven: more('fiveseven'), cz75: more('cz75'), tec9: more('tec9'), revolver: more('revolver'),
+  elite: more('elite', { pos: [0, -0.165, -0.42], rot: [0.02, 0, 0] }),
+  // 摆位的规矩：握把落在画面里同一个地方 —— 位置 = [0.18, -0.237 - 握把中心的 y, -0.283 - 握把中心的 z]
+  sg553: more('sg553', { pos: [0.18, -0.172, -0.328], rot: [0.02, 0.06, 0] }),
+  aug: more('aug', { pos: [0.18, -0.171, -0.22], rot: [0.02, 0.06, 0] }),
+  g3sg1: more('g3sg1', { pos: [0.19, -0.16, -0.416], rot: [0.02, 0.05, 0] }),
+  scar20: more('scar20', { pos: [0.19, -0.166, -0.397], rot: [0.02, 0.05, 0] }),
+  m249: more('m249', { pos: [0.18, -0.171, -0.361], rot: [0.02, 0.06, 0] }),
+  negev: more('negev', { pos: [0.18, -0.176, -0.3515], rot: [0.02, 0.06, 0] }),
+  p90: more('p90', { pos: [0.18, -0.19, -0.283], rot: [0.02, 0.07, 0] }),
+  mp7: more('mp7', { pos: [0.17, -0.184, -0.315], rot: [0.02, 0.07, 0] }),
+  mp5sd: more('mp5sd', { pos: [0.18, -0.166, -0.328], rot: [0.02, 0.07, 0] }),
+  bizon: more('bizon', { pos: [0.18, -0.172, -0.319], rot: [0.02, 0.07, 0] }),
+  xm1014: more('xm1014', { pos: [0.18, -0.177, -0.388], rot: [0.02, 0.06, 0] }),
+  sawedoff: more('sawedoff', { pos: [0.18, -0.217, -0.338], rot: [0.02, 0.06, 0] }),
+  mag7: more('mag7', { pos: [0.18, -0.19, -0.326], rot: [0.02, 0.06, 0] }),
   he: more('he'), flash: more('flash'), smoke: more('smoke'), molotov: more('molotov'), incgrenade: more('incgrenade'), c4: more('c4'),
 };
 // 刀（按皮肤）

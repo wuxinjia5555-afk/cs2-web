@@ -5,6 +5,7 @@
 // userData：muzzle 枪口位置，boltTravel 拉机柄能拉多远，boltKick 开枪时自己弹多远，manual 栓动（不会自己弹），boltLift 拉机柄抬起的角度
 import * as THREE from 'three';
 import { arcPts, rrect } from './hdkit.js';
+import { GUNS2 } from './hdguns2.js';
 
 const U = 0.00116; // 真枪的 1 毫米 = 模型里的这么多米
 const T = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
@@ -103,15 +104,27 @@ function galil(k) {
 }
 
 // ============================== 手枪 ==============================
-// o：L 套筒长，H 套筒高，W 套筒宽，slide / frame 材质，cham 套筒顶上削掉的斜角，sup 带消音器，hammer 有击锤，f 握把放大多少
+// o：L 套筒长，H 套筒高，W 套筒宽，slide / frame 材质，cham 套筒顶上削掉的斜角，sup 带消音器，hammer 有击锤，f 握把放大多少，
+//    open 套筒顶上敞着口、露出枪管（伯莱塔），fore 枪管下面倒挂一个备用弹匣当前握把（CZ75），grip 握把贴片的材质，
+//    sfx 零件组名字的后缀（双枪的第二把用 'L'：boltL、magL）
 function pistol(k, o) {
-  const { L, H, W } = o, top = 0.0235 + H, zf = 0.03 - L, YB = top - 0.015, f = o.f ?? 1;
+  const d = pistolParts(k, o);
+  const g = k.build();
+  g.userData.muzzle = V(0, d.YB, d.mz);
+  g.userData.boltTravel = Math.min(0.045, o.L * 0.2);
+  g.userData.boltKick = 0.03;
+  g.userData.dims = d;
+  return g;
+}
+function pistolParts(k, o) {
+  const { L, H, W } = o, top = 0.0235 + H, zf = 0.03 - L, YB = top - 0.015, f = o.f ?? 1, sfx = o.sfx || '';
   // 套筒（开枪、拉套筒时往后滑）
-  k.group('bolt', () => {
+  k.group('bolt' + sfx, () => {
     const c = o.cham ?? 0.004;
     k.sweep(o.slide, [[-W / 2, 0.0235], [W / 2, 0.0235], [W / 2, top - c], [W / 2 - c, top], [-W / 2 + c, top], [-W / 2, top - c]], zf, 0.03, { bevel: 0.0012 });
     k.fine(() => {
       k.box('bore', 0.0125, 0.0035, 0.03, W / 2 - 0.0085, top - 0.001, zf + L * 0.42, { r: 0.001 });  // 抛壳窗
+      if (o.open) k.box('steel', W * 0.5, 0.004, L * 0.4, 0, top - 0.0012, zf + L * 0.25, { r: 0.0018 });  // 敞口里露出来的枪管
       for (let i = 0; i < 6; i++) for (const s of [-1, 1]) k.box(o.slide, 0.0012, H * 0.62, 0.0022, s * (W / 2), 0.0235 + H * 0.45, 0.02 - i * 0.0052, { r: 0.0004 }); // 防滑纹
       k.box('black', 0.004, 0.004, 0.006, 0, top + 0.002, zf + 0.012, { r: 0.0008 });               // 准星
       k.box('black', 0.016, 0.005, 0.007, 0, top + 0.0025, 0.02, { r: 0.0008 });                    // 照门
@@ -135,20 +148,36 @@ function pistol(k, o) {
   k.prof(o.frame, F([[-0.1, 0.006], [-0.1, -0.026], [-0.09, -0.036], [-0.03, -0.036], [-0.018, -0.022], [-0.022, -0.016], [-0.034, -0.03], [-0.086, -0.03], [-0.093, -0.023], [-0.093, 0.006]]), 0.014, { bevel: 0.002 });
   k.prof('black', F([[-0.05, 0.004], [-0.043, 0.004], [-0.045, -0.014], [-0.052, -0.024], [-0.055, -0.022], [-0.05, -0.012]]), 0.007, { bevel: 0.0012 });
   k.fine(() => {
-    for (const s of [-1, 1]) k.prof('black', F([[0.004, -0.02], [0.036, -0.014], [0.058, -0.088], [0.024, -0.094]]), 0.0012, { x: s * (W / 2 + 0.0012), bevel: 0.0005 }); // 握把贴片
+    for (const s of [-1, 1]) k.prof(o.grip || 'black', F([[0.004, -0.02], [0.036, -0.014], [0.058, -0.088], [0.024, -0.094]]), 0.0012, { x: s * (W / 2 + 0.0012), bevel: 0.0005 }); // 握把贴片
     k.box('black', 0.006, 0.005, 0.014, -(W / 2 + 0.002), 0.017, -0.012, { r: 0.0012 }); // 空仓挂机
   });
   if (o.hammer) k.prof('blued', [[0.03, 0.03], [0.041, 0.036], [0.041, 0.045], [0.035, 0.047], [0.03, 0.04]], 0.006, { bevel: 0.001 });
+  if (o.fore) {
+    // 备用弹匣：弹匣底板朝下、倒挂在枪管下面的导轨上，左手握着它
+    k.prof('steel', [[-0.128, 0.004], [-0.094, 0.004], [-0.102, -0.086], [-0.136, -0.082]], 0.019, { bevel: 0.002 });
+    k.prof('black', [[-0.142, -0.082], [-0.098, -0.087], [-0.099, -0.097], [-0.143, -0.092]], W, { bevel: 0.003 });
+  }
   // 弹匣：平时藏在握把里，只露出底板；换弹时顺着握把往下抽
-  k.group('mag', () => {
+  k.group('mag' + sfx, () => {
     k.prof('steel', F([[-0.012, -0.004], [0.03, -0.004], [0.062, -0.097], [0.022, -0.103]]), 0.019, { bevel: 0.002 });
     k.prof('black', F([[0.012, -0.103], [0.072, -0.096], [0.074, -0.106], [0.012, -0.114]]), W, { bevel: 0.003 });
   });
+  return { top, zf, YB, f, mz };
+}
+// 双持伯莱塔：两把一样的枪，左右各一把（第一人称）；远处看的简化版只做一把
+const BERETTA = { L: 0.25, H: 0.0245, W: 0.033, slide: 'bright', frame: 'bright', cham: 0.004, hammer: true, open: true };
+export const ELITE_X = 0.13; // 两把枪各离中线多远
+function elite(k) {
+  if (!k.hd) return pistol(k, BERETTA);
+  let d;
+  k.with(T(ELITE_X, 0, 0), false, () => { d = pistolParts(k, BERETTA); });
+  k.with(T(-ELITE_X, 0, 0), false, () => pistolParts(k, { ...BERETTA, sfx: 'L' }));
   const g = k.build();
-  g.userData.muzzle = V(0, YB, mz);
-  g.userData.boltTravel = Math.min(0.045, L * 0.2);
+  g.userData.muzzle = V(ELITE_X, d.YB, d.mz);
+  g.userData.muzzleL = V(-ELITE_X, d.YB, d.mz);
+  g.userData.boltTravel = Math.min(0.045, BERETTA.L * 0.2);
   g.userData.boltKick = 0.03;
-  g.userData.dims = { top, zf, YB, f };
+  g.userData.dims = d;
   return g;
 }
 
@@ -471,6 +500,11 @@ export const GUNS = {
   usp: (k) => pistol(k, { L: 0.222, H: 0.027, W: 0.031, slide: 'blued', frame: 'polymer', cham: 0.0025, hammer: true, sup: true }),
   p250: (k) => pistol(k, { L: 0.196, H: 0.0255, W: 0.03, slide: 'steel', frame: 'polymer', cham: 0.005, hammer: true }),
   deagle: (k) => pistol(k, { L: 0.268, H: 0.036, W: 0.036, slide: 'bright', frame: 'bright', cham: 0.011, hammer: true, f: 1.16 }),
+  p2000: (k) => pistol(k, { L: 0.2, H: 0.026, W: 0.0315, slide: 'blued', frame: 'polymer', cham: 0.0045, hammer: true }),
+  fiveseven: (k) => pistol(k, { L: 0.236, H: 0.028, W: 0.034, slide: 'polymer', frame: 'polymer', cham: 0.007 }),
+  cz75: (k) => pistol(k, { L: 0.226, H: 0.0225, W: 0.031, slide: 'steel', frame: 'blued', cham: 0.003, hammer: true, fore: true, grip: 'woodD' }),
+  elite,
+  ...GUNS2,
   m4a4: (k) => m4(k, false),
   m4a1s: (k) => m4(k, true),
   awp: (k) => sniper(k, { big: true }),

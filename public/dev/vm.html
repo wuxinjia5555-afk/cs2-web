@@ -174,7 +174,7 @@ document.getElementById('ui').addEventListener('click', (e) => { const a = e.tar
 // 给调试脚本用
 // 调姿势：改 __POSES 里的数，再调 __rebuild() 重新搭一遍手
 function rebuild() { for (const g of vm.cache.values()) vm.root.remove(g); vm.cache.clear(); const w = vm.wid; vm.wid = null; vm.cur = null; vm.setWeapon(w, 0, 0); }
-Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild, __box: box, __RECOIL: RECOIL, __KP: KNIFE_POSES, __SH: HAND_SHAPES, __armAt: armAt });
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild, __box: box, __RECOIL: RECOIL, __KP: KNIFE_POSES, __SH: HAND_SHAPES, __armAt: armAt, __W: WEAPONS });
 </script>
 </body>
 </html>

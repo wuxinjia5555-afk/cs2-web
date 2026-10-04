@@ -52,7 +52,12 @@ export const RECOIL = {
   pistol: { back: [0.01, 0.012, 0.09], pitch: 0.2, hit: 0.55, kick: 10, max: 1.15, w: 15, yaw: 0.02, roll: 0.04, x: 0.003 },
   sniper: { back: [0.02, 0.03, 0.17], pitch: 0.14, hit: 0.12, kick: 22, max: 1.3, w: 9, yaw: 0.02, roll: 0.05, x: 0.004 },
   shotgun: { back: [0.03, 0.025, 0.17], pitch: 0.16, hit: 0.3, kick: 20, max: 1.3, w: 11, yaw: 0.03, roll: 0.06, x: 0.005 },
+  mg: { back: [0.042, 0.011, 0.19], pitch: 0.02, hit: 0.6, kick: 8, max: 1, w: 16, yaw: 0.026, roll: 0.045, x: 0.005 },
   // 单独一把枪的（没写的按上面的类别来）：沙鹰一枪枪口翻得老高、0.3 秒才落回来；鸟狙比 AWP 轻得多
+  revolver: { back: [0.01, 0.07, 0.11], pitch: 0.7, hit: 0.55, kick: 15, max: 1.2, w: 10, yaw: 0.03, roll: 0.05, x: 0.003 },
+  xm1014: { back: [0.026, 0.018, 0.14], pitch: 0.1, hit: 0.3, kick: 16, max: 1.2, w: 14, yaw: 0.03, roll: 0.05, x: 0.005 },
+  g3sg1: { back: [0.02, 0.016, 0.13], pitch: 0.07, hit: 0.3, kick: 16, max: 1.2, w: 13, yaw: 0.02, roll: 0.04, x: 0.004 },
+  scar20: { back: [0.02, 0.016, 0.13], pitch: 0.07, hit: 0.3, kick: 16, max: 1.2, w: 13, yaw: 0.02, roll: 0.04, x: 0.004 },
   deagle: { back: [0.01, 0.06, 0.1], pitch: 0.6, hit: 0.5, kick: 14, max: 1.2, w: 11, yaw: 0.03, roll: 0.05, x: 0.003 },
   ssg08: { back: [0.015, 0.02, 0.1], pitch: 0.09, hit: 0.15, kick: 20, max: 1.2, w: 11, yaw: 0.02, roll: 0.04, x: 0.003 },
 };
@@ -185,13 +190,15 @@ export class ViewModel {
     this.flash.visible = false;
     this.flash.scale.set(0.16, 0.16, 1);
     this.boltK = 0;      // 枪机后坐（开一枪弹回去）
+    this.side = 1;       // 双枪：上一枪是哪一把开的（0 右手，1 左手）
+    this.cockT = -1; this.cockDur = 0.2; // 左轮：正在扳击锤
     this.envFor = null;  // 环境反光是给哪个渲染器做的
     this.clip = null;    // 正在放的一段动作：{ def, kind, t0, dur, last }
     this.off = null;     // 拿刀时空着的左手
     this.sup = null;     // 天御刀检视时托住刀身的左手
     this.trail = null;   // 刀光
     // 这一帧各条轨道的值
-    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, spin: 0, rhOpen: 0, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
+    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, spin: 0, rhOpen: 0, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0, cover: 0, open: 0 };
     this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0, sup: 0 };
   }
 
@@ -232,9 +239,12 @@ export class ViewModel {
     if (hands) g.add(hands);
     const H = hands ? hands.userData : {}, P = gun.userData;
     Object.assign(U, { gun, lay, type, wid, hands, rh: H.rh || null, lh: H.lh || null, lhM: H.lhM || null, lhB: H.lhB || null, rhB: H.rhB || null,
-      mag: P.mag || null, bolt: P.bolt || null, pump: P.pump || null, pin: P.pin || null });
+      mag: P.mag || null, bolt: P.bolt || null, pump: P.pump || null, pin: P.pin || null,
+      // 双枪的第二把（左手那把）的弹匣、套筒；机枪的受弹机盖；左轮的弹巢、击锤
+      magL: P.magL || null, boltL: P.boltL || null, cover: P.cover || null, cyl: P.cyl || null, hammer: P.hammer || null,
+      coverOpen: P.coverOpen ?? 1.1, cylOpen: P.cylOpen ?? 1.2, dual: !!P.muzzleL });
     // 会动的零件：记下原来的位置
-    for (const k of ['mag', 'bolt', 'pump', 'pin']) if (U[k]) { U[k].userData.base = U[k].position.clone(); U[k].userData.rx0 = U[k].rotation.x; }
+    for (const k of ['mag', 'bolt', 'pump', 'pin', 'magL', 'boltL']) if (U[k]) { U[k].userData.base = U[k].position.clone(); U[k].userData.rx0 = U[k].rotation.x; }
     for (const k of ['lhM', 'lhB', 'rhB']) if (U[k]) U[k].visible = false;
     // 拿刀的右手手指会动；刀的姿势按「手肘在哪」来摆（见 knifePose）
     U.rig = (U.rh && U.rh.userData.rig) || null;
@@ -285,6 +295,7 @@ export class ViewModel {
     this.inspectT = -1;
     this.throwT = -1;
     this.boltK = 0;
+    this.side = 1; this.cockT = -1;
     this.rk = this.rv = this.jitK = 0;
     if (this.trail) this.trail.clear();
     g.userData.pinGone = false;
@@ -306,8 +317,17 @@ export class ViewModel {
   // 当前拿的是有花式动作的刀
   knifeFx() { return !!(this.cur && this.cur.userData.gun.userData.kfx); }
 
+  // 左轮：开始扳击锤（dur 秒后开枪）
+  onCock(now, dur) { this.cockT = now; this.cockDur = dur; }
   onFire(now, strength = 1) {
     this.boltK = 1;
+    this.cockT = -1;
+    // 双枪：左右轮着开，枪口火光挪到开枪的那一把上
+    if (this.cur && this.cur.userData.dual) {
+      this.side ^= 1;
+      const P = this.cur.userData.gun.userData;
+      this.flash.position.copy(this.side ? P.muzzleL : P.muzzle);
+    }
     // 后坐：瞬间往后一顿，再带着往后冲一小段（之后弹簧把它拉回来）；每一枪随机晃一个方向
     const R = this.cur && (RECOIL[this.cur.userData.wid] || RECOIL[this.cur.userData.type]);
     if (R) { this.rk = Math.min(R.max, this.rk + R.hit * strength); this.rv += R.kick * strength; }
@@ -387,7 +407,7 @@ export class ViewModel {
     // ---- 正在放的动作（切枪 / 换弹 / 拉栓 / 拔拉环）：算出这一帧各条轨道的值 ----
     const A = this.A;
     A.g.fill(0); A.mag.fill(0); A.lh.fill(0);
-    A.magHide = A.lhHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = A.spin = A.rhOpen = 0;
+    A.magHide = A.lhHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = A.spin = A.rhOpen = A.cover = A.open = 0;
     const C = this.clip;
     if (C) {
       const u = (now - C.t0) / C.dur, d = C.def;
@@ -410,6 +430,8 @@ export class ViewModel {
         if (d.lhMag) A.lhMag = sample(d.lhMag, u);
         if (d.lhBolt) A.lhBolt = sample(d.lhBolt, u);
         if (d.rhBolt) A.rhBolt = sample(d.rhBolt, u);
+        if (d.cover) A.cover = sample(d.cover, u);
+        if (d.open) A.open = sample(d.open, u);
         if (d.ev) for (const [t, k] of d.ev) if (t > C.last && t <= u && this.sfx && g.visible) this.sfx(k);
         C.last = u;
         px += A.g[0]; py += A.g[1]; pz += A.g[2]; rx += A.g[3]; ry += A.g[4]; rz += A.g[5];
@@ -429,6 +451,21 @@ export class ViewModel {
     this.boltK *= Math.exp(-dt * 26);
     const boltZ = A.bolt * U.travel + this.boltK * U.kickBolt, lift = A.boltUp * U.lift;
     if (bolt) { bolt.position.z = bolt.userData.base.z + boltZ; bolt.rotation.z = lift; }
+    // 双枪：两个弹匣一起动；套筒只有开枪的那一把往后弹
+    if (U.dual) {
+      const kick = this.boltK * U.kickBolt;
+      if (bolt) bolt.position.z = bolt.userData.base.z + A.bolt * U.travel + (this.side ? 0 : kick);
+      if (U.boltL) U.boltL.position.z = U.boltL.userData.base.z + A.bolt * U.travel + (this.side ? kick : 0);
+      if (U.magL && mag) { U.magL.position.set(U.magL.userData.base.x, U.magL.userData.base.y + A.mag[0], U.magL.userData.base.z + A.mag[1]); U.magL.visible = mag.visible; }
+    }
+    if (U.cover) U.cover.rotation.x = -A.cover * U.coverOpen;
+    if (U.cyl) U.cyl.rotation.z = A.open * U.cylOpen;
+    if (U.hammer) {
+      // 击锤：扳的时候慢慢往后倒，开枪的一瞬间砸回去
+      const c = this.cockT >= 0 ? clamp((now - this.cockT) / this.cockDur, 0, 1) : 0;
+      U.hammer.rotation.x = c * 0.6;
+      rx += c * 0.012;
+    }
     const pumpZ = A.pump * U.pumpTravel;
     if (U.pump) U.pump.position.z = U.pump.userData.base.z + pumpZ;
     if (U.pin) {
@@ -603,7 +640,8 @@ export class ViewModel {
   muzzleWorld(mainCam, out) {
     const g = this.cur;
     if (!g) return out.copy(mainCam.position);
-    const m = g.userData.gun.userData.muzzle || new THREE.Vector3();
+    const P = g.userData.gun.userData;
+    const m = (g.userData.dual && !this.side ? P.muzzleL : P.muzzle) || new THREE.Vector3(); // 双枪：下一枪轮到哪一把
     out.copy(m);
     g.userData.gun.localToWorld(out);
     // 视图模型场景坐标 -> 相机空间 -> 主场景

@@ -541,7 +541,7 @@ export class TouchControls {
     const w = g.curWeapon();
     const fire = w.type === 'grenade' ? '投掷' : w.type === 'c4' ? '安放' : w.type === 'knife' ? '挥刀' : '开火';
     this.set('.t-fire span', 'fire', fire, (el, v) => { el.textContent = v; this.q('.t-fire-l span').textContent = v; });
-    const alt = w.type === 'sniper' ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? (this.throwShort ? '近抛' : '远抛') : '';
+    const alt = w.scope ? (W.scope ? '关镜' : '开镜') : w.type === 'knife' ? '重击' : w.type === 'grenade' ? (this.throwShort ? '近抛' : '远抛') : '';
     this.set('.t-alt', 'alt', alt, (el, v) => { el.classList.toggle('off', !v); el.querySelector('span').textContent = v; });
     this.set('.t-reload', 'reload', isGun(w), (el, v) => el.classList.toggle('off', !v));
     this.set('.t-dropbtn', 'drop', me.slot === 1 || me.slot === 2 || me.slot === 3 || me.slot === 5, (el, v) => el.classList.toggle('off', !v));

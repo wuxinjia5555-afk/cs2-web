@@ -68,6 +68,7 @@ export const DEFAULTS = {
   touchLayout: {},
   binds: defaultBinds(),
   skins: { knife: 'default' }, // 背包里选的皮肤
+  loadout: null,               // 配装（没改过就是 null，用默认的；见 shared/weapons.js 的 LOADOUT_DEFAULT）
 };
 
 // 默认值 + 保存的值（嵌套的对象逐项合并，新版本加的设置项也有默认值）

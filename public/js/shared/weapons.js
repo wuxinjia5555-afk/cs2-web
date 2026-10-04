@@ -47,6 +47,45 @@ export const WEAPONS = {
     spread: sp({ base: 0.0015, stand: 0.005, crouch: 0.004, move: 0.065, air: 0.35, fire: 0.06, recover: 0.5, cap: 0.1 }),
     recoil: { up: 4.2, side: 0.8, rec: 10, lin: 6, wait: 0.12 },
   },
+  // P2000：和 USP-S 二选一的 CT 默认手枪（不带消音器，弹匣多一发）
+  p2000: {
+    id: 'p2000', name: 'P2000', slot: 2, type: 'pistol', team: 'CT', price: 200, dmg: 35, pen: 0.505, rpm: 352,
+    mag: 13, res: 52, reload: 2.2, speed: 240 * U, rm: 0.91, deploy: 0.6, killReward: 300,
+    spread: sp({ base: 0.0007, stand: 0.0045, crouch: 0.0035, move: 0.02, air: 0.2, fire: 0.027, recover: 0.3, cap: 0.065 }),
+    recoil: { up: 1.2, side: 0.25, rec: 10, lin: 3, wait: 0.11 },
+  },
+  elite: {
+    id: 'elite', name: '双持伯莱塔', slot: 2, type: 'pistol', price: 300, dmg: 38, pen: 0.575, rpm: 500,
+    mag: 30, res: 120, reload: 3.8, speed: 240 * U, rm: 0.79, deploy: 0.7, killReward: 300, dual: true,
+    spread: sp({ base: 0.0015, stand: 0.008, crouch: 0.0065, move: 0.02, air: 0.22, fire: 0.024, recover: 0.3, cap: 0.085 }),
+    recoil: { up: 1.3, side: 0.4, rec: 10, lin: 3, wait: 0.1 },
+  },
+  fiveseven: {
+    id: 'fiveseven', name: 'FN57', slot: 2, type: 'pistol', team: 'CT', price: 500, dmg: 32, pen: 0.9115, rpm: 400,
+    mag: 20, res: 100, reload: 2.2, speed: 240 * U, rm: 0.81, deploy: 0.6, killReward: 300,
+    spread: sp({ base: 0.0008, stand: 0.005, crouch: 0.004, move: 0.016, air: 0.2, fire: 0.03, recover: 0.3, cap: 0.08 }),
+    recoil: { up: 1.4, side: 0.3, rec: 10, lin: 3, wait: 0.11 },
+  },
+  tec9: {
+    id: 'tec9', name: 'Tec-9', slot: 2, type: 'pistol', team: 'T', price: 500, dmg: 33, pen: 0.906, rpm: 500,
+    mag: 18, res: 90, reload: 2.5, speed: 240 * U, rm: 0.83, deploy: 0.6, killReward: 300,
+    spread: sp({ base: 0.0012, stand: 0.0062, crouch: 0.005, move: 0.014, air: 0.2, fire: 0.036, recover: 0.36, cap: 0.1 }),
+    recoil: { up: 1.7, side: 0.45, rec: 9, lin: 3, wait: 0.1 },
+  },
+  // CZ75：全自动手枪，只有 12 发、备弹也只有 12 发，击杀奖励少
+  cz75: {
+    id: 'cz75', name: 'CZ75 自动手枪', slot: 2, type: 'pistol', price: 500, dmg: 31, pen: 0.7765, rpm: 600,
+    mag: 12, res: 12, reload: 2.7, speed: 240 * U, rm: 0.85, auto: true, deploy: 0.75, killReward: 100,
+    spread: sp({ base: 0.0012, stand: 0.0065, crouch: 0.005, move: 0.03, air: 0.25, fire: 0.03, recover: 0.4, cap: 0.11 }),
+    recoil: { up: 1.5, side: 0.8, rec: 7, phase: 0.7 },
+  },
+  // R8 左轮：按下去先扳击锤（windup 秒）才响，一枪很重
+  revolver: {
+    id: 'revolver', name: 'R8 左轮', slot: 2, type: 'pistol', price: 600, dmg: 86, pen: 0.932, rpm: 120,
+    mag: 8, res: 8, reload: 2.3, speed: 220 * U, rm: 0.94, deploy: 0.7, killReward: 300, windup: 0.2,
+    spread: sp({ base: 0.0006, stand: 0.0035, crouch: 0.003, move: 0.06, air: 0.35, fire: 0.07, recover: 0.55, cap: 0.12 }),
+    recoil: { up: 5.0, side: 0.9, rec: 9, lin: 6, wait: 0.15 },
+  },
 
   mac10: {
     id: 'mac10', name: 'MAC-10', slot: 1, type: 'smg', team: 'T', price: 1050, dmg: 29, pen: 0.575, rpm: 800,
@@ -71,6 +110,61 @@ export const WEAPONS = {
     mag: 8, res: 32, reload: 3.0, speed: 220 * U, rm: 0.7, deploy: 0.8, killReward: 900,
     spread: sp({ base: 0, pellet: 0.045, stand: 0.008, crouch: 0.006, move: 0.02, air: 0.15, fire: 0, recover: 0.3, cap: 0.05 }),
     recoil: { up: 3, side: 0.6, rec: 5 },
+  },
+  mp7: {
+    id: 'mp7', name: 'MP7', slot: 1, type: 'smg', price: 1500, dmg: 29, pen: 0.625, rpm: 750,
+    mag: 30, res: 120, reload: 3.1, speed: 220 * U, rm: 0.85, auto: true, deploy: 0.8, killReward: 600,
+    spread: sp({ base: 0.0018, stand: 0.009, crouch: 0.0072, move: 0.03, air: 0.2, fire: 0.0062, recover: 0.3, cap: 0.045 }),
+    recoil: { up: 0.5, side: 0.42, rec: 6, phase: 2.2 },
+  },
+  mp5sd: {
+    id: 'mp5sd', name: 'MP5-SD', slot: 1, type: 'smg', price: 1500, dmg: 27, pen: 0.625, rpm: 750,
+    mag: 30, res: 120, reload: 3.0, speed: 235 * U, rm: 0.85, auto: true, deploy: 0.8, killReward: 600, silenced: true,
+    spread: sp({ base: 0.0016, stand: 0.0088, crouch: 0.007, move: 0.026, air: 0.2, fire: 0.006, recover: 0.3, cap: 0.045 }),
+    recoil: { up: 0.46, side: 0.4, rec: 6, phase: 3.0 },
+  },
+  p90: {
+    id: 'p90', name: 'P90', slot: 1, type: 'smg', price: 2350, dmg: 26, pen: 0.69, rpm: 857,
+    mag: 50, res: 100, reload: 3.3, speed: 230 * U, rm: 0.86, auto: true, deploy: 0.8, killReward: 300,
+    spread: sp({ base: 0.002, stand: 0.0105, crouch: 0.0088, move: 0.022, air: 0.18, fire: 0.0058, recover: 0.3, cap: 0.05 }),
+    recoil: { up: 0.45, side: 0.55, rec: 6, phase: 1.1 },
+  },
+  bizon: {
+    id: 'bizon', name: 'PP-野牛', slot: 1, type: 'smg', price: 1400, dmg: 27, pen: 0.575, rpm: 750,
+    mag: 64, res: 120, reload: 2.4, speed: 240 * U, rm: 0.8, auto: true, deploy: 0.8, killReward: 600,
+    spread: sp({ base: 0.0022, stand: 0.0115, crouch: 0.0095, move: 0.026, air: 0.2, fire: 0.006, recover: 0.3, cap: 0.055 }),
+    recoil: { up: 0.48, side: 0.6, rec: 6, phase: 2.7 },
+  },
+  // XM1014：半自动霰弹枪，按住就一直打
+  xm1014: {
+    id: 'xm1014', name: 'XM1014 连喷', slot: 1, type: 'shotgun', price: 2000, dmg: 20, pellets: 6, pen: 0.8, rpm: 171,
+    mag: 7, res: 32, reload: 3.0, speed: 215 * U, rm: 0.7, auto: true, deploy: 0.8, killReward: 900,
+    spread: sp({ base: 0, pellet: 0.05, stand: 0.008, crouch: 0.006, move: 0.02, air: 0.15, fire: 0.006, recover: 0.3, cap: 0.05 }),
+    recoil: { up: 2.6, side: 0.6, rec: 5 },
+  },
+  sawedoff: {
+    id: 'sawedoff', name: '截短霰弹枪', slot: 1, type: 'shotgun', team: 'T', price: 1100, dmg: 32, pellets: 8, pen: 0.75, rpm: 71,
+    mag: 7, res: 32, reload: 3.2, speed: 210 * U, rm: 0.45, deploy: 0.8, killReward: 900,
+    spread: sp({ base: 0, pellet: 0.07, stand: 0.008, crouch: 0.006, move: 0.02, air: 0.15, fire: 0, recover: 0.3, cap: 0.05 }),
+    recoil: { up: 3.4, side: 0.7, rec: 5 },
+  },
+  mag7: {
+    id: 'mag7', name: 'MAG-7 警喷', slot: 1, type: 'shotgun', team: 'CT', price: 1300, dmg: 30, pellets: 8, pen: 0.75, rpm: 71,
+    mag: 5, res: 32, reload: 2.4, speed: 225 * U, rm: 0.45, deploy: 0.8, killReward: 900,
+    spread: sp({ base: 0, pellet: 0.055, stand: 0.008, crouch: 0.006, move: 0.02, air: 0.15, fire: 0, recover: 0.3, cap: 0.05 }),
+    recoil: { up: 3.2, side: 0.6, rec: 5 },
+  },
+  m249: {
+    id: 'm249', name: 'M249', slot: 1, type: 'mg', price: 5200, dmg: 32, pen: 0.8, rpm: 750,
+    mag: 100, res: 200, reload: 5.7, speed: 195 * U, rm: 0.97, auto: true, deploy: 1.2, killReward: 300,
+    spread: sp({ stand: 0.0065, crouch: 0.005, move: 0.17, air: 0.45, fire: 0.0075, cap: 0.07 }),
+    recoil: { up: 0.82, side: 1.5, rec: 6, phase: 0.9 },
+  },
+  negev: {
+    id: 'negev', name: '内格夫', slot: 1, type: 'mg', price: 1700, dmg: 35, pen: 0.71, rpm: 800,
+    mag: 150, res: 300, reload: 5.7, speed: 150 * U, rm: 0.97, auto: true, deploy: 1.2, killReward: 300,
+    spread: sp({ stand: 0.0075, crouch: 0.006, move: 0.2, air: 0.5, fire: 0.007, cap: 0.075 }),
+    recoil: { up: 0.7, side: 1.3, rec: 6, phase: 1.9 },
   },
 
   galil: {
@@ -115,6 +209,32 @@ export const WEAPONS = {
     spread: sp({ base: 0.0002, stand: 0.08, crouch: 0.07, scoped: 0.0012, move: 0.22, air: 0.5, fire: 0, recover: 0.3, cap: 0.01 }),
     recoil: { up: 3.5, side: 0.5, rec: 4.5 },
   },
+  // SG 553 / AUG：带瞄准镜的步枪，右键开镜（只有一档），开镜后更准、走得慢
+  sg553: {
+    id: 'sg553', name: 'SG 553', slot: 1, type: 'rifle', team: 'T', price: 3000, dmg: 30, pen: 1.0, rpm: 545,
+    mag: 30, res: 90, reload: 2.8, speed: 210 * U, scopedSpeed: 150 * U, rm: 0.98, auto: true, deploy: 1.0, killReward: 300, scope: [36],
+    spread: sp({ stand: 0.0045, crouch: 0.0034, scoped: 0.0022, move: 0.13, air: 0.4, fire: 0.0075 }),
+    recoil: { up: 0.8, side: 1.15, rec: 6, phase: 3.3 },
+  },
+  aug: {
+    id: 'aug', name: 'AUG', slot: 1, type: 'rifle', team: 'CT', price: 3300, dmg: 28, pen: 0.9, rpm: 600,
+    mag: 30, res: 90, reload: 3.8, speed: 220 * U, scopedSpeed: 150 * U, rm: 0.98, auto: true, deploy: 1.0, killReward: 300, scope: [36],
+    spread: sp({ stand: 0.0042, crouch: 0.0032, scoped: 0.002, move: 0.12, air: 0.38, fire: 0.007 }),
+    recoil: { up: 0.66, side: 0.95, rec: 6, phase: 0.2 },
+  },
+  // 连狙：按住就一直打，开完枪不会退镜
+  g3sg1: {
+    id: 'g3sg1', name: 'G3SG1 连狙', slot: 1, type: 'sniper', team: 'T', price: 5000, dmg: 80, pen: 0.825, rpm: 240,
+    mag: 20, res: 90, reload: 4.7, speed: 215 * U, scopedSpeed: 120 * U, rm: 0.98, auto: true, deploy: 1.1, killReward: 300, scope: [30.7, 11.3],
+    spread: sp({ base: 0.0003, stand: 0.03, crouch: 0.025, scoped: 0.0018, move: 0.2, air: 0.5, fire: 0.012, recover: 0.45, cap: 0.06 }),
+    recoil: { up: 1.6, side: 0.5, rec: 6, phase: 1.4 },
+  },
+  scar20: {
+    id: 'scar20', name: 'SCAR-20 连狙', slot: 1, type: 'sniper', team: 'CT', price: 5000, dmg: 80, pen: 0.825, rpm: 240,
+    mag: 20, res: 90, reload: 3.1, speed: 215 * U, scopedSpeed: 120 * U, rm: 0.98, auto: true, deploy: 1.1, killReward: 300, scope: [30.7, 11.3],
+    spread: sp({ base: 0.0003, stand: 0.03, crouch: 0.025, scoped: 0.0018, move: 0.2, air: 0.5, fire: 0.012, recover: 0.45, cap: 0.06 }),
+    recoil: { up: 1.6, side: 0.5, rec: 6, phase: 2.5 },
+  },
 
   he: { id: 'he', name: '高爆手雷', slot: 4, type: 'grenade', price: 300, max: 1, speed: 245 * U, deploy: 0.5, killReward: 300, pen: 0.575 },
   flash: { id: 'flash', name: '闪光弹', slot: 4, type: 'grenade', price: 200, max: 2, speed: 245 * U, deploy: 0.5 },
@@ -154,18 +274,68 @@ export const EQUIP = {
 };
 
 // 买枪菜单的分类（顺序照 CS2：装备、手枪、中级武器、步枪、投掷物；数字键也是这个顺序）
+// key：这一栏归配装管（见下面的 LOADOUT_POOL），对局里只摆配装里带的那 5 把；items 是这一栏所有的东西
 export const BUY_MENU = [
   { cat: '装备', en: 'EQUIPMENT', items: ['vest', 'vesthelm', 'kit'] },
-  { cat: '手枪', en: 'PISTOLS', items: ['glock', 'usp', 'p250', 'deagle'] },
-  { cat: '中级武器', en: 'MID-TIER', items: ['mac10', 'mp9', 'ump45', 'nova'] },
-  { cat: '步枪', en: 'RIFLES', items: ['galil', 'famas', 'ak47', 'm4a4', 'm4a1s', 'ssg08', 'awp'] },
+  { cat: '手枪', en: 'PISTOLS', key: 'pistol', items: ['glock', 'usp', 'p2000', 'elite', 'p250', 'tec9', 'fiveseven', 'cz75', 'deagle', 'revolver'] },
+  { cat: '中级武器', en: 'MID-TIER', key: 'mid', items: ['mac10', 'mp9', 'mp7', 'mp5sd', 'ump45', 'p90', 'bizon', 'nova', 'xm1014', 'sawedoff', 'mag7', 'm249', 'negev'] },
+  { cat: '步枪', en: 'RIFLES', key: 'rifle', items: ['galil', 'famas', 'ak47', 'm4a4', 'm4a1s', 'sg553', 'aug', 'ssg08', 'awp', 'g3sg1', 'scar20'] },
   { cat: '投掷物', en: 'GRENADES', items: ['flash', 'smoke', 'he', 'molotov', 'incgrenade'] },
 ];
+
+// ---------------- 配装（照 CS2）----------------
+// 武器太多，一局里带不全：每个阵营的手枪、中级武器、步枪各有 5 个栏位，开局前在主菜单的「配装」里选好带哪几把，
+// 买枪菜单里就只有这些。手枪的第一个栏位是起始手枪（出生时手里的那把）：匪徒固定是格洛克，警察可以在 USP-S 和 P2000 里选
+export const LOADOUT_SLOTS = 5;
+export const LOADOUT_KEYS = ['pistol', 'mid', 'rifle'];
+export const LOADOUT_POOL = {
+  T: {
+    pistol: ['glock', 'elite', 'p250', 'tec9', 'cz75', 'deagle', 'revolver'],
+    mid: ['mac10', 'mp7', 'mp5sd', 'ump45', 'p90', 'bizon', 'nova', 'xm1014', 'sawedoff', 'm249', 'negev'],
+    rifle: ['galil', 'ak47', 'sg553', 'ssg08', 'awp', 'g3sg1'],
+  },
+  CT: {
+    pistol: ['usp', 'p2000', 'elite', 'p250', 'fiveseven', 'cz75', 'deagle', 'revolver'],
+    mid: ['mp9', 'mp7', 'mp5sd', 'ump45', 'p90', 'bizon', 'nova', 'xm1014', 'mag7', 'm249', 'negev'],
+    rifle: ['famas', 'm4a4', 'm4a1s', 'aug', 'ssg08', 'awp', 'scar20'],
+  },
+};
+export const LOADOUT_DEFAULT = {
+  T: { pistol: ['glock', 'elite', 'p250', 'tec9', 'deagle'], mid: ['mac10', 'mp7', 'ump45', 'p90', 'nova'], rifle: ['galil', 'ak47', 'sg553', 'ssg08', 'awp'] },
+  CT: { pistol: ['usp', 'elite', 'p250', 'fiveseven', 'deagle'], mid: ['mp9', 'mp7', 'ump45', 'p90', 'nova'], rifle: ['famas', 'm4a4', 'm4a1s', 'ssg08', 'awp'] },
+};
+export const START_PISTOLS = { T: ['glock'], CT: ['usp', 'p2000'] };
+// 把一份配装整理成合规的：只留池子里有的、不重复的，起始手枪放第一格，不够 5 把的拿默认的补上
+export function fixLoadout(lo) {
+  const out = {};
+  for (const team of ['T', 'CT']) {
+    out[team] = {};
+    for (const key of LOADOUT_KEYS) {
+      const pool = LOADOUT_POOL[team][key], def = LOADOUT_DEFAULT[team][key];
+      const src = lo && lo[team] && Array.isArray(lo[team][key]) ? lo[team][key] : def;
+      let list = [];
+      for (const id of src) if (pool.includes(id) && !list.includes(id)) list.push(id);
+      if (key === 'pistol') {
+        const sp = START_PISTOLS[team];
+        const first = list.find((id) => sp.includes(id)) || sp[0];
+        list = [first, ...list.filter((id) => !sp.includes(id))];
+      }
+      list = list.slice(0, LOADOUT_SLOTS);
+      for (const id of [...def, ...pool]) {
+        if (list.length >= LOADOUT_SLOTS) break;
+        if (!list.includes(id) && !(key === 'pistol' && START_PISTOLS[team].includes(id))) list.push(id);
+      }
+      out[team][key] = list;
+    }
+  }
+  return out;
+}
 
 export const NADE_TYPES = ['he', 'flash', 'smoke', 'molotov', 'incgrenade'];
 export const MAX_NADES = 4;
 
-export const defaultPistol = (team) => (team === 'CT' ? 'usp' : 'glock');
+// 出生时手里的手枪：sp 是配装里选的起始手枪（不合规就用默认的）
+export const defaultPistol = (team, sp) => (START_PISTOLS[team] && START_PISTOLS[team].includes(sp) ? sp : team === 'CT' ? 'usp' : 'glock');
 
 // 后坐力与精度恢复（玩家和机器人共用）。s: {punchP, punchY, spray, fireAcc}，since：距上一枪的秒数
 export function recoverRecoil(s, w, dt, since) {
@@ -248,4 +418,6 @@ export function spreadDir(yaw, pitch, inacc, rnd, out) {
   return dirFromAngles(yaw + Math.cos(a) * r, pitch + Math.sin(a) * r, out);
 }
 
-export const isGun = (w) => !!w && (w.type === 'pistol' || w.type === 'smg' || w.type === 'shotgun' || w.type === 'rifle' || w.type === 'sniper');
+export const isGun = (w) => !!w && (w.type === 'pistol' || w.type === 'smg' || w.type === 'shotgun' || w.type === 'rifle' || w.type === 'sniper' || w.type === 'mg');
+// 栓动狙击枪（开一枪要拉一次栓、开完枪会退镜）；连狙不算
+export const isBoltSniper = (w) => !!w && w.type === 'sniper' && !w.auto;

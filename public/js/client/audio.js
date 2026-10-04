@@ -1,7 +1,7 @@
 // 程序合成音效（WebAudio），带距离衰减与左右声道定位；语音播报用浏览器 TTS
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
-import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH, HS, synthHs } from './gunsynth.js';
+import { GUN_PROFILES, gunProfileKey, gunRate, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH, HS, synthHs } from './gunsynth.js';
 import { GUN_SAMPLES } from './gunsamples.js';
 import { HIT_SAMPLES } from './hitsamples.js';
 
@@ -244,7 +244,7 @@ class AudioSys {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = smp ? smp.bufs[(Math.random() * smp.bufs.length) | 0] : this._gunBuf(key);
-    src.playbackRate.value = 0.95 + Math.random() * 0.1;
+    src.playbackRate.value = (0.95 + Math.random() * 0.1) * gunRate(w);
     let node = src;
     if (o.far > 0.03) {
       // 越远越闷

@@ -1,7 +1,7 @@
 // 客户端游戏主循环：本地预测移动、武器、命中判定、插值、观战、特效与界面联动
 import * as THREE from 'three';
 import { P, PHYS_DT, F, INTERP_DELAY, HG } from '../shared/constants.js';
-import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, tagOf, capSpeed, TAG_RECOVER, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from '../shared/weapons.js';
+import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, tagOf, capSpeed, TAG_RECOVER, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE, isBoltSniper, fixLoadout } from '../shared/weapons.js';
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
@@ -56,6 +56,9 @@ export class Game {
     // （联机服务器会按账号检查这把刀解锁了没有）
     if (settings.skins && settings.skins.knife && settings.skins.knife !== 'default') this.net.send({ t: 'skin', k: settings.skins.knife, tk: account.token || undefined });
     if (!this.net.isLocal) this.net.send({ t: 'auth', tk: account.token || '' }); // 告诉服务器是哪个账号（挣金币用）
+    // 配装（只在自己这边管买枪菜单里摆什么；起始手枪要告诉服务器）
+    this.loadout = fixLoadout(settings.loadout);
+    if (this.loadout.CT.pistol[0] !== 'usp') this.net.send({ t: 'lo', sp: this.loadout.CT.pistol[0] });
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;
@@ -1179,7 +1182,8 @@ export class Game {
     if (inp.hit('Tab')) this.hud.openScoreboard();
     if (inp.released.has('Tab')) this.hud.closeScoreboard();
     if (this.hud.buyOpen) {
-      for (let n = 1; n <= 7; n++) if (inp.hit('Digit' + n)) this.hud.buyKey(n);
+      for (let n = 1; n <= 9; n++) if (inp.hit('Digit' + n)) this.hud.buyKey(n);
+      if (inp.hit('Digit0')) this.hud.buyKey(10);
       if (inp.hit('KeyB') || inp.hit('Escape')) this.closeBuy();
       return;
     }
@@ -1477,9 +1481,10 @@ export class Game {
     if (isGun(w)) {
       const it = me.inv[me.slot];
       // 狙击枪：刚切出来还在拉栓、或者开完一枪正在拉栓的时候不能开镜
-      const canScope = !!w.scope && canAct && ready && !W.reloadEnd && !(w.type === 'sniper' && now - W.lastShot < (60 / w.rpm) * 0.76);
+      const boltGun = isBoltSniper(w);
+      const canScope = !!w.scope && canAct && ready && !W.reloadEnd && !(boltGun && now - W.lastShot < (60 / w.rpm) * 0.76);
       // 手机「按住开火键开镜、松手开枪」（设置里开）：只对狙击枪生效
-      const hold = this.isTouch && !!settings.sniperHold && w.type === 'sniper';
+      const hold = this.isTouch && !!settings.sniperHold && boltGun;
       if (hold) {
         if (inp.mDown[0]) { W.holdScope = true; W.holdShot = 0; }
         // 按住：能开镜了就开镜（还在拉栓就等拉完）
@@ -1498,9 +1503,15 @@ export class Game {
       // 刚按过开火（0.12 秒内）就开枪：甩狙时点得很快，按下松开都在两帧之间，也不能吞掉这一枪
       const clicked = now - W.pendingClick < (W.holdShot ? 0.45 : 0.12);
       const wantFire = (w.auto ? inp.mouse[0] || clicked : clicked) || auto;
-      if (wantFire && canAct && ready && !W.reloadEnd && now >= W.nextFire) {
-        if (it.clip > 0) {
+      // 左轮：按下去先扳击锤，windup 秒之后才响
+      if (W.windupAt && (W.windupW !== w.id || !canAct || W.reloadEnd)) W.windupAt = 0;
+      const cocked = !!W.windupAt && now >= W.windupAt;
+      if ((wantFire || cocked) && canAct && ready && !W.reloadEnd && now >= W.nextFire) {
+        if (it.clip > 0 && w.windup && !cocked) {
+          if (!W.windupAt) { W.windupAt = now + w.windup; W.windupW = w.id; W.pendingClick = -1; this.vm.onCock(now, w.windup); audio.play('cock'); }
+        } else if (it.clip > 0) {
           W.pendingClick = -1;
+          W.windupAt = 0;
           this.fireOnce(w, it);
           // 松手开的这一枪：开完不自动回到开镜（手已经松开了）
           if (W.holdShot) { W.holdShot = 0; W.rescopeAt = 0; W.resume = 0; }
@@ -1596,12 +1607,12 @@ export class Game {
     this.vm.onFire(now);
     audio.shot(w.id, null);
     this.net.send({ t: 'fire', w: w.id, o: [r2(eye.x), r2(eye.y), r2(eye.z)], h: hits, e: ends.slice(0, 12) });
-    if (w.type === 'sniper' && W.scope > 0) {
+    if (isBoltSniper(w) && W.scope > 0) {
       W.resume = W.scope;
       W.scope = 0;
       W.rescopeAt = now + (60 / w.rpm) * 0.8;
     }
-    if (w.type === 'sniper' || w.type === 'shotgun' || w.id === 'deagle') this.shake = Math.max(this.shake, 0.08);
+    if (w.type === 'sniper' || w.type === 'shotgun' || w.id === 'deagle' || w.id === 'revolver') this.shake = Math.max(this.shake, 0.08);
   }
 
   knifeAttack(stab) {

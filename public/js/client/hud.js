@@ -15,7 +15,7 @@ export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || 
 export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀', tianyu: '天御刀', shadow: '影刃', dragon: '威龙之刃' };
 const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
 // 买枪菜单里的说明
-const TYPE_NAME = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '步枪', sniper: '狙击枪', grenade: '投掷物' };
+const TYPE_NAME = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '步枪', sniper: '狙击枪', mg: '机枪', grenade: '投掷物' };
 const ITEM_DESC = {
   vest: '护甲 100：身体中弹时受到的伤害降低',
   vesthelm: '护甲 100 + 头盔：头部中弹时受到的伤害也降低。已经有防弹衣时只补头盔，$350',
@@ -212,6 +212,9 @@ export class Hud {
     $('fx-heal').style.opacity = Math.max(0, ((g.healT || 0) - now) * 1.6).toFixed(3);
     const scoped = me.alive && g.w.scope > 0;
     this.toggle('scope', scoped || (!me.alive && !!g.specScoped));
+    // 步枪上的瞄准镜（SG 553、AUG）：视野大、中间一个红点；狙击镜是黑十字
+    const rds = scoped && g.curWeapon().type !== 'sniper';
+    if (this.cache._rds !== rds) { this.cache._rds = rds; $('scope').classList.toggle('rds', rds); }
     // 开着镜走动 / 跳起来：准星线变粗变糊（这时候打不准），站稳了才是一条细线
     let blur = 0;
     if (scoped) {
@@ -548,6 +551,7 @@ export class Hud {
   // ---------------- 买枪菜单 ----------------
   // 电脑端照 CS2：一整块深色面板，左边是队友和他们的钱，中间五列卡片（装备 / 手枪 / 中级武器 / 步枪 / 投掷物），
   // 卡片上是武器的侧面图、名字、价格，鼠标放上去下面出详细数据；点一下就买，右键退款；对面阵营才能买的东西不摆出来。
+  // 手枪、中级武器、步枪三栏只摆配装里带的那 5 把（主菜单「配装」里选）；热身 / 死斗 / 靶场里可以点「全部武器」把所有枪都摆出来。
   // 手机端照无畏契约手游：同样的卡片换一套样式，点第一下只是选中（卡片外面套一个框、下面出数据），再点一下才真的买
   buildBuyMenu() {
     const grid = $('buy-grid');
@@ -556,6 +560,8 @@ export class Hud {
     this.buyVis = BUY_MENU.map(() => []);   // 每一列现在摆出来的物品（数字键按这个顺序）
     this.buySel = null;                     // 手机：选中的那张
     this.buyHover = null;                   // 电脑：鼠标指着的那张
+    this.buyAll = false;                    // 免费模式里：把所有武器都摆出来（不只是配装里的）
+    $('buy-all').onclick = () => { this.buyAll = !this.buyAll; audio.play('click'); this.cache._buyState = null; this.updateBuyMenu(); };
     BUY_MENU.forEach((col, ci) => {
       const div = document.createElement('div');
       div.className = 'bm-col';
@@ -663,7 +669,7 @@ export class Hud {
     const mates = [];
     for (const p of g.players.values()) if (p.team === me.team) mates.push(p);
     const state = [me.money, me.team, me.armor, me.helmet, me.kit, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), free, g.round.ph, left, rfs.join(), inZone,
-      this.buySel, mates.map((p) => p.id + ':' + (p.money ?? 0) + (p.alive ? 'a' : 'd')).join()].join('|');
+      this.buySel, this.buyAll, mates.map((p) => p.id + ':' + (p.money ?? 0) + (p.alive ? 'a' : 'd')).join()].join('|');
     if (this.cache._buyState === state) return;
     this.cache._buyState = state;
     $('buymenu').dataset.team = me.team;
@@ -676,14 +682,22 @@ export class Hud {
     if (!free && !inZone) tip += ' · 不在购买区';
     this.set('buy-time', tip);
     const canBuy = g.canBuy(), teamLock = g.mode !== 'dm' && g.mode !== 'range';
+    // 免费模式里能切到「全部武器」；其余时候三栏枪只摆配装里的
+    const all = free && this.buyAll, lo = g.loadout && g.loadout[me.team], maxRows = all ? 7 : 5;
+    $('buy-all').classList.toggle('hidden', !free);
+    $('buy-all').classList.toggle('on', all);
+    $('buy-all').textContent = all ? '只看配装' : '全部武器';
     BUY_MENU.forEach((col, ci) => {
       const vis = this.buyVis[ci];
       vis.length = 0;
-      for (const id of col.items) {
+      const order = col.key && lo && !all ? lo[col.key] : col.items, listEl = this.buyCards.get(col.items[0]).parentNode;
+      for (const id of col.items) if (!order.includes(id)) this.buyCards.get(id).classList.add('hidden');
+      for (const id of order) {
         const b = this.buyCards.get(id), w = WEAPONS[id] || EQUIP[id];
         const hide = !!(w.team && w.team !== me.team && teamLock); // 对面阵营才能买的不摆出来
         b.classList.toggle('hidden', hide);
         if (hide) continue;
+        listEl.appendChild(b); // 按这个顺序排（配装里的顺序）
         vis.push(id);
         const price = id === 'vesthelm' && me.armor >= 100 ? 350 : w.price;
         const nade = !!(WEAPONS[id] && w.slot === 4), cnt = nade ? me.inv[4].filter((x) => x === id).length : 0;
@@ -709,9 +723,9 @@ export class Hud {
       }
       const colEl = this.buyCards.get(col.items[0]).parentNode.parentNode;
       colEl.classList.toggle('hidden', !vis.length);
-      colEl.style.setProperty('--n', Math.max(1, Math.ceil(vis.length / 5))); // 一列最多五张，多了往右再排一列
+      colEl.style.setProperty('--n', Math.max(1, Math.ceil(vis.length / maxRows))); // 一列最多五张（全部武器时七张），多了往右再排一列
     });
-    $('buy-grid').style.setProperty('--rows', Math.min(5, Math.max(1, ...this.buyVis.map((v) => v.length)))); // 用不满五行就少排几行
+    $('buy-grid').style.setProperty('--rows', Math.min(maxRows, Math.max(1, ...this.buyVis.map((v) => v.length)))); // 用不满就少排几行
     if (this.buySel && this.buyCards.get(this.buySel).classList.contains('hidden')) this.buySel = null;
     // 队友和他们的钱
     mates.sort((a, b) => (b.id === g.myId) - (a.id === g.myId) || (b.money ?? 0) - (a.money ?? 0));
