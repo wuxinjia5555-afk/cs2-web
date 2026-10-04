@@ -11,7 +11,7 @@ export const TEX_SCALE = {
   plaster: 3, brick: 2, concrete_wall: 4, metalwall: 2, container_r: 2.5, container_b: 2.5, container_g: 2.5,
   dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
   door: 1.6, iron: 1, stone: 2, darkwood: 2,
-  cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, woodfloor: 2, grass: 3, rooftile: 2,
+  cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, stucco_r: 5, stucco_g: 5, woodfloor: 2, grass: 3, rooftile: 2, plywood: 2, tarp: 2,
 };
 
 const cache = new Map();
@@ -381,6 +381,33 @@ const PAINTERS = {
   stucco_o(ctx, s, rnd) { stucco(ctx, s, rnd, [212, 148, 96]); },
   stucco_p(ctx, s, rnd) { stucco(ctx, s, rnd, [202, 138, 124]); },
   stucco_w(ctx, s, rnd) { stucco(ctx, s, rnd, [226, 216, 194]); },
+  stucco_r(ctx, s, rnd) { stucco(ctx, s, rnd, [196, 104, 84]); },
+  stucco_g(ctx, s, rnd) { stucco(ctx, s, rnd, [150, 172, 112]); },
+  // 木酒桶：一条一条的桶板，两道铁箍
+  cask(ctx, s, rnd) {
+    const n = 14, w = s / n;
+    for (let k = 0; k < n; k++) { ctx.fillStyle = rgb(...vary(rnd, [150, 104, 62], 0.16)); ctx.fillRect(k * w, 0, w - 1, s); ctx.fillStyle = 'rgba(40,24,12,0.5)'; ctx.fillRect(k * w + w - 1, 0, 1, s); }
+    ctx.fillStyle = 'rgba(46,42,40,0.92)';
+    ctx.fillRect(0, s * 0.16, s, s * 0.07); ctx.fillRect(0, s * 0.77, s, s * 0.07);
+    grain(ctx, s, rnd, 0.22);
+  },
+  // 浅色的夹板箱（上面钉着木条）
+  plywood(ctx, s, rnd) {
+    ctx.fillStyle = rgb(206, 182, 140);
+    ctx.fillRect(0, 0, s, s);
+    pixels(ctx, s, (x, y, i, c) => { const k = 0.94 + 0.06 * Math.sin(y * 0.16 + Math.sin(x * 0.04) * 3); c[0] *= k; c[1] *= k; c[2] *= k; });
+    ctx.fillStyle = rgb(168, 142, 100);
+    const fw = s * 0.07;
+    ctx.fillRect(0, 0, s, fw); ctx.fillRect(0, s - fw, s, fw); ctx.fillRect(0, 0, fw, s); ctx.fillRect(s - fw, 0, fw, s); ctx.fillRect(s / 2 - fw / 2, 0, fw, s);
+    ctx.fillStyle = 'rgba(60,45,30,0.7)';
+    for (const [x, y] of [[fw / 2, fw / 2], [s - fw / 2, fw / 2], [fw / 2, s - fw / 2], [s - fw / 2, s - fw / 2], [s / 2, fw / 2], [s / 2, s - fw / 2]]) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+    grain(ctx, s, rnd, 0.16);
+  },
+  tarp(ctx, s, rnd) {
+    ctx.fillStyle = rgb(62, 118, 178);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.3, [[3, 0.5], [8, 0.3], [24, 0.2]]);
+  },
   woodfloor(ctx, s, rnd) { tiled(ctx, s, rnd, 1, 8, [142, 104, 66], [70, 48, 28], 3, 0.16); grain(ctx, s, rnd, 0.28); },
   grass(ctx, s, rnd) {
     ctx.fillStyle = rgb(96, 124, 62);

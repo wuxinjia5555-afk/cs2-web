@@ -194,6 +194,7 @@ export class Nav {
           cost = 1.4142;
         }
         if (this.ys[cur] - this.ys[ni] > this.maxRise) cost += 2;
+        if (this.pen && this.pen[ni]) cost += 0.4; // 贴着墙的格子稍微贵一点：路宽的时候走中间，少蹭墙角
         const ng = g[cur] + cost;
         if (seen[ni] !== gen || ng < g[ni]) {
           seen[ni] = gen; g[ni] = ng; f[ni] = ng + heu(ni); par[ni] = cur;

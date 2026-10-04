@@ -37,6 +37,7 @@ export class BotBrain {
     this.burst = 0; this.nextBurst = 0; this.nextTap = 0; this.strafeDir = 1; this.strafeUntil = 0; this.crouchUntil = 0;
     this.wantYaw = this.p.yaw; this.wantPitch = 0;
     this.lastPos = { x: this.p.x, z: this.p.z }; this.stuckCheckT = 0; this.stuckCount = 0;
+    this.centerUntil = 0; this.centerX = 0; this.centerZ = 0;
     this.evadeUntil = 0; this.evadeDir = 1;
     this.alertT = -99; this.alertPos = null;
     this.guardCell = -1; this.roamCell = -1; this.via = -1;
@@ -400,7 +401,9 @@ export class BotBrain {
     }
     const w = path[Math.min(this.pathIdx, path.length - 1)];
     this.moveToward(w.x, w.z);
-    // 被卡住了：先往旁边让一步、退一点（绕开挡路的角），还不行再重新找路
+    // 被墙角蹭住了：先挪回自己脚下那一格的正中间（人比格子只窄一点点，偏一点就会蹭到墙角），再接着走
+    if (t < this.centerUntil) this.moveToward(this.centerX, this.centerZ);
+    // 还是卡着：往旁边让一步、退一点（绕开挡路的角），还不行再重新找路
     if (t < this.evadeUntil) { this.cmd.side = this.evadeDir; this.cmd.fwd = -0.4; }
     if (!this.visible) {
       if (this.lastSeen && t - this.lastSeenT < 3) this.wantYaw = anglesFromDir(this.lastSeen.x - p.x, 0, this.lastSeen.z - p.z)[0];
@@ -411,7 +414,11 @@ export class BotBrain {
       const moved = Math.hypot(p.x - this.lastPos.x, p.z - this.lastPos.z);
       if (moved < 0.3) {
         this.stuckCount++;
-        this.cmd.jump = true;
+        this.cmd.jump = this.stuckCount > 1;
+        if (this.stuckCount === 1) {
+          const nav = r.nav, ci = nav.nearestWalkable(p.x, p.z, p.y);
+          if (ci >= 0) { const c = nav.center(ci, this.tmpC); this.centerX = c.x; this.centerZ = c.z; this.centerUntil = t + 0.35; }
+        }
         if (this.stuckCount >= 2) {
           this.evadeDir = this.stuckCount % 2 ? 1 : -1;
           this.evadeUntil = t + 0.45;

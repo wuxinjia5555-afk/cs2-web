@@ -263,7 +263,7 @@ export function buildMapMeshes(map) {
   }
   if (barrels.length) {
     const geo = new THREE.CylinderGeometry(0.4, 0.4, 1.0, 16);
-    const mat = new THREE.MeshLambertMaterial({ map: getTexture('barrel') });
+    const mat = new THREE.MeshLambertMaterial({ map: getTexture(map.def.barrelMat || 'barrel') });
     for (const bx of barrels) {
       const m = new THREE.Mesh(geo, mat);
       m.position.set((bx.min[0] + bx.max[0]) / 2, bx.min[1] + 0.5, (bx.min[2] + bx.max[2]) / 2);
