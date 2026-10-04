@@ -5,7 +5,7 @@ import { GUN_PROFILES, gunProfileKey, gunRate, synthGun, synthStep, synthFx, syn
 import { GUN_SAMPLES } from './gunsamples.js';
 import { HIT_SAMPLES } from './hitsamples.js';
 
-const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
+const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42, kn_water: 0.3, kn_splash: 0.36 };
 
 const STEP_RANGE = 32; // 脚步声最远能听到的距离（米），和 CS 差不多
 
@@ -294,7 +294,7 @@ class AudioSys {
     if (MECH[name]) { this._playFx(name, MECH[name].gain * vol); return; }
     switch (name) {
       case 'hit': this._playFx('hit', 0.5 * vol); break;
-      case 'kn_swish': case 'kn_tick': case 'kn_clack': case 'kn_catch': this._playFx(name, KNIFE_GAIN[name] * vol); break;
+      case 'kn_swish': case 'kn_tick': case 'kn_clack': case 'kn_catch': case 'kn_water': case 'kn_splash': this._playFx(name, KNIFE_GAIN[name] * vol); break;
       case 'heal':
         // 捡到血包：两声往上滑的清亮音
         o = this._out(null, 1, 0.32 * vol, 0.05);

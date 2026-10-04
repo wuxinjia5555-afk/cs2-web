@@ -364,10 +364,12 @@ export function synthHs(kind, sr, seed = 11) {
   return out;
 }
 
-// 刀的花式动作声：kn_swish 甩刀的风声，kn_tick 金属轻碰，kn_clack 蝴蝶刀刀柄拍合（“咔-嗒”两下），kn_catch 一把握住刀柄
+// 刀的花式动作声：kn_swish 甩刀的风声，kn_tick 金属轻碰，kn_clack 蝴蝶刀刀柄拍合（“咔-嗒”两下），kn_catch 一把握住刀柄；
+// 泷刃：kn_water 水流涌出来凝成刀，kn_splash 水刃碎成水花
+const SPLASH_DROPS = [[0.1, 1500], [0.17, 2200], [0.24, 1300], [0.31, 1900], [0.4, 1600]];
 export function synthKnife(kind, sr, seed = 9) {
   const R = rng(seed);
-  const len = { kn_swish: 0.24, kn_tick: 0.09, kn_clack: 0.22, kn_catch: 0.2 }[kind] || 0.2;
+  const len = { kn_swish: 0.24, kn_tick: 0.09, kn_clack: 0.22, kn_catch: 0.2, kn_water: 0.62, kn_splash: 0.55 }[kind] || 0.2;
   const n = Math.ceil(len * sr);
   const out = new Float32Array(n);
   const bp = (f, q) => new Biquad(sr).set('bp', f, q);
@@ -384,7 +386,7 @@ export function synthKnife(kind, sr, seed = 9) {
     parts = ring(3100, [1, 1.47, 2.2], [0.35, 0.22, 0.12], [0.045, 0.03, 0.02]);
     hits = [[0, 1, bp(420, 0.8), 0.018], [0, 0.6, bp(1500, 0.9), 0.006], [0.004, 0.4, bp(5000, 1.2), 0.002]];
   }
-  const sw = bp(1200, 1.6);
+  const sw = bp(1200, 1.6), sw2 = bp(3000, 2.2);
   for (let i = 0; i < n; i++) {
     const t = i / sr, w = R() * 2 - 1;
     let s = 0;
@@ -392,6 +394,16 @@ export function synthKnife(kind, sr, seed = 9) {
       const q = Math.min(1, t / 0.2);
       if ((i & 15) === 0) sw.set('bp', 800 + 1900 * Math.sin(q * Math.PI), 1.5);
       s += sw.p(w) * Math.pow(Math.sin(q * Math.PI), 2);
+    } else if (kind === 'kn_water') {
+      // 一股越来越亮的水声，带着咕噜咕噜的起伏
+      const q = t / len;
+      if ((i & 15) === 0) { sw.set('bp', 500 + 2500 * q * q + 260 * Math.sin(t * 61), 1.1); sw2.set('bp', 2300 + 2400 * q, 2.4); }
+      s += (sw.p(w) + sw2.p(w) * 0.55 * (0.6 + 0.4 * Math.sin(t * 47 + Math.sin(t * 13) * 2))) * Math.pow(Math.sin(Math.min(1, q * 1.12) * Math.PI), 1.2);
+    } else if (kind === 'kn_splash') {
+      // 「哗」的一下，后面溅落几滴
+      if ((i & 15) === 0) sw.set('bp', 700 + 3300 * Math.exp(-t / 0.15), 0.8);
+      s += sw.p(w) * 1.5 * Math.exp(-t / 0.1) + sw2.p(w) * 0.45 * Math.exp(-t / 0.22);
+      for (const [t0, f] of SPLASH_DROPS) if (t >= t0) { const d = t - t0; s += Math.sin(6.283 * (f + 5200 * d) * d) * 0.22 * Math.exp(-d / 0.022); }
     }
     for (const [t0, g, f, d] of hits) if (t >= t0) s += f.p(w) * g * 3 * Math.exp(-(t - t0) / d);
     for (const p of parts) {

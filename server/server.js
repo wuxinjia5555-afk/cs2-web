@@ -258,6 +258,7 @@ function createRoom(opts) {
       maxRounds: Number(o.maxRounds),
       bombTime: Number(o.bombTime),
       ff: !!o.ff,
+      rules: o.rules && typeof o.rules === 'object' ? o.rules : null, // 自定义模式的规则（Room 里会整理成合规的）
       warmup: true,
     },
     {

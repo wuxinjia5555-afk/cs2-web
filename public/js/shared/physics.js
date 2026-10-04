@@ -300,7 +300,7 @@ export function stepPlayer(s, cmd, dt, world) {
   }
   if (!cmd.jump) s.jumpHeld = false;
 
-  s.vy -= P.gravity * dt;
+  s.vy -= P.gravity * (cmd.grav || 1) * dt;
   if (s.vy < -P.maxFall) s.vy = -P.maxFall;
 
   const wasGround = s.onGround;

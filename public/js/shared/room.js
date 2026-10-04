@@ -1,6 +1,7 @@
 // 房间：权威游戏逻辑（回合、经济、伤害、炸弹、投掷物、掉落、机器人）
 // 服务端与"离线练习"共用同一份代码。io = { send(pid, msg), broadcast(msg, exceptPid) }
 import { P, TICK_RATE, F, ECON, TIMES, HG, HG_MULT, otherTeam } from './constants.js';
+import { fixRules, ruleAllows, RULE_RANDOM } from './weapons.js';
 import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, tagOf, capSpeed, TAG_RECOVER, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE, START_PISTOLS } from './weapons.js';
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
@@ -31,6 +32,12 @@ export class Room {
       roundTime: TIMES.round,
       dmKills: 40,
     });
+    // 自定义模式的规则（没给就是标准规则）
+    const R = (o.rules = fixRules(opts.rules));
+    if (R) { o.freeze = R.freeze; o.roundTime = R.roundTime; o.maxRounds = R.win * 2 - 1; }
+    o.winScore = R ? R.win : o.maxRounds / 2 + 1;              // 赢几回合算赢
+    o.halfRound = R ? (R.swap && R.win > 1 ? R.win - 1 : 0) : o.maxRounds / 2; // 打完第几回合换边（0 = 不换）
+    this.teamKills = { T: 0, CT: 0 };
     this.io = io;
     this.map = getMap(o.map);
     o.map = this.map.id;
@@ -95,7 +102,53 @@ export class Room {
     return { w: wid, clip: w.mag, res: w.res };
   }
   defaultInv(team, sp) {
+    // 自定义规则限定了武器：只准刀就什么枪都不发；只准某一类就发这一类里最便宜的一把；随机武器每次随机发一把
+    const k = this.opts.rules ? this.opts.rules.weapons : 'all';
+    if (k === 'knife') return { 1: null, 2: null, 4: [], 5: false };
+    const id = k === 'random' ? pick(RULE_RANDOM, this.rng) : { smg: team === 'T' ? 'mac10' : 'mp9', rifle: team === 'T' ? 'galil' : 'famas', sniper: 'ssg08', shotgun: 'nova' }[k];
+    if (id) return WEAPONS[id].slot === 1 ? { 1: this.item(id), 2: null, 4: [], 5: false } : { 1: null, 2: this.item(id), 4: [], 5: false };
     return { 1: null, 2: this.item(defaultPistol(team, sp)), 4: [], 5: false };
+  }
+  // 一边最多几个人
+  teamCap(team) { const R = this.opts.rules; return R ? (team === 'T' ? R.teamT : R.teamCT) : this.opts.teamSize; }
+  maxHp() { return this.opts.rules ? this.opts.rules.hp : 100; }
+  // 自定义规则里固定的护甲、无限资金：每次出生都按规则给
+  applyRules(p) {
+    const R = this.opts.rules;
+    if (!R) return;
+    if (R.armor === 'none') { p.armor = 0; p.helmet = false; }
+    else if (R.armor === 'light') { p.armor = 100; p.helmet = false; }
+    else if (R.armor === 'heavy') { p.armor = 100; p.helmet = true; }
+    if (R.money) p.money = ECON.max;
+  }
+  // 自定义规则：无限弹药 / 无限备弹 / 无限资金，每一帧补上
+  rulesTick() {
+    const R = this.opts.rules;
+    if (!R || (R.ammo === 'default' && !R.money)) return;
+    const sec = this.tickN % TICK_RATE === 0;
+    for (const p of this.players.values()) {
+      if (!p.alive || p.dummy) continue;
+      if (R.ammo !== 'default') for (const s of [1, 2]) {
+        const it = p.inv[s];
+        if (!it) continue;
+        const w = WEAPONS[it.w];
+        if (R.ammo === 'mag' && it.clip < w.mag) { it.clip = w.mag; p.dirty = true; }
+        if (sec && it.res < w.res) { it.res = w.res; p.dirty = true; }
+      }
+      if (R.money && sec && p.money < ECON.max) { p.money = ECON.max; p.dirty = true; }
+    }
+  }
+  // 自定义规则：对局里死了能复活（出生点 / 原地）
+  respawnByRule() {
+    for (const p of this.players.values()) {
+      if (p.alive || (p.team !== 'T' && p.team !== 'CT') || !p.respawnAt || this.time < p.respawnAt) continue;
+      if (!p.inv[1] && !p.inv[2]) p.inv = this.defaultInv(p.team, p.sp);
+      for (const s of [1, 2]) if (p.inv[s]) { const w = WEAPONS[p.inv[s].w]; p.inv[s].clip = w.mag; p.inv[s].res = w.res; }
+      this.applyRules(p);
+      this.spawnPlayer(p, p.respawnPos || this.pickSpawn(p.team));
+      p.protectUntil = this.time + TIMES.protect;
+      p.respawnPos = null;
+    }
   }
   dmInv(p) {
     let prim = p.dmLoadout[1];
@@ -173,7 +226,7 @@ export class Room {
     for (const team of ['T', 'CT']) {
       const humans = this.countTeam(team, true);
       const bots = [...this.players.values()].filter((p) => p.isBot && p.team === team);
-      const want = this.opts.bots ? Math.max(0, this.opts.teamSize - humans) : 0;
+      const want = this.opts.bots ? Math.max(0, this.teamCap(team) - humans) : 0;
       while (bots.length > want) {
         const b = bots.find((x) => !x.alive) || bots[bots.length - 1];
         bots.splice(bots.indexOf(b), 1);
@@ -192,7 +245,7 @@ export class Room {
       else if (p.team === 'CT') team = hC - 1 <= hT ? 'CT' : 'T';
       else team = hT < hC ? 'T' : hC < hT ? 'CT' : this.countTeam('T') <= this.countTeam('CT') ? 'T' : 'CT';
     }
-    if (team !== 'SPEC' && p.team !== team && this.opts.mode !== 'dm' && this.countTeam(team, true) >= 5) {
+    if (team !== 'SPEC' && p.team !== team && this.opts.mode !== 'dm' && this.countTeam(team, true) >= (this.opts.rules ? this.teamCap(team) : 5)) {
       this.err(p, '该阵营已满');
       return;
     }
@@ -241,7 +294,7 @@ export class Room {
 
   spawnPlayer(p, sp) {
     p.alive = true;
-    p.hp = 100;
+    p.hp = this.maxHp();
     p.x = sp.x; p.y = sp.y; p.z = sp.z;
     p.vx = p.vy = p.vz = 0;
     p.tagK = 1;
@@ -283,6 +336,7 @@ export class Room {
       p.alive = false;
       p.dirty = true;
     }
+    this.teamKills = { T: 0, CT: 0 };
     if (this.opts.mode === 'range') {
       this.phase = 'range';
       this.phaseEnd = Infinity;
@@ -364,7 +418,9 @@ export class Room {
     let iT = 0, iC = 0;
     for (const p of this.players.values()) {
       if (p.team !== 'T' && p.team !== 'CT') continue;
-      if (!p.alive) { p.inv = this.defaultInv(p.team, p.sp); p.armor = 0; p.helmet = false; p.kit = false; }
+      if (!p.alive || (this.opts.rules && this.opts.rules.weapons === 'random')) { p.inv = this.defaultInv(p.team, p.sp); p.armor = 0; p.helmet = false; p.kit = false; }
+      this.applyRules(p);
+      p.respawnAt = 0; p.respawnPos = null;
       // 活下来的人：枪留着，但弹匣和备弹补满（不继承上回合打掉的子弹）
       for (const s of [1, 2]) if (p.inv[s]) { const w = WEAPONS[p.inv[s].w]; p.inv[s].clip = w.mag; p.inv[s].res = w.res; }
       p.inv[5] = false;
@@ -372,8 +428,9 @@ export class Room {
       const sp = p.team === 'T' ? spT[iT++ % spT.length] : spCT[iC++ % spCT.length];
       this.spawnPlayer(p, sp);
     }
+    this.teamKills = { T: 0, CT: 0 };
     const ts = [...this.players.values()].filter((p) => p.team === 'T' && p.alive);
-    if (ts.length) {
+    if (ts.length && !(this.opts.rules && !this.opts.rules.bomb)) {
       const c = pick(ts, this.rng);
       c.inv[5] = true;
       c.dirty = true;
@@ -438,10 +495,10 @@ export class Room {
       for (const p of this.players.values()) if (p.team === winner && p.roundKills > 0 && (!mvp || p.roundKills > mvp.roundKills)) mvp = p;
     }
     if (mvp) mvp.mvps++;
-    const winScore = this.opts.maxRounds / 2 + 1;
+    const winScore = this.opts.winScore;
     if (this.scores[winner] >= winScore) this.matchPending = winner;
     else if (this.round >= this.opts.maxRounds) this.matchPending = 'draw';
-    else if (this.round === this.opts.maxRounds / 2) this.halfPending = true;
+    else if (this.round === this.opts.halfRound) this.halfPending = true;
     this.bcast({ t: 'rend', w: winner, r: reason, sc: this.scores, mvp: mvp ? mvp.id : -1, half: this.halfPending ? 1 : 0, last: this.matchPending ? 1 : 0 });
     this.bcastRound();
     this.bcastScores();
@@ -476,6 +533,7 @@ export class Room {
       else if (p.team === 'CT') { cAll++; if (p.alive) cAlive++; }
     }
     const planted = this.bomb && this.bomb.st === 'planted';
+    if (this.opts.rules && this.opts.rules.respawn !== 'none') return; // 能复活的规则：人死光了不算输，打到炸弹炸 / 拆掉 / 时间到
     if (cAll > 0 && cAlive === 0) { this.endRound('T', 'elim'); return; }
     if (!planted && tAll > 0 && tAlive === 0) this.endRound('CT', 'elim');
   }
@@ -507,7 +565,12 @@ export class Room {
         }
         break;
       case 'live':
-        if (!(this.bomb && this.bomb.st === 'planted') && t >= this.phaseEnd) this.endRound('CT', 'time');
+        if (this.opts.rules && this.opts.rules.respawn !== 'none') this.respawnByRule();
+        if (!(this.bomb && this.bomb.st === 'planted') && t >= this.phaseEnd) {
+          // 时间到：标准规则算警察赢；能复活的规则按这一回合两边的击杀数算（一样多算警察赢）
+          const R = this.opts.rules;
+          this.endRound(R && R.respawn !== 'none' && this.teamKills.T > this.teamKills.CT ? 'T' : 'CT', 'time');
+        }
         break;
       case 'over':
         if (t >= this.phaseEnd) { if (this.matchPending) this.endMatch(); else this.startRound(); }
@@ -524,7 +587,8 @@ export class Room {
         const cmd = p.bot.cmd;
         cmd.yaw = p.yaw;
         p.tagK = Math.min(1, (p.tagK ?? 1) + DT * TAG_RECOVER); // 中弹减速慢慢恢复
-        cmd.speed = moveSpeed(this.curWeapon(p), p.scoped) * p.tagK;
+        cmd.speed = moveSpeed(this.curWeapon(p), p.scoped) * p.tagK * (this.opts.rules && this.opts.rules.special === 'fast' ? 1.3 : 1);
+        cmd.grav = this.opts.rules && this.opts.rules.special === 'lowgrav' ? 0.45 : 1;
         cmd.frozen = this.phase === 'freeze' || p.planting || p.defusing;
         stepPlayer(p, cmd, DT, this.world);
         if (p.y < -30) { this.damage(p, null, 'world', 500, HG.CHEST, { noHg: true, noArmor: true }); continue; }
@@ -535,6 +599,7 @@ export class Room {
       }
       this.weaponTick(p);
     }
+    this.rulesTick();
     this.updateBomb();
     this.updateNades();
     this.updateFires();
@@ -716,7 +781,7 @@ export class Room {
   dropOnDeath(v, keepPrimary = false) {
     if (v.dummy) return;
     const dm = this.opts.mode === 'dm' || this.opts.mode === 'range' || this.phase === 'warmup';
-    if (!dm && !keepPrimary) {
+    if (!dm && !keepPrimary && !(this.opts.rules && !this.opts.rules.drop)) {
       if (v.inv[1]) this.dropItem(v, 1, false);
       else if (v.inv[2]) this.dropItem(v, 2, false);
     }
@@ -738,6 +803,7 @@ export class Room {
     if (a && a !== v) {
       if (this.isEnemy(a, v)) {
         a.kills++; a.roundKills++; a.score += 2;
+        if (this.teamKills[a.team] != null) this.teamKills[a.team]++;
         if (!dm) this.addMoney(a, (WEAPONS[wid] && WEAPONS[wid].killReward) ?? 300);
         if (!v.dummy && this.phase !== 'warmup' && this.opts.mode !== 'range') this.reward(a, this.opts.mode === 'dm' ? 'dmkill' : 'kill', !!v.bot);
         if (this.phase === 'dm' && a.alive) this.refillAmmo(a); // 死斗：杀一个人就把子弹补满
@@ -759,6 +825,10 @@ export class Room {
     if (v.bot) v.bot.onDeath();
     if (this.phase === 'dm' || this.phase === 'warmup') v.respawnAt = this.time + (this.phase === 'dm' ? TIMES.dmRespawn : TIMES.warmupRespawn);
     else if (this.phase === 'range') v.respawnAt = this.time + (v.dummy ? 1.5 : 1);
+    else if (this.phase === 'live' && this.opts.rules && this.opts.rules.respawn !== 'none') {
+      v.respawnAt = this.time + this.opts.rules.respawnTime;
+      v.respawnPos = this.opts.rules.respawn === 'place' ? { x: v.x, y: v.y + 0.05, z: v.z, yaw: v.yaw } : null;
+    }
     v.dirty = true;
     if (this.phase === 'dm' && a && a !== v && a.kills >= this.opts.dmKills) this.endMatch(a.id);
     this.checkRoundEnd();
@@ -812,7 +882,7 @@ export class Room {
   }
 
   addMoney(p, n) {
-    p.money = clamp(p.money + n, 0, ECON.max);
+    p.money = this.opts.rules && this.opts.rules.money ? ECON.max : clamp(p.money + n, 0, ECON.max);
     p.dirty = true;
   }
 
@@ -846,7 +916,7 @@ export class Room {
         break;
       }
       case 'skin': {
-        const k = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon'].includes(m.k) ? m.k : null;
+        const k = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon', 'taki'].includes(m.k) ? m.k : null;
         if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }
         break;
       }
@@ -1088,6 +1158,7 @@ export class Room {
     const w = WEAPONS[item], eq = EQUIP[item];
     const def = (w && w.price) ? w : eq;
     if (!def) return;
+    if (!free && !ruleAllows(this.opts.rules, item)) return this.err(p, '这个房间的规则不让买这个');
     if (def.team && def.team !== p.team && this.opts.mode !== 'dm' && this.opts.mode !== 'range') return this.err(p, '本阵营无法购买');
     let price = free ? 0 : def.price;
     if (item === 'vesthelm' && p.armor >= 100 && !free) price = 350;
@@ -1125,7 +1196,7 @@ export class Room {
       if (p.kit) return this.err(p, '已有拆弹器');
       p.kit = true;
     } else return;
-    p.money -= price;
+    if (!(this.opts.rules && this.opts.rules.money)) p.money -= price;
     if (!free && price > 0) {
       const rf = this.rfOf(p);
       if (w && w.slot === 4) rf.nades[item] = (rf.nades[item] || 0) + 1;
@@ -1577,7 +1648,7 @@ export class Room {
   sendInit(p) {
     this.send(p, {
       t: 'init', you: p.id, code: this.opts.code, name: this.opts.name, map: this.map.id, mode: this.opts.mode,
-      opts: { bots: this.opts.bots, botDiff: this.opts.botDiff, teamSize: this.opts.teamSize, maxRounds: this.opts.maxRounds, ff: this.opts.ff },
+      opts: { bots: this.opts.bots, botDiff: this.opts.botDiff, teamSize: this.opts.teamSize, maxRounds: this.opts.maxRounds, ff: this.opts.ff, rules: this.opts.rules, win: this.opts.winScore },
       st: Math.round(this.time * 1000),
       players: [...this.players.values()].map((q) => this.pubInfo(q)),
       round: this.roundInfo(),

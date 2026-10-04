@@ -1,5 +1,5 @@
 // HUD 与游戏内界面：雷达、状态、计时比分、击杀信息、伤害方向、买枪菜单、记分板、聊天
-import { WEAPONS, EQUIP, BUY_MENU, MAX_NADES, moveSpeed } from '../shared/weapons.js';
+import { WEAPONS, EQUIP, BUY_MENU, MAX_NADES, moveSpeed, ruleAllows } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
 import { F, TEAM_NAME } from '../shared/constants.js';
 import { mapImage } from './mapimg.js';
@@ -12,7 +12,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 const WNAME = { world: '摔落', c4: 'C4 爆炸', he: '手雷', molotov: '燃烧', incgrenade: '燃烧', knife: '匕首' };
 export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || (EQUIP[w] && EQUIP[w].name) || w;
-export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀', tianyu: '天御刀', shadow: '影刃', dragon: '威龙之刃' };
+export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀', tianyu: '天御刀', shadow: '影刃', dragon: '威龙之刃', taki: '泷刃' };
 const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
 // 买枪菜单里的说明
 const TYPE_NAME = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '步枪', sniper: '狙击枪', mg: '机枪', grenade: '投掷物' };
@@ -683,7 +683,8 @@ export class Hud {
     this.set('buy-time', tip);
     const canBuy = g.canBuy(), teamLock = g.mode !== 'dm' && g.mode !== 'range';
     // 免费模式里能切到「全部武器」；其余时候三栏枪只摆配装里的
-    const all = free && this.buyAll, lo = g.loadout && g.loadout[me.team], maxRows = all ? 7 : 5;
+    // 规则限定了只准某一类武器：这一类的全摆出来（不按配装筛）
+    const all = (free && this.buyAll) || !!(g.rules && g.rules.weapons !== 'all'), lo = g.loadout && g.loadout[me.team], maxRows = all ? 7 : 5;
     $('buy-all').classList.toggle('hidden', !free);
     $('buy-all').classList.toggle('on', all);
     $('buy-all').textContent = all ? '只看配装' : '全部武器';
@@ -694,7 +695,7 @@ export class Hud {
       for (const id of col.items) if (!order.includes(id)) this.buyCards.get(id).classList.add('hidden');
       for (const id of order) {
         const b = this.buyCards.get(id), w = WEAPONS[id] || EQUIP[id];
-        const hide = !!(w.team && w.team !== me.team && teamLock); // 对面阵营才能买的不摆出来
+        const hide = !!(w.team && w.team !== me.team && teamLock) || (!free && !ruleAllows(g.rules, id)); // 对面阵营才能买的、这个房间的规则不让买的，都不摆出来
         b.classList.toggle('hidden', hide);
         if (hide) continue;
         listEl.appendChild(b); // 按这个顺序排（配装里的顺序）

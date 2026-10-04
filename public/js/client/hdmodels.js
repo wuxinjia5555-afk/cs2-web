@@ -484,6 +484,7 @@ const POSES = {
   knife_tianyu: { right: rKnifeRev(0.012, 0.028) },
   knife_shadow: { right: rKnifeRev(0.012, 0.027) },
   knife_dragon: { right: rKnife(0.013, 0.036) },
+  knife_taki: { right: rKnife(0.012, 0.038) },
   knife_karambit: {
     // 爪子刀横着握：刀柄左右走向，刀环在拳头左边（食指那一侧），手背对着自己
     right: { grip: [0.0085, -0.018, 0.03], thumbDir: [-1, 0, 0], palmDir: [0, 0.2, -1], hold: [0, 0.1, 0.03], elbow: [0.14, -0.42, 0.3],
@@ -519,9 +520,9 @@ function sawTeeth(z0, n, p, h, y) {
 function knifeDone(g, kind, extra) {
   const U = g.userData;
   U.kfx = { kind, spin: U.spin || null, base: U.spin ? U.spin.position.clone() : null, ...extra };
-  // 刀光：跟着刀尖（a）和刀身中段（b）走，换算到 spin 这个组自己的坐标里
+  // 刀光：跟着刀尖（a）和刀身中段（b）走，换算到 spin 这个组自己的坐标里。tr.alt：第二种形态（泷刃的长刃）用的
   const tr = U.kfx.trail;
-  if (tr) { tr.a = new THREE.Vector3(...tr.tip).sub(U.kfx.base); tr.b = new THREE.Vector3(...tr.root).sub(U.kfx.base).lerp(tr.a, 0.7); }
+  for (const t of tr ? [tr, tr.alt] : []) if (t) { t.a = new THREE.Vector3(...t.tip).sub(U.kfx.base); t.b = new THREE.Vector3(...t.root).sub(U.kfx.base).lerp(t.a, 0.7); }
   U.muzzle = new THREE.Vector3(0, 0.02, -0.25);
   return g;
 }
@@ -828,6 +829,109 @@ function knifeDragon(k) {
   return knifeDone(k.build(), 'dragon', { trail: { tip: [0, 0.037, -0.222], root: [0, 0.012, -0.06], color: 0xff3ad8 } });
 }
 
+// ---------------- 泷刃：双形态的苦无 ----------------
+// 样子是照着手游里那把「短匕 ↔ 水刃」近战武器的大致轮廓自己搭的，没有用别人的模型和贴图。
+// 短匕形态：细长的深蓝色双刃苦无，两边刃口是灰蓝色的亮钢，刀身下半边一道发光的水纹；护手是一块切了角的深蓝色方块，
+// 两面各嵌一块发光的水蓝色面板、上面一个白色的四角星；刀柄缠暗红色的绳，刀尾是一截菱形的短刺、中间透着蓝光。
+// 长刃形态：刀在手里掉个头变成反握，苦无的刀身上涌出一道水流凝成的长刃（water 组：沿刀身方向伸缩；只有第一人称才做）
+const TAKI_LW = 0.4; // 水刃有多长
+const takiW = (u) => (u < 0.22 ? 0.0125 + 0.0045 * Math.sin((u / 0.22) * Math.PI / 2) : 0.017 * (1 - Math.pow((u - 0.22) / 0.78, 1.55))) + 0.0005; // 水刃半边有多宽（u：0 根 ~ 1 尖）
+// 水刃外面那层流动的水：竖着一片、横着一片，都是里面实、外沿透明（半透明的蓝，不是加亮 —— 背景再亮也还是水的颜色）；
+// 外沿每帧跟着水纹起伏（flow(t)）
+function waterAura() {
+  const N = 34, pos = new Float32Array((N + 1) * 24), col = new Float32Array((N + 1) * 32), idx = [];
+  for (let i = 0; i < N; i++) for (const b of [0, 4]) for (let j = 0; j < 3; j++) { const a = i * 8 + b + j, c = a + 8; idx.push(a, a + 1, c, a + 1, c + 1, c); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  mesh.frustumCulled = false;
+  mesh.userData.flow = (t) => {
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, z = -TAKI_LW * u * 1.012, h = takiW(u);
+      const env = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.06 + 0.04)), 0.55);
+      // 一边是一个个往刀尖那边赶的浪头（刀自己的 -Y 那一侧：两种拿法里它都朝着画面上方），另一边平一些
+      const w1 = Math.pow(0.5 + 0.5 * Math.sin(u * 36 - t * 11 + Math.sin(u * 9 + t * 3) * 1.4), 2.2);
+      const w2 = Math.pow(0.5 + 0.5 * Math.sin(u * 29 - t * 8.5 + 2), 2);
+      const up = h + (0.003 + 0.007 * w2) * env, dn = h + (0.004 + 0.017 * w1) * env, sd = 0.004 + (0.004 + 0.004 * w2) * env;
+      const k = (0.8 + 0.2 * Math.sin(u * 20 - t * 14)) * (u > 0.94 ? (1 - u) / 0.06 : 1);
+      const P = [0, up, z, 0, h * 0.8, z, 0, -h * 0.8, z, 0, -dn, z, -sd, 0, z, -0.002, 0, z, 0.002, 0, z, sd, 0, z];
+      for (let j = 0; j < 8; j++) {
+        const q = (i * 8 + j) * 3, c = (i * 8 + j) * 4, inner = j === 1 || j === 2 || j === 5 || j === 6;
+        pos[q] = P[j * 3]; pos[q + 1] = P[j * 3 + 1]; pos[q + 2] = P[j * 3 + 2];
+        col[c] = inner ? 0.2 : 0.02; col[c + 1] = inner ? 0.62 : 0.3; col[c + 2] = 1; col[c + 3] = inner ? 0.86 * k : 0;
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  };
+  mesh.userData.flow(0);
+  return mesh;
+}
+function knifeTaki(k) {
+  const Y0 = 0.012, ZB = -0.054, L = 0.21;
+  // 刀身上下两半各有多高（s：0 刀根 ~ 1 刀尖）：靠护手有一个小肩膀，往前一路收到刀尖
+  const hT = (s) => (s < 0.1 ? 0.0165 + 0.002 * (s / 0.1) : s < 0.15 ? 0.0185 - 0.005 * ((s - 0.1) / 0.05) : 0.0135 * Math.pow(1 - (s - 0.15) / 0.85, 0.9)) + 0.0004;
+  const hB = (s) => (s < 0.13 ? 0.016 + 0.0035 * (s / 0.13) : 0.0195 * Math.pow(1 - (s - 0.13) / 0.87, 0.95)) + 0.0004;
+  const th = (s) => 0.0064 * (1 - 0.82 * s);
+  const S = k.hd ? [0, 0.05, 0.1, 0.15, 0.22, 0.32, 0.44, 0.56, 0.68, 0.8, 0.9, 0.96, 1] : [0, 0.1, 0.15, 0.4, 0.7, 1];
+  // 双刃：上下各一半，都从中线（刀脊）磨到刃口
+  const half = (h, sg) => S.map((s) => { const z = ZB - L * s; return [z, Y0, z, Y0 + sg * h(s), th(s), h(s) * 0.52, th(s)]; });
+  const COL = [[-0.012, Y0 - 0.0125], [-0.012, Y0 + 0.0125], [-0.021, Y0 + 0.0195], [-0.047, Y0 + 0.0195], [-0.056, Y0 + 0.0125],
+    [-0.056, Y0 - 0.0125], [-0.047, Y0 - 0.0195], [-0.021, Y0 - 0.0195]];
+  const TAIL = [[0.088, Y0 + 0.0085], [0.103, Y0 + 0.0165], [0.152, Y0], [0.103, Y0 - 0.0165], [0.088, Y0 - 0.0085]];
+  k.group('spin', () => {
+    k.blade('navy', 'navyE', half(hT, 1), { curve: true });
+    k.blade('navy', 'navyE', half(hB, -1), { curve: true });
+    // 刀身下半边的水纹：一道发光的细线，分三段跟着刀身越来越薄
+    k.fine(() => {
+      for (const [s0, s1] of [[0.07, 0.32], [0.32, 0.57], [0.57, 0.82]]) {
+        const c = [];
+        for (let i = 0; i <= 4; i++) { const s = s0 + ((s1 - s0) * i) / 4; c.push([ZB - L * s, Y0 - hB(s) * 0.36, 0.0011 * (1 - s) + 0.0004]); }
+        k.prof('aqua', ribbon(c), th(s0) + 0.0005, { bevel: 0.0003 });
+      }
+    });
+    // 护手：切了角的方块，一圈亮边；两面各一块发光的面板，面板上一个白色的四角星
+    k.prof('navy', COL, 0.0165, { bevel: 0.0035 });
+    k.prof('aqua', rrect(-0.0455, Y0 - 0.0115, -0.0225, Y0 + 0.0115, 0.0025), 0.0172, { bevel: 0.0004 });
+    k.fine(() => {
+      k.prof('navyE', grow(COL, 0.0011), 0.0056, { bevel: 0.0008 });
+      const cz = -0.034;
+      k.prof('rune', [[cz, Y0 + 0.0092], [cz + 0.0019, Y0], [cz, Y0 - 0.0092], [cz - 0.0019, Y0]], 0.0178, { bevel: 0 });
+      k.prof('rune', [[cz - 0.0085, Y0], [cz, Y0 + 0.0019], [cz + 0.0085, Y0], [cz, Y0 - 0.0019]], 0.0178, { bevel: 0 });
+    });
+    // 刀柄：缠着暗红色的绳，两头各一道箍
+    k.loft('wine', [[0, 0.0178, 0.0226], [0.03, 0.0192, 0.0242], [0.07, 0.0192, 0.0242], [0.1, 0.0178, 0.0226]], back(Y0, -0.012), { exp: 2.8 });
+    k.fine(() => { for (let i = 0; i < 8; i++) k.box('wineD', 0.0199, 0.0249, 0.0045, 0, Y0, -0.006 + i * 0.0124, { r: 0.0018 }); });
+    for (const z of [-0.0105, 0.0875]) k.box('navy', 0.021, 0.0262, 0.006, 0, Y0, z, { r: 0.002 });
+    // 刀尾：菱形的短刺，中间透着蓝光
+    k.prof('navy', TAIL, 0.0078, { bevel: 0.003 });
+    k.prof('aqua', [[0.097, Y0], [0.106, Y0 + 0.0082], [0.136, Y0], [0.106, Y0 - 0.0082]], 0.0084, { bevel: 0.0006 });
+    k.fine(() => k.prof('navyE', grow(TAIL, 0.001), 0.0026, { bevel: 0.0006 }));
+  }, { pivot: [0, Y0, 0.038] });
+  // 水刃的芯：一把细长的双刃，把苦无的刀身包在里面
+  if (k.hd) {
+    k.group('water', () => {
+      const N = 16, t = (u) => 0.0074 * (1 - 0.8 * u);
+      const st = (sg) => Array.from({ length: N + 1 }, (_, i) => { const u = i / N, z = ZB - TAKI_LW * u, h = takiW(u); return [z, Y0, z, Y0 + sg * h, t(u), h * 0.6, t(u)]; });
+      k.blade('waterC', 'waterE', st(1), { curve: true });
+      k.blade('waterC', 'waterE', st(-1), { curve: true });
+      // 芯里几道深色的水纹（顺着刀身的细线）
+      for (const [u0, u1, y] of [[0.1, 0.5, 0.3], [0.3, 0.8, -0.28], [0.55, 0.92, 0.12]]) {
+        const c = [];
+        for (let i = 0; i <= 5; i++) { const u = u0 + ((u1 - u0) * i) / 5; c.push([ZB - TAKI_LW * u, Y0 + takiW(u) * y, 0.0009 * Math.sin((i / 5) * Math.PI) + 0.0003]); }
+        k.prof('waterE', ribbon(c), t(u0) + 0.0005, { bevel: 0.0003 });
+      }
+    }, { pivot: [0, Y0, ZB], parent: 'spin' });
+  }
+  const g = k.build(), U = g.userData;
+  let aura = null;
+  if (U.water) { aura = waterAura(); U.water.add(aura); U.water.visible = false; }
+  return knifeDone(g, 'taki', { water: U.water || null, aura, len: TAKI_LW, ext: 0,
+    trail: { tip: [0, Y0, ZB - L], root: [0, Y0, -0.06], color: 0x4fc3ff, alt: { tip: [0, Y0, ZB - TAKI_LW], root: [0, Y0, -0.1] } } });
+}
+
 // ============================== 对外 ==============================
 // 有高精度模型的武器。gun(hd)：hd=true 是第一人称用的，false 是远处看的简化版
 const more = (wid, lay) => ({ gun: (hd) => GUNS[wid](new Kit(hd)), lay });
@@ -871,6 +975,7 @@ export const HD_KNIVES = {
   tianyu: (hd) => knifeTianyu(new Kit(hd)),
   shadow: (hd) => knifeShadow(new Kit(hd)),
   dragon: (hd) => knifeDragon(new Kit(hd)),
+  taki: (hd) => knifeTaki(new Kit(hd)),
 };
 
 export { POSES as HAND_POSES }; // 预览页调姿势用

@@ -110,6 +110,15 @@ export const HD_MATS = {
   neon: { color: 0xff62e2, metal: 0, rough: 0.4, glow: 0xff2ad2, glowK: 1.5 },      // 描边的霓虹粉
   carbon: { color: 0x16151c, metal: 0.45, rough: 0.5 },
   ivory: { color: 0xf5f0ff, metal: 0.2, rough: 0.3, glow: 0xd8c6ff, glowK: 0.45 },  // 刀刃根上那排白色的尖齿
+  // 泷刃（双形态的苦无）
+  navy: { color: 0x1d2b47, metal: 0.82, rough: 0.36, tex: 'metal', uv: 9 },         // 深蓝色的刀身、护手
+  navyE: { color: 0x93a8c4, metal: 1, rough: 0.2 },                                 // 磨出来的刃面：灰蓝色的亮钢
+  aqua: { color: 0x7fdcff, metal: 0.1, rough: 0.3, glow: 0x2aaeff, glowK: 1.35 },   // 发光的水蓝色面板、水纹
+  rune: { color: 0xffffff, metal: 0, rough: 0.4, glow: 0xd4f5ff, glowK: 1.1 },      // 面板上的白色符纹
+  wine: { color: 0x58222c, metal: 0, rough: 0.84, tex: 'cloth', uv: 60 },           // 刀柄上暗红色的缠绳
+  wineD: { color: 0x3c161d, metal: 0, rough: 0.86 },
+  waterC: { color: 0x8fd6ff, metal: 0, rough: 0.2, glow: 0x5fbcf5, glowK: 0.85 },   // 水刃的芯：中间一道发白的水色
+  waterE: { color: 0x1c74d6, metal: 0, rough: 0.25, glow: 0x1668e0, glowK: 0.9 },   // 水刃的两边：深一些的蓝
 };
 const stdCache = new Map(), flatCache = new Map();
 // 第一人称用的材质（带金属反光和贴图）；extra 可以加自定义材质（比如按队伍上色的手套）

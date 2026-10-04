@@ -4,7 +4,7 @@ import { settings, saveSettings, resetSettings, applyCrosshair, useTouch, BIND_A
 import { TouchControls } from './client/touch.js';
 import { ViewModel } from './client/viewmodel.js';
 import { audio } from './client/audio.js';
-import { WEAPONS, LOADOUT_KEYS, LOADOUT_POOL, START_PISTOLS, fixLoadout } from './shared/weapons.js';
+import { WEAPONS, LOADOUT_KEYS, LOADOUT_POOL, START_PISTOLS, fixLoadout, RULE_DEFAULT, fixRules } from './shared/weapons.js';
 import { weaponIcon, iconsDone } from './client/icons.js';
 import { WsNet, LocalNet, defaultServerUrl } from './client/net.js';
 import { Game } from './client/game.js';
@@ -104,7 +104,7 @@ function hideMenus() { for (const m of document.querySelectorAll('.menu')) m.cla
 // 子页面（联机、背包、好友、设置……）顶上那条导航：哪个页面开着就亮哪个；在游戏里打开设置时不显示
 function syncNav() {
   const cur = [...document.querySelectorAll('.menu')].find((m) => !m.classList.contains('hidden'));
-  const on = !!cur && cur.id !== 'menu-main' && !game;
+  const on = !!cur && cur.id !== 'menu-main' && cur.id !== 'menu-custom' && !game; // 自定义模式是整屏的页面，有自己的返回键
   $('subnav').classList.toggle('hidden', !on);
   $('menus').classList.toggle('sub', on);
   if (on) for (const t of document.querySelectorAll('#subnav [data-for]')) t.classList.toggle('on', t.dataset.for.split(' ').includes(cur.id));
@@ -398,6 +398,159 @@ $('btn-start-offline').addEventListener('click', () => {
     else if (starting) starting.pending.push(m);
   };
   net.connect();
+});
+
+// ---------------- 自定义模式（自由创建） ----------------
+// 左边一列分页，右边是这一页的选项。每一项：单选（菱形勾）、开关、滑条（带 − ＋）、输入框、地图卡片
+const CU_PAGES = {
+  map: [
+    { k: 'mode', l: '模式选择', t: 'radio', o: [['bomb', '爆破模式'], ['dm', '死斗']] },
+    { k: 'where', l: '房间类型', t: 'radio', o: [['local', '单机（打机器人）'], ['online', '联机房间']] },
+    { k: 'map', l: '地图选择', t: 'maps' },
+  ],
+  base: [
+    { k: 'name', l: '房间名称', t: 'text', max: 24, ph: '联机房间的名字' },
+    { k: 'bots', l: '机器人补位', t: 'toggle' },
+    { k: 'botDiff', l: '机器人难度', t: 'radio', o: [[0, '新手'], [1, '简单'], [2, '普通'], [3, '中等'], [4, '困难'], [5, '专家']] },
+    { k: 'teamT', l: '攻方人数', s: '匪徒 T', t: 'slider', min: 1, max: 5 },
+    { k: 'teamCT', l: '守方人数', s: '警察 CT', t: 'slider', min: 1, max: 5 },
+    { k: 'win', l: '胜利所需回合数', t: 'slider', min: 1, max: 16 },
+  ],
+  weapon: [
+    { k: 'armor', l: '护甲设置', t: 'radio', o: [['default', '默认设置'], ['none', '无护甲'], ['light', '轻甲'], ['heavy', '重甲']] },
+    { k: 'ammo', l: '弹药设置', t: 'radio', o: [['default', '默认设置'], ['mag', '无限弹药'], ['reserve', '无限备弹']] },
+    { k: 'money', l: '无限资金', t: 'toggle' },
+    { k: 'weapons', l: '武器', t: 'radio', o: [['all', '全部武器'], ['pistol', '只准手枪'], ['smg', '只准冲锋枪'], ['rifle', '只准步枪'], ['sniper', '只准狙击枪'], ['shotgun', '只准霰弹枪'], ['knife', '只准刀'], ['random', '随机武器']] },
+    { k: 'drop', l: '死亡掉落武器', t: 'toggle' },
+  ],
+  round: [
+    { k: 'freeze', l: '准备回合时间（秒）', t: 'slider', min: 0, max: 60 },
+    { k: 'roundTime', l: '战斗回合时间（秒）', t: 'slider', min: 20, max: 300, step: 5 },
+    { k: 'bomb', l: '是否有炸弹', t: 'toggle' },
+    { k: 'bombTime', l: '炸弹倒计时', t: 'radio', o: [[40, '40 秒'], [45, '45 秒'], [60, '60 秒']] },
+    { k: 'swap', l: '是否半场攻防转换', t: 'toggle' },
+    { k: 'respawn', l: '复活设置', t: 'radio', o: [['none', '默认设置'], ['place', '原地复活'], ['spawn', '己方出生点复活']] },
+    { k: 'respawnTime', l: '复活时间（秒）', t: 'slider', min: 0, max: 30, step: 0.5 },
+  ],
+  special: [
+    { k: 'hp', l: '血量设置', t: 'number', min: 1, max: 500 },
+    { k: 'steps', l: '脚步声开关', t: 'toggle' },
+    { k: 'special', l: '特殊状态', t: 'radio', o: [['none', '无特殊状态'], ['lowgrav', '低重力'], ['fast', '加速']] },
+    { k: 'ff', l: '友军伤害', t: 'toggle' },
+  ],
+};
+const CU_DEFAULT = { mode: 'bomb', where: 'local', map: '', name: '', bots: true, botDiff: 2, bombTime: 40, ff: false, ...RULE_DEFAULT };
+const CU_ALL = Object.values(CU_PAGES).flat();
+let cu = null, cuTab = 'map';
+const cuThumbs = new Map();
+function cuState() {
+  if (!cu) cu = { ...CU_DEFAULT, ...(settings.custom || {}) };
+  if (!MAP_LIST.some((m) => m.id === cu.map)) cu.map = settings.lastMap && MAP_LIST.some((m) => m.id === settings.lastMap) ? settings.lastMap : MAP_LIST[0].id;
+  return cu;
+}
+function cuKeep() { settings.custom = { ...cu }; saveSettings(); }
+const cuText = (it, v) => (it.t === 'toggle' ? (v ? '开启' : '关闭') : it.o ? (it.o.find((x) => x[0] === v) || [0, v])[1] : it.t === 'maps' ? (MAP_LIST.find((m) => m.id === v) || {}).name : String(v));
+function renderCustom() {
+  const c = cuState();
+  for (const b of $('cu-tabs').children) b.classList.toggle('on', b.dataset.cu === cuTab);
+  $('cu-page').innerHTML = CU_PAGES[cuTab].map((it) => {
+    const v = c[it.k], L = `<span class="cu-l">${it.l}${it.s ? `<small>${it.s}</small>` : ''}</span>`;
+    if (it.t === 'radio') return `<div class="cu-row">${L}<div class="cu-opts">${it.o.map((x, i) => `<button class="cu-opt${x[0] === v ? ' on' : ''}" data-k="${it.k}" data-i="${i}">${x[1]}<i></i></button>`).join('')}</div></div>`;
+    if (it.t === 'toggle') return `<div class="cu-row">${L}<div class="cu-opts"><button class="cu-opt${v ? ' on' : ''}" data-k="${it.k}" data-tg="1">开启<i></i></button></div></div>`;
+    if (it.t === 'slider') return `<div class="cu-row">${L}<div class="cu-sl"><b class="cu-val" data-val="${it.k}">${v}</b><button class="cu-pm" data-k="${it.k}" data-d="-1">−</button><input type="range" min="${it.min}" max="${it.max}" step="${it.step || 1}" value="${v}" data-k="${it.k}"><button class="cu-pm" data-k="${it.k}" data-d="1">＋</button></div></div>`;
+    if (it.t === 'text') return `<div class="cu-row">${L}<input class="cu-in" maxlength="${it.max}" placeholder="${it.ph || ''}" value="${esc(v || '')}" data-k="${it.k}"></div>`;
+    if (it.t === 'number') return `<div class="cu-row">${L}<input class="cu-in num" type="number" min="${it.min}" max="${it.max}" value="${v}" data-k="${it.k}"></div>`;
+    return `<div class="cu-row col">${L}<div class="cu-maps">${MAP_LIST.map((m) => `<button class="cu-map${m.id === v ? ' on' : ''}" data-map="${m.id}"><canvas width="240" height="150" data-thumb="${m.id}"></canvas><b>${esc(m.name)}</b></button>`).join('')}</div></div>`;
+  }).join('');
+  // 地图卡片上的俯视图
+  for (const cv of $('cu-page').querySelectorAll('[data-thumb]')) {
+    const id = cv.dataset.thumb;
+    if (!cuThumbs.has(id)) cuThumbs.set(id, mapImage(getMap(id), 4, { zones: false }));
+    const img = cuThumbs.get(id), ctx = cv.getContext('2d'), k = Math.max(cv.width / img.width, cv.height / img.height);
+    ctx.fillStyle = '#0b1018'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, (cv.width - img.width * k) / 2, (cv.height - img.height * k) / 2, img.width * k, img.height * k);
+  }
+}
+function cuSet(k, v) {
+  const it = CU_ALL.find((x) => x.k === k), c = cuState();
+  if (it.t === 'slider' || it.t === 'number') { const st = it.step || 1; v = Math.min(it.max, Math.max(it.min, Math.round(v / st) * st)); if (!Number.isFinite(v)) v = CU_DEFAULT[k]; }
+  c[k] = v;
+  cuKeep();
+}
+function openCustom() {
+  audio.init();
+  showMenu('menu-custom');
+  cuState();
+  if (!cu.name) cu.name = `${playerName()} 的房间`;
+  renderCustom();
+  menuScene.setMap(cu.map);
+}
+function cuPop(title, html) { $('cu-pop-h').textContent = title; $('cu-pop-body').innerHTML = html; $('cu-pop').classList.remove('hidden'); }
+$('btn-custom').addEventListener('click', () => { audio.play('click'); openCustom(); });
+$('cu-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-cu]'); if (b) { cuTab = b.dataset.cu; audio.play('click'); renderCustom(); } });
+$('cu-page').addEventListener('click', (e) => {
+  const m = e.target.closest('[data-map]');
+  if (m) { cuSet('map', m.dataset.map); settings.lastMap = m.dataset.map; saveSettings(); menuScene.setMap(m.dataset.map); audio.play('click'); renderCustom(); return; }
+  const o = e.target.closest('.cu-opt');
+  if (o) {
+    const it = CU_ALL.find((x) => x.k === o.dataset.k);
+    cuSet(it.k, o.dataset.tg ? !cuState()[it.k] : it.o[+o.dataset.i][0]);
+    audio.play('click'); renderCustom(); return;
+  }
+  const pm = e.target.closest('.cu-pm');
+  if (pm) { const it = CU_ALL.find((x) => x.k === pm.dataset.k); cuSet(it.k, cuState()[it.k] + +pm.dataset.d * (it.step || 1)); audio.play('click'); renderCustom(); }
+});
+$('cu-page').addEventListener('input', (e) => {
+  const el = e.target, k = el.dataset && el.dataset.k;
+  if (!k) return;
+  if (el.type === 'range') { cuSet(k, +el.value); const b = $('cu-page').querySelector(`[data-val="${k}"]`); if (b) b.textContent = cuState()[k]; }
+  else if (el.type === 'number') { if (el.value !== '') cuSet(k, +el.value); }
+  else { cuState()[k] = el.value; cuKeep(); }
+});
+$('cu-page').addEventListener('change', (e) => { if (e.target.type === 'number') renderCustom(); });
+$('cu-reset').addEventListener('click', () => { for (const it of CU_PAGES[cuTab]) if (it.k !== 'map') cuState()[it.k] = CU_DEFAULT[it.k]; cuKeep(); renderCustom(); toast('这一页已恢复默认'); });
+$('cu-pop-x').addEventListener('click', () => $('cu-pop').classList.add('hidden'));
+$('cu-preview').addEventListener('click', () => {
+  const c = cuState();
+  cuPop('设置预览', '<ul>' + CU_ALL.map((it) => `<li><span>${it.l}</span><b>${esc(cuText(it, c[it.k]) || '')}</b>${it.k !== 'map' && it.k !== 'name' && c[it.k] !== CU_DEFAULT[it.k] ? '<i style="color:#ff6a84;font-style:normal">已改</i>' : ''}</li>`).join('') + '</ul>');
+});
+// 模板：把现在这一套设置存下来（最多 6 套），以后一点就换上
+$('cu-save').addEventListener('click', () => {
+  const list = (settings.customTpl = settings.customTpl || []);
+  const name = (cuState().name || '我的规则').slice(0, 16) + ' · ' + cuText(CU_ALL.find((x) => x.k === 'weapons'), cu.weapons);
+  list.unshift({ name, at: Date.now(), data: { ...cu } });
+  if (list.length > 6) list.length = 6;
+  saveSettings();
+  toast('已保存为模板（在「我的模板」里）');
+});
+function cuTplList() {
+  const list = settings.customTpl || [];
+  cuPop('我的模板', list.length ? '<ul>' + list.map((t, i) => `<li><b>${esc(t.name)}</b><button class="cu-btn" data-tpl="${i}">使用</button><button class="cu-btn" data-tpl-del="${i}">删除</button></li>`).join('') + '</ul>' : '<p style="color:#97a3b3">还没有模板。把规则调好以后点左下角「保存为模板」。</p>');
+}
+$('cu-tpl').addEventListener('click', cuTplList);
+$('cu-pop-body').addEventListener('click', (e) => {
+  const u = e.target.closest('[data-tpl]'), d = e.target.closest('[data-tpl-del]');
+  if (u) { cu = { ...CU_DEFAULT, ...settings.customTpl[+u.dataset.tpl].data }; cuKeep(); $('cu-pop').classList.add('hidden'); renderCustom(); toast('已换上这套模板'); }
+  else if (d) { settings.customTpl.splice(+d.dataset.tplDel, 1); saveSettings(); cuTplList(); }
+});
+$('cu-create').addEventListener('click', async () => {
+  const c = cuState();
+  const opts = { name: (c.name || '').trim(), map: c.map, mode: c.mode, bots: !!c.bots, botDiff: c.botDiff, teamSize: Math.max(c.teamT, c.teamCT), bombTime: c.bombTime, ff: !!c.ff, rules: fixRules(c) };
+  audio.init();
+  if (c.where === 'local') {
+    goFullscreen();
+    const net = new LocalNet(opts, playerName());
+    net.onmessage = (m) => {
+      if (m.t === 'init' && !game && !starting) startGame(net, m);
+      else if (starting) starting.pending.push(m);
+    };
+    net.connect();
+    return;
+  }
+  await openOnline();
+  if (!lobby || !lobby.net || !lobby.net.open) { toast('还没有连接到联机服务器'); return; }
+  goFullscreen();
+  lobby.net.send({ t: 'create', opts });
 });
 
 // ---------------- 靶场 ----------------
@@ -777,6 +930,7 @@ const KNIVES = [
   { id: 'tianyu', name: '★ 天御刀', rarity: '隐秘', cls: 'r-covert', desc: '反握的弯刃礼刀：青蓝色发光的刀身、鎏金护手、号角形的刀尾。拔刀时在手心前面转一圈多再握住；按 F 检视会把刀掉个头、横端在面前，左手从下面托住刀身；挥刀带一道蓝色刀光。' },
   { id: 'shadow', name: '★ 影刃', rarity: '隐秘', cls: 'r-covert', desc: '反握的黑色弯刃：刀身里一道紫色闪电，刀背带倒刺，护手像一对蝙蝠翅膀。拔刀又快又脆；按 F 检视会立起来看、横过来看、再翻到另一面；挥刀带紫色刀光。' },
   { id: 'dragon', name: '★ 威龙之刃', rarity: '隐秘', cls: 'r-covert', desc: '霓虹描边的折线战术刀：淡紫色刀身、刃根一排白色尖齿、刀尾带环。拔刀时绕着食指连转两圈；按 F 检视会看两面、横着端平，再转一圈收回来；挥刀带粉色刀光。' },
+  { id: 'taki', name: '★ 泷刃', rarity: '隐秘', cls: 'r-covert', desc: '双形态的苦无：平时是深蓝色的细长短匕，护手上嵌着发光的水蓝色符纹，刀柄缠暗红色的绳、刀尾一截菱形短刺。按 F（检视）不是看刀而是变形 —— 左手从刀尖拉出一道水流凝成长刃，刀在手里掉个头变成反握；再按一次，水刃碎成水花变回短匕。挥刀带水蓝色刀光。' },
 ];
 let inv = null;
 
@@ -802,6 +956,7 @@ function renderInv() {
   $('inv-name').textContent = k.name;
   $('inv-name').className = 'inv-name ' + k.cls;
   $('inv-desc').textContent = k.desc;
+  $('inv-inspect').textContent = k.id === 'taki' ? '🌊 变形' : '🔍 检视'; // 泷刃按检视键是变形
   const b = $('inv-equip'), own = ownsSkin(k.id);
   b.classList.toggle('buy', !own && inv.confirm !== k.id);
   b.classList.toggle('confirm', !own && inv.confirm === k.id);
@@ -1064,7 +1219,7 @@ function tellServerWho() {
 $('acct-sync-now').addEventListener('click', () => uploadNow());
 
 // ---------------- 好友 ----------------
-const SKIN_LABEL = { butterfly: '★ 蝴蝶刀', karambit: '★ 爪子刀', m9: '★ M9 刺刀', xeno: '★ 剥皮小刀', tianyu: '★ 天御刀', shadow: '★ 影刃', dragon: '★ 威龙之刃' };
+const SKIN_LABEL = { butterfly: '★ 蝴蝶刀', karambit: '★ 爪子刀', m9: '★ M9 刺刀', xeno: '★ 剥皮小刀', tianyu: '★ 天御刀', shadow: '★ 影刃', dragon: '★ 威龙之刃', taki: '★ 泷刃' };
 let giftTo = null, delAsk = null;
 function seenText(t) {
   if (!t) return '很久没上线';

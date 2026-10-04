@@ -420,4 +420,40 @@ export function spreadDir(yaw, pitch, inacc, rnd, out) {
 
 export const isGun = (w) => !!w && (w.type === 'pistol' || w.type === 'smg' || w.type === 'shotgun' || w.type === 'rifle' || w.type === 'sniper' || w.type === 'mg');
 // 栓动狙击枪（开一枪要拉一次栓、开完枪会退镜）；连狙不算
+// ---------- 自定义模式的规则 ----------
+// 建房间时带过来的规则先在这里整理成合规的（服务器、人机练习、界面都用这一份）
+export const RULE_DEFAULT = {
+  teamT: 5, teamCT: 5, win: 8, freeze: 6, roundTime: 115, bomb: true, swap: true, respawn: 'none', respawnTime: 3,
+  armor: 'default', ammo: 'default', money: false, weapons: 'all', drop: true, hp: 100, steps: true, special: 'none',
+};
+export const RULE_CHOICES = {
+  respawn: ['none', 'spawn', 'place'], armor: ['default', 'none', 'light', 'heavy'], ammo: ['default', 'mag', 'reserve'],
+  weapons: ['all', 'pistol', 'smg', 'rifle', 'sniper', 'shotgun', 'knife', 'random'], special: ['none', 'lowgrav', 'fast'],
+};
+export const RULE_RANGE = { teamT: [1, 5], teamCT: [1, 5], win: [1, 16], freeze: [0, 60], roundTime: [20, 600], respawnTime: [0, 30], hp: [1, 500] };
+export function fixRules(r) {
+  if (!r || typeof r !== 'object') return null;
+  const o = {};
+  for (const k in RULE_DEFAULT) {
+    const d = RULE_DEFAULT[k], v = r[k];
+    if (RULE_RANGE[k]) o[k] = typeof v === 'number' && Number.isFinite(v) ? Math.min(RULE_RANGE[k][1], Math.max(RULE_RANGE[k][0], k === 'respawnTime' ? Math.round(v * 2) / 2 : Math.round(v))) : d;
+    else if (RULE_CHOICES[k]) o[k] = RULE_CHOICES[k].includes(v) ? v : d;
+    else o[k] = v == null ? d : !!v;
+  }
+  return o;
+}
+const RULE_TYPE = { pistol: ['pistol'], smg: ['smg'], rifle: ['rifle'], sniper: ['sniper'], shotgun: ['shotgun'] };
+// 这个房间里能不能买这样东西（武器 id 或者装备 id）
+export function ruleAllows(rules, id) {
+  if (!rules) return true;
+  const w = WEAPONS[id];
+  if (!w) return id === 'kit' ? rules.bomb : rules.armor === 'default'; // 装备：护甲只有「默认」时能自己买；没炸弹就不用拆弹器
+  if (w.slot === 4) return rules.weapons !== 'knife' && rules.weapons !== 'random';
+  if (rules.weapons === 'all') return true;
+  if (rules.weapons === 'knife' || rules.weapons === 'random') return false;
+  return RULE_TYPE[rules.weapons].includes(w.type) || (rules.weapons === 'rifle' && w.type === 'mg');
+}
+// 「随机武器」的池子
+export const RULE_RANDOM = ['ak47', 'm4a4', 'm4a1s', 'galil', 'famas', 'sg553', 'aug', 'awp', 'ssg08', 'mp9', 'mac10', 'mp7', 'p90', 'ump45', 'bizon', 'nova', 'xm1014', 'mag7', 'negev', 'deagle', 'revolver', 'elite'];
+
 export const isBoltSniper = (w) => !!w && w.type === 'sniper' && !w.auto;

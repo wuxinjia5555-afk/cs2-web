@@ -62,6 +62,7 @@ export class Game {
     // 靶场：统计开枪 / 命中 / 爆头 / 击杀
     this.rangeStats = this.mode === 'range' ? { shots: 0, hits: 0, hs: 0, kills: 0 } : null;
     this.rangeOpts = init.ro || null;
+    this.rules = (init.opts && init.opts.rules) || null; // 自定义模式的规则（没有就是标准规则）
     this.assist = null;
     this.aimEnemy = false;
 
@@ -1343,7 +1344,8 @@ export class Game {
     cmd.yaw = this.yaw;
     cmd.pitch = this.pitch;
     this.tagK = Math.min(1, this.tagK + dt * TAG_RECOVER);
-    cmd.speed = moveSpeed(w, this.w.scope > 0) * this.tagK;
+    cmd.speed = moveSpeed(w, this.w.scope > 0) * this.tagK * (this.rules && this.rules.special === 'fast' ? 1.3 : 1);
+    cmd.grav = this.rules && this.rules.special === 'lowgrav' ? 0.45 : 1;
     cmd.frozen = this.frozen();
     this.acc += dt;
     let n = 0;
@@ -1368,7 +1370,7 @@ export class Game {
     const sp = Math.hypot(s.vx, s.vz);
     if (s.onGround && sp > 2.9 && !cmd.walk && !s.crouched) {
       this.stepAcc += sp * dt;
-      if (this.stepAcc > 2.3) { this.stepAcc = 0; audio.step(null, 0.14, this.surfaceUnder(s.x, s.y, s.z)); }
+      if (this.stepAcc > 2.3) { this.stepAcc = 0; if (!(this.rules && !this.rules.steps)) audio.step(null, 0.14, this.surfaceUnder(s.x, s.y, s.z)); }
     }
   }
 
@@ -1449,7 +1451,7 @@ export class Game {
         const ww = WEAPONS[it.w];
         const take = Math.min(ww.mag - it.clip, it.res);
         it.clip += take;
-        it.res -= take;
+        if (!(this.rules && this.rules.ammo !== 'default')) it.res -= take;
       }
       W.reloadEnd = 0;
     }
@@ -1572,7 +1574,7 @@ export class Game {
 
   fireOnce(w, it) {
     const W = this.w, now = this.now;
-    if (!(this.rangeOpts && this.rangeOpts.ammo === 'mag')) it.clip--;
+    if (!(this.rangeOpts && this.rangeOpts.ammo === 'mag') && !(this.rules && this.rules.ammo === 'mag')) it.clip--;
     W.nextFire = now + 60 / w.rpm;
     W.lastShot = now;
     const inacc = this.currentInacc(w);
@@ -1743,7 +1745,7 @@ export class Game {
         p.stepAcc += p.speed * dt;
         if (p.stepAcc > 2.3) {
           p.stepAcc = 0;
-          const heard = audio.step([x, y, z], 0.6, this.surfaceUnder(x, y, z));
+          const heard = this.rules && !this.rules.steps ? null : audio.step([x, y, z], 0.6, this.surfaceUnder(x, y, z));
           if (heard && this.isEnemyId(p.id)) this.soundPing(x, z, heard.d / 32, 'step');
         }
       }

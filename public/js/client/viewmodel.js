@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { makeWeapon, armColors } from './models.js';
 import { HD, hdHands, hdOffHand, hdSupportHand, handPose, HAND_SHAPES } from './hdmodels.js';
 import { viewEnv } from './hdkit.js';
-import { flare } from './textures.js';
+import { flare, softDot } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
 import { clipFor, sample, KNIFE_FX, KNIFE_POSES, KNIFE_HIT, seg, eOut, sstep, easeOf } from './vmanims.js';
@@ -37,6 +37,8 @@ const LAYOUT = {
   knife_tianyu: { pos: [-0.04, -0.2, -0.47], dir: [0.97, 0.1, -0.2], elbow: [0.5, -0.62, 0.0], scale: 1.15, bob: 0.7, noOff: true },
   knife_shadow: { pos: [0.15, -0.115, -0.36], dir: [0.6, 0.45, -0.66], elbow: [0.55, -0.6, 0.15], scale: 1.15, bob: 0.7 },
   knife_dragon: { pos: [0.13, -0.095, -0.275], dir: [-0.78, 0.42, -0.46], face: [-0.05, 0.75, 0.66], scale: 1.15, bob: 0.7 },
+  // 泷刃的短匕形态：和默认匕首一样的拿法（长刃形态是反握，见 vmanims.js 的 tkLong）
+  knife_taki: { pos: [0.135, -0.1, -0.265], dir: [-0.86, 0.32, -0.4], face: [-0.15, 0.55, 0.82], scale: 1.15, bob: 0.7 },
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
   knife_karambit: { pos: [0.1, -0.112, -0.33], rot: [0.06, -0.08, 0.06], scale: 1.08, bob: 0.8 },
 };
@@ -153,6 +155,59 @@ class Trail {
   }
 }
 
+// 水花（泷刃的水刃碎掉的那一下）：一把小水珠从刀身上散开，悬一下、慢慢往下落，越来越淡
+const DROP_LIFE = 0.95;
+class Drops {
+  constructor(n = 46) {
+    this.n = n; this.t0 = -9;
+    this.org = new Float32Array(n * 3); this.vel = new Float32Array(n * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    // 半透明的蓝（不是加亮）：背景再亮也还是水的颜色
+    this.mesh = new THREE.Points(geo, new THREE.PointsMaterial({ map: softDot(), color: 0x6cc4ff, size: 0.03, sizeAttenuation: true, transparent: true,
+      depthWrite: false, depthTest: false }));
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 6;
+    this.mesh.visible = false;
+  }
+  clear() { this.t0 = -9; this.mesh.visible = false; }
+  // water：水刃那个组（沿自己的 -Z 伸出去 len 长）；root：水珠画在哪个坐标里
+  burst(now, water, root, len) {
+    const sz = water.scale.z, a = new THREE.Vector3(), b = new THREE.Vector3();
+    water.scale.z = 1;
+    water.updateWorldMatrix(true, false);
+    b.set(0, 0, -len); water.localToWorld(b); root.worldToLocal(b);
+    a.set(0, 0, 0); water.localToWorld(a); root.worldToLocal(a);
+    b.sub(a).normalize();
+    for (let i = 0; i < this.n; i++) {
+      const u = 0.04 + 0.96 * Math.random(), o = i * 3;
+      a.set((Math.random() - 0.5) * 0.012, (Math.random() - 0.5) * 0.03, -len * u);
+      water.localToWorld(a); root.worldToLocal(a);
+      this.org[o] = a.x; this.org[o + 1] = a.y; this.org[o + 2] = a.z;
+      const k = 0.05 + Math.random() * 0.22;
+      this.vel[o] = b.x * k + (Math.random() - 0.5) * 0.3;
+      this.vel[o + 1] = b.y * k + (Math.random() - 0.3) * 0.3;
+      this.vel[o + 2] = b.z * k + (Math.random() - 0.5) * 0.2;
+    }
+    water.scale.z = sz;
+    this.t0 = now;
+  }
+  update(now) {
+    const e = now - this.t0;
+    if (e < 0 || e >= DROP_LIFE) { this.mesh.visible = false; return; }
+    const P = this.mesh.geometry.attributes.position.array, q = e / DROP_LIFE, s = (1 - Math.exp(-e * 5)) / 5; // 一开始散得快，很快就悬住
+    for (let i = 0; i < this.n * 3; i += 3) {
+      P[i] = this.org[i] + this.vel[i] * s;
+      P[i + 1] = this.org[i + 1] + this.vel[i + 1] * s - 0.32 * e * e;
+      P[i + 2] = this.org[i + 2] + this.vel[i + 2] * s;
+    }
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.material.opacity = 1 - q * q;
+    this.mesh.material.size = 0.03 * (1 - 0.5 * q);
+    this.mesh.visible = true;
+  }
+}
+
 export class ViewModel {
   constructor() {
     this.scene = new THREE.Scene();
@@ -166,6 +221,8 @@ export class ViewModel {
     this.camera.add(this.root);
     this.team = 'T';
     this.knifeSkin = 'default'; // 刀的皮肤（背包里选）
+    this.kform = 0; this.kformSkin = ''; // 双形态的刀（泷刃）现在是哪种形态；换了别的刀就回到第一种
+    this.drops = null;  // 水花
     this.sfx = null; // 动作的音效回调（刀的花式动作、拉栓、换弹匣这些）
     this.kfxKey = ''; this.kfxLast = -1; this.joltT = -9;
     // 动作被打断（检视到一半挥刀、挥到一半又检视）时，从当时的姿势平滑接过去
@@ -199,7 +256,7 @@ export class ViewModel {
     this.trail = null;   // 刀光
     // 这一帧各条轨道的值
     this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, spin: 0, rhOpen: 0, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0, cover: 0, open: 0 };
-    this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0, sup: 0 };
+    this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0, sup: 0, supX: 0, supY: 0, supZ: 0, offHide: 0 };
   }
 
   // 渲染前调用：高精度模型的金属要有环境可反射（每个渲染器只做一次）
@@ -278,7 +335,9 @@ export class ViewModel {
 
   setWeapon(wid, deploy = 0.5, now = performance.now() / 1000) {
     if (this.wid === wid) return;
+    this.formCut(now);
     this.wid = wid;
+    if (wid === 'knife' && this.kformSkin !== this.knifeSkin) { this.kformSkin = this.knifeSkin; this.kform = 0; }
     if (this.cur) this.cur.visible = false;
     const key = wid === 'knife' ? 'knife:' + this.knifeSkin : wid;
     let g = this.cache.get(key);
@@ -298,6 +357,7 @@ export class ViewModel {
     this.side = 1; this.cockT = -1;
     this.rk = this.rv = this.jitK = 0;
     if (this.trail) this.trail.clear();
+    if (this.drops) this.drops.clear();
     g.userData.pinGone = false;
     // 切出来的动作：时间太短（刚出生、切换观战对象）就只是抬上来
     this.clip = null;
@@ -351,8 +411,30 @@ export class ViewModel {
     this.reloadDur = 0;
     if (this.clip && this.clip.kind === 'reload') this.clip = null;
   }
-  onKnife(now, stab) { this.blendFrom(now); this.knifeT = now; this.knifeStab = stab; if (!stab) this.knifeAlt = !this.knifeAlt; this.inspectT = -1; }
-  onInspect(now) { if (this.reloadDur === 0 && !this.clip) { this.blendFrom(now); this.inspectT = now; } }
+  onKnife(now, stab) { this.blendFrom(now); this.formCut(now); this.knifeT = now; this.knifeStab = stab; if (!stab) this.knifeAlt = !this.knifeAlt; this.inspectT = -1; }
+  onInspect(now) {
+    if (this.reloadDur !== 0 || this.clip) return;
+    const F = this.formFx();
+    // 双形态的刀：正在变形 / 挥刀 / 刀还没拔出来的时候不能再按（不然会从半截开始变）
+    if (F && (this.inspectT >= 0 || this.knifeT >= 0 || (this.drawDur > 0 && now - this.drawStart < (this.kform ? F.alt : F).draw.dur))) return;
+    this.blendFrom(now); this.inspectT = now;
+  }
+  // 当前拿的是双形态的刀（泷刃）就返回它的那套动作
+  formFx() {
+    const F = this.knifeFx() ? KNIFE_FX[this.cur.userData.gun.userData.kfx.kind] : null;
+    return F && F.alt ? F : null;
+  }
+  // 变形到一半被打断（挥刀、切枪）：过了「变过去」的那一刻就算变完了，没到就还是原来的形态
+  formCut(now) {
+    const F = this.inspectT >= 0 ? this.formFx() : null;
+    if (F && now - this.inspectT >= (this.kform ? F.alt : F).inspect.commit) this.kform ^= 1;
+  }
+  // 动作里的画面效果：fx_burst = 水刃碎成水花
+  knifeFxEvent(k, kfx, now) {
+    if (k !== 'fx_burst' || !kfx.water) return;
+    if (!this.drops) { this.drops = new Drops(); this.root.add(this.drops.mesh); }
+    this.drops.burst(now, kfx.water, this.root, kfx.len);
+  }
   // 刀：记下现在的姿势，新动作从这里平滑接过去
   blendFrom(now) {
     const g = this.cur;
@@ -523,8 +605,10 @@ export class ViewModel {
     let rise = 1;
     QP.copy(lay.q);
     if (kfx) {
-      const F = KNIFE_FX[kfx.kind];
-      o.px = o.py = o.pz = o.rx = o.ry = o.rz = o.handW = o.sup = 0;
+      // 双形态的刀（泷刃）：F0.alt 是第二种形态的那一套动作；按检视键是变形，放完就换成另一种形态
+      const F0 = KNIFE_FX[kfx.kind];
+      let form = F0.alt ? this.kform : 0, F = form ? F0.alt : F0;
+      o.px = o.py = o.pz = o.rx = o.ry = o.rz = o.handW = o.sup = o.supX = o.supY = o.supZ = o.offHide = 0;
       o.hand0 = o.hand = null;
       let mode = null, e = 0;
       const de = now - this.drawStart;
@@ -537,15 +621,21 @@ export class ViewModel {
       }
       if (!mode && this.inspectT >= 0) {
         e = now - this.inspectT;
-        if (e >= F.inspect.dur) this.inspectT = -1; else mode = 'inspect';
+        if (e < F.inspect.dur) mode = 'inspect';
+        else {
+          this.inspectT = -1;
+          if (F0.alt) { this.kform = form ^= 1; F = form ? F0.alt : F0; }
+        }
       }
-      F.anim(kfx, mode, e, o);
-      let track = mode ? F[mode].pose : null, tt = e; // 这一帧整只手的姿势照哪条轨道摆
+      F0.anim(kfx, mode, e, o, form, now);
+      // 这一帧整只手的姿势照哪条轨道摆（没有动作时：第二种形态有自己平时的姿势）
+      let track = (mode && F[mode].pose) || F.idle || null, tt = mode && F[mode].pose ? e : 0;
       if (mode) {
         const key = mode + (mode === 'draw' ? this.drawStart : this.inspectT);
         if (key !== this.kfxKey) { this.kfxKey = key; this.kfxLast = -1; }
         for (const [t, k] of F[mode].ev) {
           if (t <= this.kfxLast || t > e) continue;
+          if (k.startsWith('fx_')) { if (g.visible) this.knifeFxEvent(k, kfx, now); continue; }
           if (this.sfx && g.visible) this.sfx(k);
           if (k === 'kn_clack' || k === 'kn_catch') this.joltT = now;
         }
@@ -556,7 +646,7 @@ export class ViewModel {
         if (p >= 1) this.knifeT = -1;
         else {
           o.hand = null; // 挥刀时一定是握紧的
-          if (F.attack) F.attack(this.knifeStab, p, o);
+          if (F0.attack) F0.attack(this.knifeStab, p, o);
           else { track = (F.hit || KNIFE_HIT)[this.knifeStab ? 'stab' : this.knifeAlt ? 'back' : 'slash']; tt = p; }
         }
       }
@@ -592,11 +682,13 @@ export class ViewModel {
     const tr = kfx && kfx.trail;
     if (tr && g.visible) {
       if (!this.trail) { this.trail = new Trail(); this.root.add(this.trail.mesh); }
-      T1.copy(tr.a); T2.copy(tr.b);
+      const te = tr.alt && kfx.ext > 0.5 ? tr.alt : tr; // 泷刃：水刃伸出来了，刀光就跟着水刃的尖走
+      T1.copy(te.a); T2.copy(te.b);
       kfx.spin.localToWorld(T1); kfx.spin.localToWorld(T2);
       this.root.worldToLocal(T1); this.root.worldToLocal(T2);
       this.trail.push(now, T1, T2, tr.color);
     } else if (this.trail && this.trail.mesh.visible) this.trail.clear();
+    if (this.drops) this.drops.update(now);
 
     // ---- 拿刀时空着的左手：张开放在画面左下 ----
     const offOn = type === 'knife' && g.visible && !this.noOff && !lay.noOff;
@@ -609,7 +701,8 @@ export class ViewModel {
       this.off.visible = offOn;
       if (offOn) {
         const hit = this.knifeT >= 0 ? Math.sin(clamp((now - this.knifeT) / 0.4, 0, 1) * Math.PI) : 0;
-        this.off.position.set(bx * 0.6 - this.swayX * 0.4, by * 0.6 - idle - (1 - rise) * 0.16 - hit * 0.025 - this.landKick * 0.03, hit * 0.02);
+        // 泷刃的长刃形态：握刀的手就在画面左下，空着的左手让到画面下面去（o.offHide）
+        this.off.position.set(bx * 0.6 - this.swayX * 0.4, by * 0.6 - idle - (1 - rise) * 0.16 - hit * 0.025 - this.landKick * 0.03 - (kfx ? o.offHide * 0.3 : 0), hit * 0.02);
         this.off.rotation.set(this.swayY * 0.5 - (1 - rise) * 0.3, this.swayX * 0.6, -bx * 1.5 - hit * 0.12);
       }
     }
@@ -624,7 +717,7 @@ export class ViewModel {
       this.sup.visible = supW > 0.001;
       if (supW > 0.001) {
         const w = Math.min(1, supW * 1.6), d = 1 - sstep(clamp(supW * 1.6 - 0.6, 0, 1));
-        this.sup.position.set(bx * 0.6 - d * 0.05, by * 0.6 - idle - d * 0.26, d * 0.04);
+        this.sup.position.set(bx * 0.6 - d * 0.05 + o.supX, by * 0.6 - idle - d * 0.26 + o.supY, d * 0.04 + o.supZ);
         this.sup.rotation.set(-d * 0.35, 0, -bx * 1.5);
         if (this.off && offOn) this.off.position.y -= w * 0.22;
       }

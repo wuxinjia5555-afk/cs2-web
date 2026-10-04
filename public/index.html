@@ -216,7 +216,7 @@
   <header id="subnav" class="home-top hidden">
     <button class="home-logo" data-nav title="回到开始界面">DEFUSE<small>爆破行动</small></button>
     <nav class="home-nav">
-      <button class="home-tab" data-nav data-for="menu-offline menu-online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg><span>开始游戏</span></button>
+      <button class="home-tab" data-nav data-for="menu-offline menu-online menu-custom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg><span>开始游戏</span></button>
       <button class="home-tab" data-go="btn-inv" data-for="menu-inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12l-1 10.5H7z"/><path d="M9 9V7.2a3 3 0 016 0V9"/><path d="M9.5 13h5"/></svg><span>背包</span></button>
       <button class="home-tab" data-go="btn-loadout" data-for="menu-loadout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5h14l1.5-2h3.5v4.5h-2l-1 2h-4.5l-1 5H9.5l1-5h-8z"/><path d="M13 13v2.5"/></svg><span>配装</span></button>
       <button class="home-tab" data-go="btn-friends" data-for="menu-friends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19c.5-3.4 2.6-5 5.5-5s5 1.6 5.5 5"/><circle cx="17" cy="8.2" r="2.3"/><path d="M15.8 13.3c2.7-.1 4.3 1.5 4.7 4.7"/></svg><span>好友</span></button>
@@ -246,11 +246,15 @@
         <button class="mode-card primary" id="btn-online"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3 3.2 14 0 17M12 3.5c-3.2 3-3.2 14 0 17"/></svg></span><span class="mode-t"><b>联机对战</b><small>开房间或输入房间码，和朋友一起打</small></span><i>›</i></button>
         <button class="mode-card" id="btn-offline"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8.5" width="14" height="10" rx="2"/><circle cx="9.5" cy="13.5" r="1.2"/><circle cx="14.5" cy="13.5" r="1.2"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4.3" r="1.1"/><path d="M3 12.5v3M21 12.5v3"/></svg></span><span class="mode-t"><b>人机练习</b><small>单机打机器人，从新手到专家 6 档难度</small></span><i>›</i></button>
         <button class="mode-card" id="btn-range"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.1"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg></span><span class="mode-t"><b>靶场</b><small>打假人练枪：压枪、急停、定位</small></span><i>›</i></button>
+        <button class="mode-card" id="btn-custom"><span class="mode-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg></span><span class="mode-t"><b>自定义模式</b><small>自己定规则：人数、回合、护甲、弹药、武器、复活、血量……</small></span><i>›</i></button>
         <label class="home-name"><span>昵称</span><input id="name-input" maxlength="16" placeholder="输入你的昵称"></label>
       </section>
       <section class="home-panel home-news">
         <div class="home-h">最近更新</div>
         <ul>
+          <li>新增「自定义模式」（主界面的按钮）：自由创建一个房间，左边分页调规则 —— 地图和模式、双方人数（1~5）、赢几回合获胜、机器人补位和难度；只准用哪类武器（全部 / 手枪 / 冲锋枪 / 步枪 / 狙击枪 / 霰弹枪 / 刀 / 随机发枪）、护甲、无限弹药、无限资金、死了掉不掉武器；购买时间、回合时间、有没有炸弹、换不换边、死后复活（回出生点 / 原地）；血量、脚步声、低重力、高速移动。可以存成模板下次直接用；单机和联机房间都能开</li>
+          <li>新刀「泷刃」（背包里解锁）：双形态的苦无。平时是深蓝色的细长短匕，按检视键（F）变形 —— 左手从刀尖拉出一道水流凝成长刃，刀在手里掉个头变成反握；再按一次，水刃碎成水花变回短匕。两种形态各有自己的拔刀和挥刀动作</li>
+          <li>荒漠迷城：中路尽头加了 VIP 狙击窗和旁边的小黑屋（屋里的梯子爬上 VIP），超市有楼梯上 VIP；A 二楼阳台底下加了梯子；地下通道里的梯子去掉了</li>
           <li>地面改成真正的斜坡：所有地图的坡道不再是一级一级的台阶，走上去是连续的斜面（子弹、手雷也按斜面算）；楼梯走起来不颠，看上去是一级一级的石阶</li>
           <li>炼狱小镇照原版雷达图重排了一遍：T 家在最西边，B 点在正北，警家在东北，A 点在东边；匪口出来往东是中路、往东南是侧道，中路西头往北是香蕉道（拐个弯进 B 点，底下有酒桶）；B 点有喷泉、红墙拱廊、棺材、教堂（屋里能穿到警家）；中路尽头拐一下是 A1，旁边是锅炉房；侧道东头 VIP 下上旋转楼梯进 A 二楼，VIP 的窗户对着侧道，阳台俯瞰 A 点；匪口东边楼梯上去是匪二楼，楼下穿过去是下水道；A 点有卡车、高箱、坑、墓地、书房、拱门</li>
           <li>沙二：警家现在是在「洞」里（头顶是 A 小尽头的平台），从平台底下钻过去有一条上坡路直通 A 大；B 点东北角的路改成要跳的狗洞；A 大铺了柏油路、坡顶停着蓝车</li>
@@ -330,6 +334,31 @@
         <div class="row"><button class="btn ghost" id="btn-hide-create">取消</button><button class="btn accent big" id="btn-create">创建并进入</button></div>
       </div>
       <div class="row"><button class="btn ghost" data-back>返回</button></div>
+    </div>
+  </div>
+
+  <!-- 自定义模式（自由创建）：左边一列分页，右边是这一页的选项，底下是模板和「创建房间」 -->
+  <div id="menu-custom" class="menu hidden">
+    <div class="cu">
+      <header class="cu-top"><button class="cu-back" data-back aria-label="返回">‹</button><b>自由创建</b><span class="spacer"></span><button class="cu-btn" id="cu-reset">重置本页</button></header>
+      <div class="cu-body">
+        <nav class="cu-tabs" id="cu-tabs">
+          <button data-cu="map">地图模式</button>
+          <button data-cu="base">基础设置</button>
+          <button data-cu="weapon">武器装备</button>
+          <button data-cu="round">回合设置</button>
+          <button data-cu="special">特殊规则</button>
+        </nav>
+        <div class="cu-page" id="cu-page"></div>
+      </div>
+      <footer class="cu-foot">
+        <button class="cu-btn" id="cu-save">保存为模板</button>
+        <button class="cu-btn" id="cu-preview">设置预览</button>
+        <span class="spacer"></span>
+        <button class="cu-btn light" id="cu-tpl">我的模板</button>
+        <button class="cu-btn go" id="cu-create">创建房间</button>
+      </footer>
+      <div class="cu-pop hidden" id="cu-pop"><div class="cu-pop-box"><h3 id="cu-pop-h"></h3><div id="cu-pop-body"></div><div class="row"><span class="spacer"></span><button class="cu-btn" id="cu-pop-x">关闭</button></div></div></div>
     </div>
   </div>
 

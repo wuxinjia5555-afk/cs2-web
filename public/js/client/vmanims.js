@@ -421,7 +421,16 @@ export const KNIFE_POSES = {
   shUp2: { pos: [0.12, -0.15, -0.33], dir: [-0.15, -0.96, 0.22], elbow: [0.5, -0.45, 0.2] },
   // 威龙之刃检视：横着端平，手背对着自己，刀尖朝左，食指伸直搭在刀背上
   drFlat: { pos: [0.12, -0.1, -0.33], dir: [-0.97, 0.1, -0.2], elbow: [0.5, -0.55, 0.1] },
+  // 泷刃变形：横着端在面前（正握，刀尖朝左、略朝里），左手从刀尖把水刃拉出来
+  tkShow: { pos: [0.218, -0.078, -0.431], dir: [-0.96, 0.05, -0.25], elbow: [0.62, -0.5, 0.0] },
+  tkShow2: { pos: [0.214, -0.07, -0.425], dir: [-0.955, 0.09, -0.25], elbow: [0.62, -0.5, 0.0] },
+  // 泷刃的长刃形态平时的拿法：反握，拳头在画面下方偏左，水刃从小指那一侧伸出去、朝右上方斜着横在画面下面。
+  // 刀在手里是掉过头的，所以长刃形态的姿势里 dir 写的是「刀尾朝哪」，真正的刀尖正好反过来
+  tkLong: { pos: [-0.1125, -0.19, -0.455], dir: [-0.95, -0.24, 0.2], elbow: [0.5, -0.62, 0.0] },
 };
+// 泷刃的长刃形态挥起来和反握的刀一样，姿势就照着那几个换算：刀掉了头（dir 反过来），转轴离刀的原点远一些（pos 顺着刀挪一段）
+const tkPose = (p) => { const l = Math.hypot(...p.dir), n = p.dir.map((v) => v / l); return { pos: p.pos.map((v, i) => v - 0.076 * n[i]), dir: n.map((v) => -v), elbow: p.elbow }; };
+for (const k of ['rvUp', 'rvR', 'rvL', 'rvL2', 'rbL', 'rbR', 'rbR2', 'rs0', 'rs1', 'rs2']) KNIFE_POSES['tk_' + k] = tkPose(KNIFE_POSES[k]);
 // 姿势轨道 = [[时刻, 姿势名, 缓动?]…]：到这个时刻摆成这个姿势，相邻两个之间平滑过渡。
 // 挥刀（照 CS：左键横着一划，一左一右轮着来；右键往前一捅）。时刻是 0~1（整段动作的进度）
 export const KNIFE_HIT = {
@@ -435,6 +444,11 @@ const REV_HIT = {
   slash: [[0, 'idle'], [0.14, 'rvR', 'out'], [0.4, 'rvL', 'out'], [0.56, 'rvL2', 'out'], [1, 'idle']],
   back: [[0, 'idle'], [0.15, 'rbL', 'out'], [0.4, 'rbR', 'out'], [0.56, 'rbR2', 'out'], [1, 'idle']],
   stab: [[0, 'idle'], [0.22, 'rs0', 'out'], [0.42, 'rs1', 'out'], [0.62, 'rs2'], [1, 'idle']],
+};
+const TK_HIT = {
+  slash: [[0, 'tkLong'], [0.14, 'tk_rvR', 'out'], [0.4, 'tk_rvL', 'out'], [0.56, 'tk_rvL2', 'out'], [1, 'tkLong']],
+  back: [[0, 'tkLong'], [0.15, 'tk_rbL', 'out'], [0.4, 'tk_rbR', 'out'], [0.56, 'tk_rbR2', 'out'], [1, 'tkLong']],
+  stab: [[0, 'tkLong'], [0.22, 'tk_rs0', 'out'], [0.42, 'tk_rs1', 'out'], [0.62, 'tk_rs2'], [1, 'tkLong']],
 };
 // 反握的刀在摊开的手心前面转：a = 在手心这个平面里转过的角度（正 = 画面里逆时针），roll = 绕刀身翻了多少
 // （转一圈半、同时翻半圈 = 在手里掉了个头：反握变正握，刀背还在原来那一边）；w = 手张开多少，刀同时离开手心一点
@@ -512,8 +526,11 @@ const KA_WRIST = { draw: { ry: 0, rz: 0.12, rx: 0.05, px: -0.03, py: 0.035, pz: 
   inspect: { ry: 0, rz: 0.15, rx: -0.05, px: -0.05, py: 0.07, pz: 0, back: [2.38, 2.7] } };
 
 // 每种刀：draw / inspect = { dur 秒, ev [[秒, 声音]…], pose 姿势轨道（时刻是秒；不写就一直是平时的拿法） }；
-// anim(P, mode, e, o)：摆好刀上会动的零件（P），往 o 里写整只手的小偏移（px…rz）和手型：
+// anim(P, mode, e, o, form, now)：摆好刀上会动的零件（P），往 o 里写整只手的小偏移（px…rz）和手型：
 //   o.hand0 → o.hand 过渡 o.handW（0~1）；不写 hand0 就是从握拳开始
+// 双形态的刀（泷刃）多一个 alt：第二种形态的那一套（idle 平时的姿势、hit 挥刀、draw、inspect）。
+//   这种刀按检视键不是检视而是变形：inspect 放完就换成另一种形态；commit = 变到一半被挥刀打断时，过了这一刻就算变完了。
+//   ev 里 fx_ 开头的不是声音，是画面效果（fx_burst：水刃碎成水花）
 export const KNIFE_FX = {
   // 默认匕首：立着从下面拿上来，手腕一翻落到位。检视：看一面、翻过来看另一面
   plain: {
@@ -687,6 +704,67 @@ export const KNIFE_FX = {
       P.spin.position.copy(P.base);
       P.spin.position.x -= 0.012 * w;
       P.spin.rotation.x = a;
+    },
+  },
+  // 泷刃（双形态的苦无）。短匕形态是正握：切刀时刀尖朝上拿上来，在手心前面连转两圈握住。
+  // 按 F：刀在手心前面转一圈，横着端到面前，左手从刀尖把水流拉出来凝成长刃，再转一圈半掉个头变成反握、收到身前（水刃横在画面下面）。
+  // 长刃形态再按 F：转一圈半掉回正握、横着端起来，左手往上一托，水刃碎成水花，刀再转一圈落回短匕的拿法
+  taki: {
+    draw: { dur: 0.72, ev: [[0.03, 'kn_swish'], [0.16, 'kn_swish'], [0.3, 'kn_swish'], [0.47, 'kn_catch']], pose: [[0, 'up'], [0.3, 'm9hi'], [0.72, 'idle', 'back']] },
+    inspect: { dur: 2.45, commit: 1.0, ev: [[0.12, 'kn_swish'], [0.34, 'kn_swish'], [0.6, 'kn_catch'], [0.98, 'kn_water'], [1.74, 'kn_swish'], [1.95, 'kn_swish'], [2.22, 'kn_catch']],
+      pose: [[0, 'idle'], [0.22, 'm9hi', 'out'], [0.62, 'm9hi'], [0.95, 'tkShow'], [1.7, 'tkShow2'], [2.3, 'tkLong'], [2.45, 'tkLong']] },
+    alt: {
+      idle: [[0, 'tkLong'], [1, 'tkLong']], hit: TK_HIT,
+      draw: { dur: 0.7, ev: [[0.02, 'kn_swish'], [0.2, 'kn_swish'], [0.3, 'kn_water'], [0.42, 'kn_catch']], pose: [[0, 'tk_rvUp'], [0.42, 'tk_rvUp'], [0.7, 'tkLong', 'out']] },
+      inspect: { dur: 2.5, commit: 1.25, ev: [[0.1, 'kn_swish'], [0.32, 'kn_swish'], [0.58, 'kn_catch'], [1.25, 'kn_splash'], [1.25, 'fx_burst'], [1.68, 'kn_swish'], [1.9, 'kn_swish'], [2.14, 'kn_catch']],
+        pose: [[0, 'tkLong'], [0.62, 'tkShow'], [1.5, 'tkShow2'], [1.85, 'm9hi'], [2.2, 'm9hi'], [2.5, 'idle', 'back']] },
+    },
+    anim(P, mode, e, o, form, now) {
+      // a：刀在手心前面转过的角度；roll：绕刀身翻了多少（转一圈半 + 翻半圈 = 在手里掉了个头）；w：手张开多少；ext：水刃伸出来多少
+      let a = 0, roll = 0, w = 0, ext = form ? 1 : 0;
+      if (!form) {
+        if (mode === 'draw') {
+          a = TAU * 2 * eOut(seg(e, 0.05, 0.47), 2);
+          w = win(e, 0.03, 0.09, 0.4, 0.49);
+        } else if (mode === 'inspect') {
+          const q = sstep(seg(e, 1.74, 2.24));
+          a = TAU * eOut(seg(e, 0.12, 0.6), 1.8) + TAU * 1.5 * q; roll = PI * q;
+          w = Math.max(win(e, 0.08, 0.16, 0.52, 0.62), win(e, 1.7, 1.78, 2.16, 2.26));
+          ext = eOut(seg(e, 1.0, 1.5), 2);
+          // 左手：先伸到刀尖下面，跟着水刃的尖一路往左带，水刃成形了再放下
+          o.sup = win(e, 0.7, 0.98, 1.56, 1.8);
+          o.supX = -0.2 * ext; o.supY = 0.01; o.supZ = -0.13 - 0.06 * ext;
+          o.offHide = ramp(e, 0.45, 0.8);
+        }
+      } else {
+        a = PI * 3; roll = PI;
+        o.offHide = 1;
+        if (mode === 'draw') {
+          a -= TAU * 1.375 * (1 - eOut(seg(e, 0.03, 0.42), 1.7));
+          w = win(e, 0, 0.06, 0.34, 0.44);
+          ext = eOut(seg(e, 0.3, 0.64), 2);
+        } else if (mode === 'inspect') {
+          const q = 1 - sstep(seg(e, 0.08, 0.58));
+          a = PI * 3 * q + TAU * eOut(seg(e, 1.66, 2.14), 1.8); roll = PI * q;
+          w = Math.max(win(e, 0.04, 0.12, 0.5, 0.6), win(e, 1.62, 1.7, 2.06, 2.16));
+          ext = e < 1.25 ? 1 : 0;
+          // 左手：伸到水刃中段下面，往上一托
+          o.sup = win(e, 0.72, 1.05, 1.42, 1.72);
+          o.supX = -0.1; o.supY = 0.012 * win(e, 1.12, 1.25, 1.25, 1.4); o.supZ = -0.16;
+          o.offHide = 1 - ramp(e, 1.95, 2.35);
+          o.py += 0.006 * win(e, 1.2, 1.26, 1.26, 1.45);
+        }
+      }
+      o.hand = 'flat'; o.handW = w;
+      P.spin.position.copy(P.base);
+      P.spin.position.x -= 0.014 * w;
+      P.spin.rotation.set(a, 0, roll);
+      P.ext = ext;
+      if (P.water) {
+        P.water.visible = ext > 0.004;
+        P.water.scale.z = Math.max(0.004, ext);
+        if (P.water.visible) P.aura.userData.flow(now || 0);
+      }
     },
   },
 };
