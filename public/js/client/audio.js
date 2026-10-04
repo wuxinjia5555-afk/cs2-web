@@ -3,6 +3,7 @@ import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
 import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH, HS, synthHs } from './gunsynth.js';
 import { GUN_SAMPLES } from './gunsamples.js';
+import { HIT_SAMPLES } from './hitsamples.js';
 
 const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
 
@@ -56,31 +57,39 @@ class AudioSys {
     this.revGain.connect(this.master);
     this.warmGuns();
     this.loadGunSamples();
+    this.loadHitSamples();
   }
 
   // 真实枪声（CC0 录音，见 gunsamples.js）：一个文件里接着 20 声，下载、解码之后按位置切开。消音武器没有录音，还是用合成的
   async loadGunSamples() {
     if (this.gunSmp || this.smpLoading || !this.ctx) return;
     this.smpLoading = true;
-    try {
-      const res = await fetch(GUN_SAMPLES.file);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const ab = await res.arrayBuffer(), ctx = this.ctx;
-      const all = await new Promise((ok, no) => { const p = ctx.decodeAudioData(ab, ok, no); if (p && p.catch) p.catch(no); });
-      const k = all.sampleRate / GUN_SAMPLES.rate, src = all.getChannelData(0), out = {};
-      for (const [key, c] of Object.entries(GUN_SAMPLES.clips)) {
-        out[key] = { g: c.g, bufs: c.at.map(([a, n]) => {
-          const i0 = Math.round(a * k), len = Math.max(1, Math.min(src.length - i0, Math.round(n * k)));
-          const b = ctx.createBuffer(1, len, all.sampleRate);
-          b.getChannelData(0).set(src.subarray(i0, i0 + len));
-          return b;
-        }) };
-      }
-      this.gunSmp = out;
-    } catch (e) {
-      console.warn('真实枪声没加载成功，先用合成的枪声', e);
-    }
+    try { this.gunSmp = await this._loadClips(GUN_SAMPLES); } catch (e) { console.warn('真实枪声没加载成功，先用合成的枪声', e); }
     this.smpLoading = false;
+  }
+  // 爆头声（用 CC0 的真实撞击录音拼的，见 hitsamples.js）；没加载成功就还用合成的
+  async loadHitSamples() {
+    if (this.hitSmp || this.hitLoading || !this.ctx) return;
+    this.hitLoading = true;
+    try { this.hitSmp = await this._loadClips(HIT_SAMPLES); } catch (e) { console.warn('爆头声的录音没加载成功，先用合成的', e); }
+    this.hitLoading = false;
+  }
+  // 一个文件里接着好几声：下载、解码，按位置表切开 → { 名字: { g, bufs } }
+  async _loadClips(S) {
+    const res = await fetch(S.file);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const ab = await res.arrayBuffer(), ctx = this.ctx;
+    const all = await new Promise((ok, no) => { const p = ctx.decodeAudioData(ab, ok, no); if (p && p.catch) p.catch(no); });
+    const k = all.sampleRate / S.rate, src = all.getChannelData(0), out = {};
+    for (const [key, c] of Object.entries(S.clips)) {
+      out[key] = { g: c.g, bufs: c.at.map(([a, n]) => {
+        const i0 = Math.round(a * k), len = Math.max(1, Math.min(src.length - i0, Math.round(n * k)));
+        const b = ctx.createBuffer(1, len, all.sampleRate);
+        b.getChannelData(0).set(src.subarray(i0, i0 + len));
+        return b;
+      }) };
+    }
+    return out;
   }
 
   // 枪声缓冲区：每种枪 2 份略有不同的波形，用到时才合成（并在空闲时提前合成好）
@@ -126,10 +135,11 @@ class AudioSys {
   }
 
   _playFx(kind, gain, streak = 1) {
-    const o = this._out(null, 1, gain, 0.06);
+    const smp = this.hitSmp && this.hitSmp[kind]; // 有录音的（爆头声）用录音
+    const o = this._out(null, 1, gain * (smp ? smp.g : 1), 0.06);
     if (!o) return;
     const src = this.ctx.createBufferSource();
-    src.buffer = this._fxBuf(kind, streak);
+    src.buffer = smp ? smp.bufs[(Math.random() * smp.bufs.length) | 0] : this._fxBuf(kind, streak);
     src.connect(o.input);
     src.start();
   }

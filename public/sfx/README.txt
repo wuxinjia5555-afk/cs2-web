@@ -27,3 +27,13 @@ guns.wav —— 游戏里的真实枪声（20 声接在一起，位置表在 js/
 （各频段的能量占多少、响完之后每秒落多少分贝），不是录屏里的声音本身。
 
 怎么重新生成：见 tools/make-gun-samples.py（裁剪、降到 32kHz、调音色、加尾音、对齐响度）。
+
+hits.wav —— 三种爆头声（打中头盔、没戴头盔两种；位置表在 js/client/hitsamples.js）
+
+来源：Kenney「Impact Sounds」（https://kenney.nl/assets/impact-sounds）
+授权：CC0（公有领域，可以自由使用、修改、再发布）
+
+每一声是十几条真实的撞击录音（金属、铃、铁皮、玻璃、木头、拳击、闷响）各变一点调、按时间叠起来的，
+再把音色（各频段的能量占比）和响度的起伏往 CS:GO 那三声上靠 —— 靠的是从游戏录屏里量出来的指标，不是录屏里的声音本身。
+
+怎么重新生成：见 tools/make-hit-samples.py（先把用到的 ogg 解码成 48kHz 单声道的 wav 或 f32）。
