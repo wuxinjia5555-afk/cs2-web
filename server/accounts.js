@@ -11,7 +11,7 @@ const MAX_SETTINGS = 100000; // 设置 JSON 最多 100KB
 // 皮肤：默认匕首人人都有，其他刀要用金币解锁（新账号金币为 0）
 export const SKIN_PRICE = 1599;
 export const EARN_DAY_CAP = 800; // 打比赛每天最多挣这么多金币（按北京时间算一天）
-export const KNIFE_SKINS = ['butterfly', 'karambit', 'm9', 'xeno'];
+export const KNIFE_SKINS = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon'];
 const MAX_FRIENDS = 100;
 
 const scrypt = (pw, salt) => new Promise((resolve, reject) => crypto.scrypt(pw, salt, 32, (err, key) => (err ? reject(err) : resolve(key))));
@@ -199,7 +199,7 @@ export async function createAccounts(file, devFile) {
     return { name: u.name, coins: u.dev ? -1 : u.coins, owned: u.dev ? KNIFE_SKINS.slice() : u.owned.slice(), dev: !!u.dev, friends, inbox: u.inbox.slice(-20), price: SKIN_PRICE };
   };
   const touch = (k) => { db.users[k].seen = Date.now(); };
-  const skinName = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀' };
+  const skinName = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀', tianyu: '天御刀', shadow: '影刃', dragon: '威龙之刃' };
 
   const api = {
     count: () => (db ? Object.keys(db.users).length : 0),

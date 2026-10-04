@@ -1,7 +1,7 @@
 // 第一人称武器（独立场景渲染，不会穿墙），含晃动、后坐、切枪 / 拉栓 / 换弹、挥刀、检视动画
 import * as THREE from 'three';
 import { makeWeapon, armColors } from './models.js';
-import { HD, hdHands, hdOffHand, handPose, HAND_SHAPES } from './hdmodels.js';
+import { HD, hdHands, hdOffHand, hdSupportHand, handPose, HAND_SHAPES } from './hdmodels.js';
 import { viewEnv } from './hdkit.js';
 import { flare } from './textures.js';
 import { WEAPONS } from '../shared/weapons.js';
@@ -32,6 +32,12 @@ const LAYOUT = {
   // 剥皮小刀照瓦罗兰特的拿法：刀立得更直，在画面右侧。朝向用「刀尖朝哪 + 手肘在哪」来写（和 KNIFE_POSES 一样）：
   // 刀要立起来、小臂又要从右下方伸上来，看到的就是握刀的手指这一面（要是让手背对着自己，小臂只能从左下方来，像左手）
   knife_xeno: { pos: [0.21, -0.215, -0.38], dir: [-0.58, 0.66, -0.48], elbow: [0.667, -0.281, -0.52], scale: 1.15, bob: 0.7 },
+  // 天御刀、影刃是反握（照手游的拿法）：拳头在画面下方、手背对着自己，刀从小指那一侧伸出去横在画面下面，刀尖朝右
+  // （noOff：空着的左手不画 —— 握刀的手就在画面左下，两只手会叠在一起）
+  knife_tianyu: { pos: [-0.04, -0.2, -0.47], dir: [0.97, 0.1, -0.2], elbow: [0.5, -0.62, 0.0], scale: 1.15, bob: 0.7, noOff: true },
+  knife_shadow: { pos: [0.15, -0.115, -0.36], dir: [0.6, 0.45, -0.66], elbow: [0.55, -0.6, 0.15], scale: 1.15, bob: 0.7 },
+  // 威龙之刃：正握，立在画面右侧，刀尖朝左上
+  knife_dragon: { pos: [0.157, -0.141, -0.38], dir: [-0.6, 0.64, -0.48], elbow: [0.667, -0.281, -0.52], scale: 1.15, bob: 0.7 },
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
   knife_karambit: { pos: [0.1, -0.112, -0.33], rot: [0.06, -0.08, 0.06], scale: 1.08, bob: 0.8 },
 };
@@ -85,6 +91,64 @@ function poseAt(U, track, t, P, Q) {
 
 export { KNIFE_FX };
 
+// 刀刃拖出来的光迹（天御刀、影刃、威龙之刃）：每帧记下刀尖和刀身中段在画面里的位置，连成一条带子，越旧越淡。
+// 刀尖走得慢的时候不画，只有抡起来、转起来才有
+const TRAIL_LIFE = 0.15, TRAIL_N = 20, TRAIL_SUB = 3;
+const cr = (a, b, c, d, u) => 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (3 * b - a - 3 * c + d) * u * u * u);
+class Trail {
+  constructor() {
+    const n = (TRAIL_N - 1) * TRAIL_SUB + 1, idx = [];
+    this.s = [];
+    this.pos = new Float32Array(n * 6);
+    this.col = new Float32Array(n * 6);
+    for (let i = 0; i < n - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    geo.setIndex(idx);
+    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 5;
+    this.mesh.visible = false;
+    this.c = new THREE.Color();
+  }
+  clear() { this.s.length = 0; this.mesh.visible = false; }
+  // a = 刀尖，b = 刀身中段（都在 root 的坐标里）
+  push(now, a, b, color) {
+    const S = this.s;
+    let last = S[S.length - 1];
+    if (last && now < last.t) { S.length = 0; last = null; }
+    if (last && now - last.t < 0.004) return;
+    const k = last ? clamp((a.distanceTo(last.a) / (now - last.t) - 1.6) / 2.4, 0, 1) : 0;
+    S.push({ t: now, a: a.clone(), b: b.clone(), k });
+    while (S.length > TRAIL_N || now - S[0].t > TRAIL_LIFE) S.shift();
+    const n = S.length;
+    let any = false;
+    for (const s of S) if (s.k > 0.02) any = true;
+    if (n < 2 || !any) { this.mesh.visible = false; return; }
+    const P = this.pos, C = this.col, c = this.c.set(color);
+    let m = 0;
+    const put = (i, u) => {
+      const s0 = S[Math.max(0, i - 1)], s1 = S[i], s2 = S[Math.min(n - 1, i + 1)], s3 = S[Math.min(n - 1, i + 2)];
+      const o = m * 6, t = s1.t + (s2.t - s1.t) * u, f = Math.pow(1 - Math.min(1, (now - t) / TRAIL_LIFE), 1.6) * (s1.k + (s2.k - s1.k) * u);
+      P[o] = cr(s0.a.x, s1.a.x, s2.a.x, s3.a.x, u); P[o + 1] = cr(s0.a.y, s1.a.y, s2.a.y, s3.a.y, u); P[o + 2] = cr(s0.a.z, s1.a.z, s2.a.z, s3.a.z, u);
+      P[o + 3] = cr(s0.b.x, s1.b.x, s2.b.x, s3.b.x, u); P[o + 4] = cr(s0.b.y, s1.b.y, s2.b.y, s3.b.y, u); P[o + 5] = cr(s0.b.z, s1.b.z, s2.b.z, s3.b.z, u);
+      // 刀尖这一边亮（往白里带一点），往里渐渐没有
+      C[o] = (c.r * 0.85 + 0.15) * f * 0.6; C[o + 1] = (c.g * 0.85 + 0.15) * f * 0.6; C[o + 2] = (c.b * 0.85 + 0.15) * f * 0.6;
+      C[o + 3] = C[o + 4] = C[o + 5] = 0;
+      m++;
+    };
+    for (let i = 0; i < n - 1; i++) for (let j = 0; j < TRAIL_SUB; j++) put(i, j / TRAIL_SUB);
+    put(n - 1, 0);
+    const geo = this.mesh.geometry;
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.setDrawRange(0, (m - 1) * 6);
+    this.mesh.visible = true;
+  }
+}
+
 export class ViewModel {
   constructor() {
     this.scene = new THREE.Scene();
@@ -125,9 +189,11 @@ export class ViewModel {
     this.envFor = null;  // 环境反光是给哪个渲染器做的
     this.clip = null;    // 正在放的一段动作：{ def, kind, t0, dur, last }
     this.off = null;     // 拿刀时空着的左手
+    this.sup = null;     // 天御刀检视时托住刀身的左手
+    this.trail = null;   // 刀光
     // 这一帧各条轨道的值
     this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, spin: 0, rhOpen: 0, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
-    this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0 };
+    this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0, sup: 0 };
   }
 
   // 渲染前调用：高精度模型的金属要有环境可反射（每个渲染器只做一次）
@@ -143,6 +209,7 @@ export class ViewModel {
     for (const g of this.cache.values()) this.root.remove(g);
     this.cache.clear();
     if (this.off) { this.root.remove(this.off); this.off = null; }
+    if (this.sup) { this.root.remove(this.sup); this.sup = null; }
     const w = this.wid;
     this.wid = null;
     this.cur = null;
@@ -220,6 +287,7 @@ export class ViewModel {
     this.throwT = -1;
     this.boltK = 0;
     this.rk = this.rv = this.jitK = 0;
+    if (this.trail) this.trail.clear();
     g.userData.pinGone = false;
     // 切出来的动作：时间太短（刚出生、切换观战对象）就只是抬上来
     this.clip = null;
@@ -420,7 +488,7 @@ export class ViewModel {
     QP.copy(lay.q);
     if (kfx) {
       const F = KNIFE_FX[kfx.kind];
-      o.px = o.py = o.pz = o.rx = o.ry = o.rz = o.handW = 0;
+      o.px = o.py = o.pz = o.rx = o.ry = o.rz = o.handW = o.sup = 0;
       o.hand0 = o.hand = null;
       let mode = null, e = 0;
       const de = now - this.drawStart;
@@ -453,7 +521,7 @@ export class ViewModel {
         else {
           o.hand = null; // 挥刀时一定是握紧的
           if (F.attack) F.attack(this.knifeStab, p, o);
-          else { track = KNIFE_HIT[this.knifeStab ? 'stab' : this.knifeAlt ? 'back' : 'slash']; tt = p; }
+          else { track = (F.hit || KNIFE_HIT)[this.knifeStab ? 'stab' : this.knifeAlt ? 'back' : 'slash']; tt = p; }
         }
       }
       if (track) {
@@ -484,9 +552,18 @@ export class ViewModel {
       g.quaternion.copy(QT.copy(this.kbQ).slerp(g.quaternion, x));
     }
     this.flash.visible = now < this.flashT && !st.silenced;
+    // 刀光：跟着刀尖走
+    const tr = kfx && kfx.trail;
+    if (tr && g.visible) {
+      if (!this.trail) { this.trail = new Trail(); this.root.add(this.trail.mesh); }
+      T1.copy(tr.a); T2.copy(tr.b);
+      kfx.spin.localToWorld(T1); kfx.spin.localToWorld(T2);
+      this.root.worldToLocal(T1); this.root.worldToLocal(T2);
+      this.trail.push(now, T1, T2, tr.color);
+    } else if (this.trail && this.trail.mesh.visible) this.trail.clear();
 
     // ---- 拿刀时空着的左手：张开放在画面左下 ----
-    const offOn = type === 'knife' && g.visible && !this.noOff;
+    const offOn = type === 'knife' && g.visible && !this.noOff && !lay.noOff;
     if (offOn && !this.off) {
       this.off = hdOffHand(armColors(this.team));
       this.off.traverse((m) => { if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; } });
@@ -498,6 +575,22 @@ export class ViewModel {
         const hit = this.knifeT >= 0 ? Math.sin(clamp((now - this.knifeT) / 0.4, 0, 1) * Math.PI) : 0;
         this.off.position.set(bx * 0.6 - this.swayX * 0.4, by * 0.6 - idle - (1 - rise) * 0.16 - hit * 0.025 - this.landKick * 0.03, hit * 0.02);
         this.off.rotation.set(this.swayY * 0.5 - (1 - rise) * 0.3, this.swayX * 0.6, -bx * 1.5 - hit * 0.12);
+      }
+    }
+    // ---- 天御刀检视：左手换成手心朝上的那只，从下面托住刀身（平时那只左手先让到画面下面去）----
+    const supW = kfx && g.visible ? o.sup : 0;
+    if (supW > 0.001 && !this.sup) {
+      this.sup = hdSupportHand(armColors(this.team));
+      this.sup.traverse((m) => { if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; } });
+      this.root.add(this.sup);
+    }
+    if (this.sup) {
+      this.sup.visible = supW > 0.001;
+      if (supW > 0.001) {
+        const w = Math.min(1, supW * 1.6), d = 1 - sstep(clamp(supW * 1.6 - 0.6, 0, 1));
+        this.sup.position.set(bx * 0.6 - d * 0.05, by * 0.6 - idle - d * 0.26, d * 0.04);
+        this.sup.rotation.set(-d * 0.35, 0, -bx * 1.5);
+        if (this.off && offOn) this.off.position.y -= w * 0.22;
       }
     }
   }

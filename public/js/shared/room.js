@@ -837,7 +837,7 @@ export class Room {
       case 'start': if (p.id === this.hostId && this.phase === 'warmup') this.startMatch(); break;
       case 'range': if (this.opts.mode === 'range') this.setRangeOpts(m.o); break;
       case 'skin': {
-        const k = ['butterfly', 'karambit', 'm9', 'xeno'].includes(m.k) ? m.k : null;
+        const k = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon'].includes(m.k) ? m.k : null;
         if (p.skin !== k) { p.skin = k; this.bcast({ t: 'pskin', id: p.id, k }); }
         break;
       }

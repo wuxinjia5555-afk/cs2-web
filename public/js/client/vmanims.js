@@ -263,6 +263,31 @@ export const KNIFE_POSES = {
   stb0: { pos: [0.19, -0.13, -0.2], dir: [-0.55, 0.3, -0.78], elbow: [0.34, -0.55, 0.22] },
   stb1: { pos: [0.02, -0.045, -0.44], dir: [-0.22, 0.1, -0.97], elbow: [0.3, -0.45, -0.1] },
   stb2: { pos: [0.03, -0.05, -0.42], dir: [-0.24, 0.1, -0.96], elbow: [0.3, -0.45, -0.1] },
+  // ---- 反握的刀（天御刀、影刃）：刀从拳头小指那一侧伸出去。dir 还是「刀尖朝哪」 ----
+  // 转刀：手举到画面右边，手心对着自己，刀在手心前面转
+  rvUp: { pos: [0.13, -0.075, -0.33], dir: [-0.72, -0.66, -0.2], elbow: [0.5, -0.6, 0.0] },
+  // 左键横划：拳头带着刀从右抡到左，刀身拖在后面（rvR 收、rvL 划到头、rvL2 顺势再带一点）
+  rvR: { pos: [0.24, -0.1, -0.24], dir: [0.85, 0.05, 0.52], elbow: [0.5, -0.5, 0.3] },
+  rvL: { pos: [-0.12, -0.09, -0.34], dir: [-0.55, 0.45, -0.7], elbow: [0.4, -0.5, 0.05] },
+  rvL2: { pos: [-0.15, -0.11, -0.33], dir: [-0.62, 0.4, -0.67], elbow: [0.4, -0.5, 0.05] },
+  // 反手抡回来
+  rbL: { pos: [-0.1, -0.07, -0.3], dir: [-0.5, -0.5, -0.7], elbow: [0.35, -0.5, 0.05] },
+  rbR: { pos: [0.2, -0.02, -0.3], dir: [-0.85, 0.1, -0.5], elbow: [0.3, -0.6, 0.1] },
+  rbR2: { pos: [0.25, -0.04, -0.28], dir: [-0.7, 0.15, -0.7], elbow: [0.3, -0.6, 0.1] },
+  // 右键：举起来往下扎
+  rs0: { pos: [0.16, 0.0, -0.24], dir: [0.25, 0.75, -0.6], elbow: [0.45, -0.5, 0.2] },
+  rs1: { pos: [0.03, -0.1, -0.42], dir: [-0.1, -0.8, -0.6], elbow: [0.35, -0.3, -0.05] },
+  rs2: { pos: [0.035, -0.105, -0.41], dir: [-0.1, -0.78, -0.62], elbow: [0.35, -0.3, -0.05] },
+  // 检视时刀在手里掉了个头（变成正握），所以下面几个姿势里真正的刀尖和 dir 是反的：
+  // 天御刀：横着端在面前、刀尖朝左，左手从下面托住刀身
+  tyShow: { pos: [0.24, -0.08, -0.31], dir: [0.98, -0.1, -0.15], elbow: [0.62, -0.5, 0.12] },
+  tyShow2: { pos: [0.235, -0.066, -0.3], dir: [0.975, -0.15, -0.15], elbow: [0.62, -0.5, 0.12] },
+  // 影刃：立起来看（刀尖朝上）/ 横过来看（刀尖朝左）/ 再立起来看另一面
+  shUp: { pos: [0.1, -0.16, -0.33], dir: [0.12, -0.96, 0.25], elbow: [0.45, -0.5, 0.15] },
+  shSide: { pos: [0.19, -0.06, -0.33], dir: [0.97, -0.14, -0.12], elbow: [0.55, -0.55, 0.1] },
+  shUp2: { pos: [0.12, -0.15, -0.33], dir: [-0.15, -0.96, 0.22], elbow: [0.5, -0.45, 0.2] },
+  // 威龙之刃检视：横着端平，手背对着自己，刀尖朝左，食指伸直搭在刀背上
+  drFlat: { pos: [0.12, -0.1, -0.33], dir: [-0.97, 0.1, -0.2], elbow: [0.5, -0.55, 0.1] },
 };
 // 姿势轨道 = [[时刻, 姿势名, 缓动?]…]：到这个时刻摆成这个姿势，相邻两个之间平滑过渡。
 // 挥刀（照 CS：左键横着一划，一左一右轮着来；右键往前一捅）。时刻是 0~1（整段动作的进度）
@@ -271,6 +296,20 @@ export const KNIFE_HIT = {
   back: [[0, 'idle'], [0.14, 'bkL', 'out'], [0.4, 'bkR', 'out'], [0.56, 'bkR2', 'out'], [1, 'idle']],
   stab: [[0, 'idle'], [0.2, 'stb0', 'out'], [0.4, 'stb1', 'out'], [0.62, 'stb2'], [1, 'idle']],
 };
+
+// 反握的刀挥起来不一样（照手游的样子）：左键 = 拳头带着刀横着抡过去、刀身拖在后面，一左一右轮着来；右键 = 举起来往下扎
+const REV_HIT = {
+  slash: [[0, 'idle'], [0.14, 'rvR', 'out'], [0.4, 'rvL', 'out'], [0.56, 'rvL2', 'out'], [1, 'idle']],
+  back: [[0, 'idle'], [0.15, 'rbL', 'out'], [0.4, 'rbR', 'out'], [0.56, 'rbR2', 'out'], [1, 'idle']],
+  stab: [[0, 'idle'], [0.22, 'rs0', 'out'], [0.42, 'rs1', 'out'], [0.62, 'rs2'], [1, 'idle']],
+};
+// 反握的刀在摊开的手心前面转：a = 在手心这个平面里转过的角度（正 = 画面里逆时针），roll = 绕刀身翻了多少
+// （转一圈半、同时翻半圈 = 在手里掉了个头：反握变正握，刀背还在原来那一边）；w = 手张开多少，刀同时离开手心一点
+function palmSpin(P, a, roll, w) {
+  P.spin.position.copy(P.base);
+  P.spin.position.x += 0.014 * w;
+  P.spin.rotation.set(a, 0, roll);
+}
 
 // 分段转角：[{t0, t1, a0, a1, ease}]
 function track(tr, e) {
@@ -447,6 +486,74 @@ export const KNIFE_FX = {
       // 挂绳跟着甩一甩
       const sw = q > 0 && q < 1 ? Math.sin(e * 23) * 0.5 : Math.sin(e * 9) * 0.12 * Math.exp(-e * 0.6);
       if (P.cord) P.cord.rotation.set(sw, 0, sw * 0.4);
+    },
+  },
+  // 天御刀（反握的弯刃礼刀）：切刀时手心对着自己举到右边，刀在手心前面转一圈多，握住、翻手落到位。
+  // 检视：转一圈半在手里掉个头，横着端到面前、左手从下面托住刀身亮一会儿，再转回来反握
+  tianyu: {
+    hit: REV_HIT, sup: true,
+    draw: { dur: 0.66, ev: [[0.02, 'kn_swish'], [0.2, 'kn_swish'], [0.44, 'kn_catch']], pose: [[0, 'rvUp'], [0.44, 'rvUp'], [0.66, 'idle', 'out']] },
+    inspect: { dur: 4.3, ev: [[0.2, 'kn_swish'], [0.42, 'kn_swish'], [0.66, 'kn_catch'], [0.75, 'kn_swish'], [3.42, 'kn_swish'], [3.66, 'kn_swish'], [3.95, 'kn_catch'], [4.02, 'kn_swish']],
+      pose: [[0, 'idle'], [0.24, 'rvUp', 'out'], [0.66, 'rvUp'], [1.05, 'tyShow'], [3.2, 'tyShow2'], [3.45, 'rvUp'], [3.98, 'rvUp'], [4.3, 'idle']] },
+    anim(P, mode, e, o) {
+      let a = 0, roll = 0, w = 0;
+      if (mode === 'draw') {
+        a = -TAU * 1.375 * (1 - eOut(seg(e, 0.03, 0.44), 1.7));
+        w = win(e, 0, 0.06, 0.37, 0.46);
+      } else if (mode === 'inspect') {
+        const q = sstep(seg(e, 0.2, 0.68)) + sstep(seg(e, 3.42, 3.95));
+        a = TAU * 1.5 * q; roll = PI * q;
+        w = Math.max(win(e, 0.16, 0.26, 0.6, 0.7), win(e, 3.38, 3.47, 3.88, 3.98));
+        o.sup = win(e, 1.0, 1.4, 2.95, 3.25);
+        o.rz += Math.sin((e - 1.2) * 1.5) * 0.025 * win(e, 1.2, 1.6, 2.9, 3.2);
+      }
+      o.hand = 'flat'; o.handW = w;
+      palmSpin(P, a, roll, w);
+    },
+  },
+  // 影刃（反握的黑色弯刃）：切刀更快，转一圈多就握住。检视：转刀掉个头，立起来看、横过来看、再立起来看另一面，转回来反握
+  shadow: {
+    hit: REV_HIT,
+    draw: { dur: 0.5, ev: [[0.02, 'kn_swish'], [0.16, 'kn_swish'], [0.33, 'kn_catch']], pose: [[0, 'rvUp'], [0.33, 'rvUp'], [0.5, 'idle', 'out']] },
+    inspect: { dur: 3.75, ev: [[0.18, 'kn_swish'], [0.52, 'kn_catch'], [1.3, 'kn_swish'], [2.42, 'kn_swish'], [3.18, 'kn_swish'], [3.55, 'kn_catch']],
+      pose: [[0, 'idle'], [0.22, 'rvUp', 'out'], [0.52, 'rvUp'], [0.8, 'shUp'], [1.25, 'shUp'], [1.6, 'shSide'], [2.4, 'shSide'], [2.72, 'shUp2'], [3.1, 'shUp2'],
+        [3.25, 'rvUp'], [3.55, 'rvUp'], [3.75, 'idle']] },
+    anim(P, mode, e, o) {
+      let a = 0, roll = 0, w = 0;
+      if (mode === 'draw') {
+        a = -TAU * 1.375 * (1 - eOut(seg(e, 0.02, 0.33), 1.7));
+        w = win(e, 0, 0.05, 0.27, 0.35);
+      } else if (mode === 'inspect') {
+        const q = sstep(seg(e, 0.18, 0.54)) + sstep(seg(e, 3.18, 3.56));
+        a = TAU * 1.5 * q; roll = PI * q;
+        w = Math.max(win(e, 0.14, 0.22, 0.47, 0.56), win(e, 3.14, 3.22, 3.5, 3.58));
+        o.ry += Math.sin(e * 2.4) * 0.05 * win(e, 0.85, 1.0, 3.0, 3.15);
+      }
+      o.hand = 'flat'; o.handW = w;
+      palmSpin(P, a, roll, w);
+    },
+  },
+  // 威龙之刃（正握的霓虹折线刀）：切刀时刀尖朝上拿上来，刀绕着食指连转两圈，握住、翻手落到位。
+  // 检视：看一面、翻过来看另一面，横着端平（食指搭在刀背上），最后再转一圈收回来
+  dragon: {
+    draw: { dur: 0.72, ev: [[0.03, 'kn_swish'], [0.16, 'kn_swish'], [0.3, 'kn_swish'], [0.47, 'kn_catch']], pose: [[0, 'up'], [0.3, 'm9hi'], [0.72, 'idle', 'back']] },
+    inspect: { dur: 4.5, ev: [[0.1, 'kn_swish'], [1.2, 'kn_swish'], [2.35, 'kn_swish'], [3.45, 'kn_swish'], [3.74, 'kn_swish'], [4.1, 'kn_catch'], [4.18, 'kn_swish']],
+      pose: [[0, 'idle'], [0.4, 'palm'], [1.15, 'palm'], [1.55, 'back'], [2.3, 'back'], [2.7, 'drFlat'], [3.4, 'drFlat'], [3.72, 'm9hi'], [4.12, 'm9hi'], [4.5, 'idle']] },
+    anim(P, mode, e, o) {
+      let a = 0, w = 0;
+      if (mode === 'draw') {
+        a = TAU * 2 * eOut(seg(e, 0.05, 0.47), 2);
+        w = win(e, 0.03, 0.09, 0.4, 0.49);
+      } else if (mode === 'inspect') {
+        a = TAU * eOut(seg(e, 3.72, 4.1), 2);
+        w = win(e, 3.68, 3.76, 4.04, 4.13);
+        o.ry += Math.sin(e * 2.2) * 0.04 * win(e, 0.3, 0.5, 2.2, 2.4);
+        if (e < 3.6) { o.hand = 'point'; o.handW = win(e, 2.5, 2.75, 3.35, 3.55); }
+      }
+      if (!o.hand) { o.hand = 'spin'; o.handW = w; }
+      P.spin.position.copy(P.base);
+      P.spin.position.x -= 0.012 * w;
+      P.spin.rotation.x = a;
     },
   },
 };

@@ -359,6 +359,8 @@ export const HAND_SHAPES = shapes({
   // 蝴蝶刀：大拇指从上面压住安全柄，四指伸直让开（咬柄从手指这一侧转回来）
   bfPinch: { curl: [[-0.06, 0.1, 0.08], [-0.12, 0.1, 0.08], [-0.12, 0.12, 0.1], [-0.08, 0.16, 0.12]], splay: [-0.14, -0.03, 0.06, 0.17],
     thumb: [[0.3, 0.6, 0.74], [0.05, 0.92, 0.38], [0, 0.97, -0.25]] },
+  // 食指伸直搭在刀背上，其余手指握着（威龙之刃检视时横着端平）
+  point: { curl: [[0.1, 0.14, 0.1], [1.32, 1.6, 0.9], [1.34, 1.6, 0.9], [1.36, 1.55, 0.85]], splay: [-0.04, 0, 0.04, 0.1], thumb: THUMB.wrap },
   // 爪子刀转刀：只有食指勾着刀环，其余手指张开让刀转过去
   ring: { curl: [[1.3, 1.6, 0.9], [0.1, 0.2, 0.12], [0.08, 0.2, 0.12], [0.1, 0.22, 0.14]], splay: [-0.1, 0.02, 0.1, 0.2],
     thumb: [[0.84, 0.54, -0.06], [0.8, 0.6, -0.04], [0.72, 0.69, 0]] },
@@ -417,6 +419,13 @@ const rKnife = (y, z, o = {}) => ({
   pose: HAND_SHAPES.fist, rig: true, ...o,
 });
 
+// 右手反握刀柄（天御刀、影刃）：刀从拳头小指那一侧伸出去，大拇指那一侧朝刀尾；手背对着刀的左侧面，
+// 手腕在刀背那一边，小臂顺着刀身的方向斜过去（反握时刀身本来就贴着小臂）
+const rKnifeRev = (y, z, o = {}) => ({
+  grip: [0, y, z], thumbDir: [0, 0, 1], palmDir: [1, 0, 0], hold: [0, 0.1, 0.028], elbow: [-0.066, 0.48, -0.24],
+  pose: HAND_SHAPES.fist, rig: true, ...o,
+});
+
 const NADE_R = { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
   pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } };
 const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lRack(0.0476, 0.065, -0.113) };
@@ -442,6 +451,9 @@ const POSES = {
   knife_m9: { right: rKnife(0.017, 0.022) },
   knife_butterfly: { right: rKnife(0.012, 0.036) },
   knife_xeno: { right: rKnife(0.01, 0.038) },
+  knife_tianyu: { right: rKnifeRev(0.012, 0.028) },
+  knife_shadow: { right: rKnifeRev(0.012, 0.027) },
+  knife_dragon: { right: rKnife(0.013, 0.036) },
   knife_karambit: {
     // 爪子刀横着握：刀柄左右走向，刀环在拳头左边（食指那一侧），手背对着自己
     right: { grip: [0.0085, -0.018, 0.03], thumbDir: [-1, 0, 0], palmDir: [0, 0.2, -1], hold: [0, 0.1, 0.03], elbow: [0.14, -0.42, 0.3],
@@ -477,6 +489,9 @@ function sawTeeth(z0, n, p, h, y) {
 function knifeDone(g, kind, extra) {
   const U = g.userData;
   U.kfx = { kind, spin: U.spin || null, base: U.spin ? U.spin.position.clone() : null, ...extra };
+  // 刀光：跟着刀尖（a）和刀身中段（b）走，换算到 spin 这个组自己的坐标里
+  const tr = U.kfx.trail;
+  if (tr) { tr.a = new THREE.Vector3(...tr.tip).sub(U.kfx.base); tr.b = new THREE.Vector3(...tr.root).sub(U.kfx.base).lerp(tr.a, 0.7); }
   U.muzzle = new THREE.Vector3(0, 0.02, -0.25);
   return g;
 }
@@ -623,6 +638,166 @@ function knifeXeno(k) {
   return knifeDone(g, 'xeno', { cord: g.userData.cord });
 }
 
+// ---------------- 三把花刀：天御刀、影刃、威龙之刃 ----------------
+// 样子是照着手游里那几把近战武器的大致轮廓自己搭的（弯刃 + 鎏金护手、带紫色能量的黑刃、霓虹描边的折线刀），没有用别人的模型。
+// 沿一条中线铺出来的带子的轮廓：c = [[z, y, 半宽]…] → prof 用的点。金脊、兽角、钩子、闪电纹都用它
+function ribbon(c) {
+  const L = [], R = [];
+  c.forEach((p, i) => {
+    const a = c[Math.max(0, i - 1)], b = c[Math.min(c.length - 1, i + 1)];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tz = (b[0] - a[0]) / l, ty = (b[1] - a[1]) / l;
+    L.push([p[0] - ty * p[2], p[1] + tz * p[2]]);
+    R.push([p[0] + ty * p[2], p[1] - tz * p[2]]);
+  });
+  return [...L, ...R.reverse()];
+}
+// 把轮廓往外扩 d（负数是往里缩）：每条边平移 d，尖角最多伸出 lim 倍（霓虹描边用）
+function grow(pts, d, lim = 2.6) {
+  const n = pts.length;
+  let A = 0;
+  for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; A += p[0] * q[1] - q[0] * p[1]; }
+  const sg = A > 0 ? 1 : -1;
+  return pts.map((p, i) => {
+    const a = pts[(i + n - 1) % n], b = pts[(i + 1) % n];
+    const l1 = Math.hypot(p[0] - a[0], p[1] - a[1]) || 1, l2 = Math.hypot(b[0] - p[0], b[1] - p[1]) || 1;
+    const n1 = [((p[1] - a[1]) / l1) * sg, (-(p[0] - a[0]) / l1) * sg], n2 = [((b[1] - p[1]) / l2) * sg, (-(b[0] - p[0]) / l2) * sg];
+    let mx = n1[0] + n2[0], my = n1[1] + n2[1];
+    const l = Math.hypot(mx, my) || 1;
+    mx /= l; my /= l;
+    const k = Math.min(lim, 1 / Math.max(1e-3, mx * n1[0] + my * n1[1]));
+    return [p[0] + mx * d * k, p[1] + my * d * k];
+  });
+}
+// 弯刀：f(s) 给出刀身中线上 s（0 刀根 ~ 1 刀尖）处的 [z, y, 宽, 厚]；返回 { st: k.blade 要的各站, at(s, u): 中线旁边偏 u 的点 [z, y] }
+// 刀背在 +Y 那一侧。cut(s)：刀背这一侧往里收多少（天御刀靠护手那里镂空）
+function curveBlade(n, f, cut) {
+  const frame = (s) => {
+    const p = f(s), a = f(Math.max(0, s - 0.004)), b = f(Math.min(1, s + 0.004));
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return { p, nz: (b[1] - a[1]) / l, ny: -(b[0] - a[0]) / l }; // 指向刀背那一侧的法线
+  };
+  const st = [];
+  for (let i = 0; i <= n; i++) {
+    const s = i / n, { p, nz, ny } = frame(s), w = Math.max(0.0009, p[2]), c = cut ? cut(s) : 0;
+    st.push([p[0] + nz * (w / 2 - c), p[1] + ny * (w / 2 - c), p[0] - nz * w / 2, p[1] - ny * w / 2, p[3], (w - c) * 0.42, p[3] * 0.62]);
+  }
+  return { st, at: (s, u) => { const { p, nz, ny } = frame(s); return [p[0] + nz * u, p[1] + ny * u]; } };
+}
+
+// 天御刀：反握的弯刃礼刀。青蓝色发光的刀身往刀刃那一侧翘起来，刀背上一条金脊，护手是几根金色的弯角、中间嵌蓝宝石，
+// 刀尾是一只往刀背那边弯的金号角、角尖一颗蓝宝石
+function knifeTianyu(k) {
+  const Y0 = 0.012, Z0 = -0.046, L = 0.36;
+  const f = (s) => {
+    const y = Y0 + 0.007 * Math.sin(Math.PI * Math.min(1, s / 0.75)) - 0.052 * Math.pow(Math.max(0, (s - 0.35) / 0.65), 2);
+    const w = (0.024 + 0.007 * Math.sin(Math.PI * Math.min(0.55, s) * 0.9)) * (s > 0.55 ? 1 - Math.pow((s - 0.55) / 0.45, 1.6) : 1);
+    return [Z0 - L * s, y, w, 0.0056 * (1 - 0.8 * s * s)];
+  };
+  const B = curveBlade(k.hd ? 22 : 9, f, (s) => (s < 0.22 ? 0.016 * Math.pow(1 - s / 0.22, 1.2) : 0));
+  const half = (s) => f(s)[2] / 2;
+  k.group('spin', () => {
+    k.blade('teal', 'tealE', B.st, { curve: true });
+    // 金脊：沿着刀背从护手一直到刀身的六成，越走越细
+    const rib = [];
+    for (let i = 0; i <= 10; i++) { const s = (i / 10) * 0.62, p = B.at(s, half(s) + 0.0008); rib.push([p[0], p[1], 0.0044 * (1 - s / 0.62) + 0.0007]); }
+    k.prof('gold', ribbon(rib), 0.0086, { bevel: 0.003 });
+    k.fine(() => {
+      // 刀身中间一道亮线（分三段，跟着刀身越来越薄）
+      for (const [s0, s1, t] of [[0.12, 0.42, 0.0068], [0.42, 0.68, 0.0058], [0.68, 0.9, 0.0042]]) {
+        const c = [];
+        for (let i = 0; i <= 5; i++) { const s = s0 + ((s1 - s0) * i) / 5, p = B.at(s, -half(s) * 0.12); c.push([p[0], p[1], 0.0017 * (1 - s) + 0.0005]); }
+        k.prof('tealE', ribbon(c), t, { bevel: 0.0005 });
+      }
+      // 金脊上的两片小叶子
+      for (const s of [0.2, 0.4]) { const p = B.at(s, half(s) - 0.004), q = B.at(s + 0.07, half(s + 0.07) - 0.012); k.prof('gold', ribbon([[p[0], p[1], 0.0026], [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, 0.002], [q[0], q[1], 0.0006]]), 0.0072, { bevel: 0.0012 }); }
+    });
+    // 护手：中间一个金箍，刀刃那一侧一根往前弯的长角，刀背那一侧一个往回卷的短角，再加一根小刺
+    k.box('gold', 0.0205, 0.05, 0.014, 0, Y0, -0.039, { r: 0.004 });
+    k.prof('gold', ribbon([[-0.036, -0.006, 0.0075], [-0.04, -0.027, 0.0062], [-0.05, -0.046, 0.004], [-0.064, -0.061, 0.0012]]), 0.012, { bevel: 0.004 });
+    k.prof('gold', ribbon([[-0.036, 0.032, 0.006], [-0.029, 0.046, 0.005], [-0.015, 0.053, 0.0035], [-0.004, 0.047, 0.0012]]), 0.011, { bevel: 0.0035 });
+    k.fine(() => {
+      k.prof('goldD', ribbon([[-0.031, -0.008, 0.004], [-0.021, -0.023, 0.003], [-0.007, -0.03, 0.001]]), 0.008, { bevel: 0.0025 });
+      for (const x of [-0.0102, 0.0102]) k.ball('gemB', 0.003, 0.0068, 0.0052, new THREE.Matrix4().makeTranslation(x, Y0, -0.039));
+    });
+    // 刀柄：缠绳，三道金箍
+    k.loft('tealG', [[0, 0.019, 0.025], [0.03, 0.021, 0.028], [0.075, 0.021, 0.027], [0.114, 0.018, 0.023]], back(Y0, -0.032), { exp: 3 });
+    for (const z of [-0.008, 0.027, 0.062]) k.box('gold', 0.0226, 0.0296, 0.0046, 0, Y0, z, { r: 0.002 });
+    // 刀尾：往刀背那边弯的金号角，角尖一颗蓝宝石
+    k.prof('gold', ribbon([[0.079, Y0, 0.012], [0.098, 0.0135, 0.014], [0.116, 0.02, 0.0165], [0.13, 0.031, 0.0165], [0.139, 0.043, 0.014]]), 0.02, { bevel: 0.006 });
+    k.prof('gemB', ribbon([[0.137, 0.0405, 0.0118], [0.143, 0.049, 0.009], [0.147, 0.056, 0.004]]), 0.0165, { bevel: 0.005 });
+  }, { pivot: [0, Y0, 0.028] });
+  return knifeDone(k.build(), 'tianyu', { trail: { tip: [0, -0.04, -0.404], root: [0, Y0, -0.07], color: 0x35c8ff } });
+}
+
+// 影刃：反握的黑色弯刃。刀身往刀背那边翘、刃口鼓出一个肚子，刀背靠护手有三个倒刺，刀身里一道紫色的闪电；
+// 护手像一对蝙蝠翅膀，刀尾是一只往回勾的爪子
+function knifeShadow(k) {
+  const Y0 = 0.012, Z0 = -0.046, L = 0.205;
+  const f = (s) => {
+    const w = (0.03 + 0.016 * Math.sin(Math.PI * Math.min(1, s / 0.62) * 0.5)) * (s > 0.5 ? 1 - Math.pow((s - 0.5) / 0.5, 1.8) : 1);
+    return [Z0 - L * s, Y0 + 0.036 * Math.pow(s, 2.2), w, 0.0058 * (1 - 0.75 * s * s)];
+  };
+  const B = curveBlade(k.hd ? 20 : 8, f);
+  const half = (s) => f(s)[2] / 2;
+  k.group('spin', () => {
+    k.blade('shadow', 'shadowE', B.st, { curve: true });
+    // 刀背上的倒刺：尖朝护手那边勾
+    for (const s of [0.1, 0.21, 0.32]) {
+      const a = B.at(s, half(s) - 0.001), b = B.at(s + 0.085, half(s + 0.085) - 0.001), c = B.at(s + 0.012, half(s + 0.012) + 0.0085);
+      k.prof('shadow', [a, b, c], 0.0036, { bevel: 0.0008 });
+    }
+    // 刀身里的闪电：一条左右折来折去的发光带子，前半截薄一些
+    for (const [s0, s1, t] of [[0.06, 0.5, 0.0068], [0.5, 0.86, 0.0048]]) {
+      const c = [], n = k.hd ? 6 : 3;
+      for (let i = 0; i <= n; i++) {
+        const s = s0 + ((s1 - s0) * i) / n, zig = (Math.round(s / 0.073) % 2 ? 1 : -1) * 0.0042 * (1 - s * 0.6);
+        const p = B.at(s, zig - half(s) * 0.1);
+        c.push([p[0], p[1], 0.0043 * (1 - s) + 0.0009]);
+      }
+      k.prof('violet', ribbon(c), t, { bevel: 0.0005 });
+    }
+    // 护手：一对往刀尖那边掠的翅膀
+    k.prof('violetD', [[-0.030, Y0 + 0.016], [-0.036, Y0 + 0.034], [-0.064, Y0 + 0.047], [-0.052, Y0 + 0.030], [-0.050, Y0 + 0.018], [-0.047, Y0],
+      [-0.050, Y0 - 0.018], [-0.052, Y0 - 0.030], [-0.064, Y0 - 0.047], [-0.036, Y0 - 0.034], [-0.030, Y0 - 0.016]], 0.012, { bevel: 0.003 });
+    k.fine(() => { for (const x of [-0.0062, 0.0062]) k.ball('violet', 0.002, 0.005, 0.005, new THREE.Matrix4().makeTranslation(x, Y0, -0.04)); });
+    // 刀柄：缠皮，几道暗紫色的箍
+    k.loft('leather', [[0, 0.018, 0.024], [0.035, 0.0205, 0.027], [0.08, 0.02, 0.026], [0.11, 0.017, 0.022]], back(Y0, -0.032), { exp: 3 });
+    k.fine(() => { for (let i = 0; i < 5; i++) k.box('violetD', 0.0212, 0.0278, 0.0028, 0, Y0, -0.014 + i * 0.018, { r: 0.0012 }); });
+    // 刀尾：往刀背那边卷回来的爪子
+    k.prof('violetD', ribbon([[0.075, Y0, 0.011], [0.092, 0.016, 0.0115], [0.104, 0.028, 0.009], [0.106, 0.042, 0.0055], [0.098, 0.052, 0.0015]]), 0.014, { bevel: 0.004 });
+  }, { pivot: [0, Y0, 0.027] });
+  return knifeDone(k.build(), 'shadow', { trail: { tip: [0, 0.047, -0.25], root: [0, Y0, -0.07], color: 0x8a45ff } });
+}
+
+// 威龙之刃：正握的折线刀。淡紫色的亮钢刀身（刀背笔直，刃口斜着收到刀尖），刀背下面一道黑色的槽，刃根一排白色尖齿；
+// 刀柄是黑色的折线框，刀尾一个平行四边形的环；整把刀一圈霓虹粉的描边
+function knifeDragon(k) {
+  const BL = [[-0.028, 0.031], [-0.222, 0.037], [-0.166, 0.003], [-0.108, -0.001], [-0.101, 0.008], [-0.028, 0.008]];
+  const HAN = [[-0.02, -0.003], [-0.02, 0.031], [0.07, 0.029], [0.092, 0.02], [0.092, 0.004], [0.074, -0.005]];
+  const RING = [[0.086, 0.026], [0.128, 0.018], [0.122, -0.008], [0.084, -0.002]];
+  k.group('spin', () => {
+    k.prof('lilac', BL, 0.0044, { bevel: 0.0016 });
+    k.prof('neon', grow(BL, 0.0017), 0.0014, { bevel: 0 });
+    // 磨出来的刃面（斜着收到刀尖的那一条）
+    k.prof('edge', [[-0.222, 0.037], [-0.166, 0.003], [-0.108, -0.001], [-0.108, 0.0045], [-0.163, 0.0085], [-0.203, 0.032]], 0.0046, { bevel: 0.0021 });
+    // 刀背下面的黑槽，槽底一道霓虹线
+    k.prof('carbon', [[-0.046, 0.019], [-0.166, 0.0225], [-0.186, 0.0315], [-0.046, 0.027]], 0.0052, { bevel: 0.0006 });
+    k.fine(() => k.prof('neon', [[-0.046, 0.0176], [-0.166, 0.0211], [-0.166, 0.0225], [-0.046, 0.019]], 0.0054, { bevel: 0 }));
+    // 刃根的一排尖齿
+    for (let i = 0; i < 4; i++) { const z = -0.044 - i * 0.014; k.prof('ivory', [[z, 0.0085], [z - 0.011, 0.0085], [z - 0.009, -0.0065]], 0.0036, { bevel: 0.0008 }); }
+    // 护手
+    k.prof('carbon', [[-0.031, -0.005], [-0.031, 0.04], [-0.018, 0.036], [-0.018, -0.001]], 0.0155, { bevel: 0.003 });
+    // 刀柄：折线形的黑框，侧面两道斜着的霓虹槽
+    k.prof('carbon', HAN, 0.0145, { bevel: 0.004 });
+    k.prof('neon', grow(HAN, 0.0016), 0.0016, { bevel: 0 });
+    k.fine(() => { for (const z of [0.004, 0.03, 0.056]) k.prof('neon', [[z, 0.006], [z + 0.005, 0.006], [z + 0.013, 0.021], [z + 0.008, 0.021]], 0.0151, { bevel: 0 }); });
+    // 刀尾的环
+    k.prof('carbon', RING, 0.007, { bevel: 0.002, holes: [grow(RING, -0.0055)] });
+    k.prof('neon', grow(RING, 0.0015), 0.0014, { bevel: 0, holes: [grow(RING, -0.007)] });
+  }, { pivot: [0, 0.013, -0.006] });
+  return knifeDone(k.build(), 'dragon', { trail: { tip: [0, 0.037, -0.222], root: [0, 0.012, -0.06], color: 0xff3ad8 } });
+}
+
 // ============================== 对外 ==============================
 // 有高精度模型的武器。gun(hd)：hd=true 是第一人称用的，false 是远处看的简化版
 const more = (wid, lay) => ({ gun: (hd) => GUNS[wid](new Kit(hd)), lay });
@@ -647,6 +822,9 @@ export const HD_KNIVES = {
   karambit: (hd) => knifeKarambit(new Kit(hd)),
   butterfly: (hd) => knifeButterfly(new Kit(hd)),
   xeno: (hd) => knifeXeno(new Kit(hd)),
+  tianyu: (hd) => knifeTianyu(new Kit(hd)),
+  shadow: (hd) => knifeShadow(new Kit(hd)),
+  dragon: (hd) => knifeDragon(new Kit(hd)),
 };
 
 export { POSES as HAND_POSES }; // 预览页调姿势用
@@ -676,6 +854,14 @@ export function hdHands(pose, cols) {
   const put = (name, o) => { if (o) { g.userData[name] = arm(name, o, style, cols); g.add(g.userData[name]); } };
   put('rh', pose.right); put('lh', pose.left); put('lhM', pose.leftMag); put('lhB', pose.leftAct); put('rhB', pose.rightAct);
   return g;
+}
+
+// 天御刀检视时从下面托住刀身的左手：手心朝上、手指微微弯着（位置直接写在相机坐标里）
+export function hdSupportHand(cols) {
+  return arm('lhS', {
+    left: true, grip: [-0.085, -0.1, -0.36], fingerDir: [0.42, 0.3, -0.86], palmDir: [0.22, 0.9, 0.38], hold: [0, 0.105, 0.012],
+    elbow: [-0.3, -0.52, 0.02], pose: { curl: CURL.open, splay: [-0.12, -0.03, 0.05, 0.14], thumb: THUMB.open },
+  }, handStyle(cols), cols);
 }
 
 // 拿刀时空着的左手：张开、手心朝下放在画面左下（位置直接写在相机坐标里）

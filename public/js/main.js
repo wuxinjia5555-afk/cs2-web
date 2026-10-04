@@ -709,6 +709,9 @@ const KNIVES = [
   { id: 'karambit', name: '★ 爪子刀', rarity: '隐秘', cls: 'r-covert', desc: '食指套着刀环，拔刀时绕手指转两圈接住；按 F 检视会正转、反转再甩一圈。' },
   { id: 'm9', name: '★ M9 刺刀', rarity: '隐秘', cls: 'r-covert', desc: '拔刀时反握着抬起来，刀在手里转半圈握正，再一翻手腕落到位；按 F 检视会亮刀看两面，再抛起来翻一圈接住。' },
   { id: 'xeno', name: '★ 剥皮小刀', rarity: '隐秘', cls: 'r-covert', desc: '瓦罗兰特「异星猎人」小刀：锯齿刀背、镂空刀柄、刀尾挂绳。拔刀时在手里翻一圈握住；检视会翻面看两面，再在指间转两圈。' },
+  { id: 'tianyu', name: '★ 天御刀', rarity: '隐秘', cls: 'r-covert', desc: '反握的弯刃礼刀：青蓝色发光的刀身、鎏金护手、号角形的刀尾。拔刀时在手心前面转一圈多再握住；按 F 检视会把刀掉个头、横端在面前，左手从下面托住刀身；挥刀带一道蓝色刀光。' },
+  { id: 'shadow', name: '★ 影刃', rarity: '隐秘', cls: 'r-covert', desc: '反握的黑色弯刃：刀身里一道紫色闪电，刀背带倒刺，护手像一对蝙蝠翅膀。拔刀又快又脆；按 F 检视会立起来看、横过来看、再翻到另一面；挥刀带紫色刀光。' },
+  { id: 'dragon', name: '★ 威龙之刃', rarity: '隐秘', cls: 'r-covert', desc: '霓虹描边的折线战术刀：淡紫色刀身、刃根一排白色尖齿、刀尾带环。拔刀时绕着食指连转两圈；按 F 检视会看两面、横着端平，再转一圈收回来；挥刀带粉色刀光。' },
 ];
 let inv = null;
 
@@ -996,7 +999,7 @@ function tellServerWho() {
 $('acct-sync-now').addEventListener('click', () => uploadNow());
 
 // ---------------- 好友 ----------------
-const SKIN_LABEL = { butterfly: '★ 蝴蝶刀', karambit: '★ 爪子刀', m9: '★ M9 刺刀', xeno: '★ 剥皮小刀' };
+const SKIN_LABEL = { butterfly: '★ 蝴蝶刀', karambit: '★ 爪子刀', m9: '★ M9 刺刀', xeno: '★ 剥皮小刀', tianyu: '★ 天御刀', shadow: '★ 影刃', dragon: '★ 威龙之刃' };
 let giftTo = null, delAsk = null;
 function seenText(t) {
   if (!t) return '很久没上线';

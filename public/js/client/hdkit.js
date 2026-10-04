@@ -92,6 +92,22 @@ export const HD_MATS = {
   c4: { color: 0xa49066, metal: 0, rough: 0.85, tex: 'cloth', uv: 30 },           // C4 的油纸包
   lcd: { color: 0x3cff6e, metal: 0, rough: 0.4 },
   keys: { color: 0x9aa0a8, metal: 0.2, rough: 0.5 },
+  // 三把花刀用的（glow：自己发光的颜色，glowK：多亮）
+  gold: { color: 0xd8a23c, metal: 1, rough: 0.27 },                               // 鎏金
+  goldD: { color: 0x9a6a24, metal: 1, rough: 0.36 },
+  teal: { color: 0x1487c2, metal: 0.55, rough: 0.3, glow: 0x0a5f8e, glowK: 0.7 },   // 天御刀的刀身：青蓝色、自己发光（底色要深，不然一打光就成白的了）
+  tealE: { color: 0x8fe4ff, metal: 0.3, rough: 0.2, glow: 0x35b6dc, glowK: 0.55 },  // 刃面 / 刀身中间那道亮线
+  gemB: { color: 0x2d8fff, metal: 0.3, rough: 0.1, glow: 0x1560ff, glowK: 0.9 },    // 蓝宝石
+  tealG: { color: 0x1c3a46, metal: 0.1, rough: 0.72 },                              // 缠绳刀柄
+  shadow: { color: 0x1c1a24, metal: 0.86, rough: 0.4, tex: 'metal', uv: 9 },        // 影刃：发黑的钢
+  shadowE: { color: 0x565070, metal: 1, rough: 0.2 },
+  violet: { color: 0x9a5cff, metal: 0.1, rough: 0.3, glow: 0x7a2cff, glowK: 1.25 }, // 刀身里的紫色能量
+  violetD: { color: 0x3d2c63, metal: 0.65, rough: 0.38 },                           // 暗紫色的护手、刀尾
+  leather: { color: 0x141218, metal: 0, rough: 0.82 },
+  lilac: { color: 0xc3bde0, metal: 0.92, rough: 0.26, tex: 'metal', uv: 9 },        // 威龙之刃：淡紫色的亮钢
+  neon: { color: 0xff62e2, metal: 0, rough: 0.4, glow: 0xff2ad2, glowK: 1.5 },      // 描边的霓虹粉
+  carbon: { color: 0x16151c, metal: 0.45, rough: 0.5 },
+  ivory: { color: 0xf5f0ff, metal: 0.2, rough: 0.3, glow: 0xd8c6ff, glowK: 0.45 },  // 刀刃根上那排白色的尖齿
 };
 const stdCache = new Map(), flatCache = new Map();
 // 第一人称用的材质（带金属反光和贴图）；extra 可以加自定义材质（比如按队伍上色的手套）
@@ -102,6 +118,7 @@ export function hdMat(key, extra) {
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color: def.color, metalness: def.metal ?? 0, roughness: def.rough ?? 0.8 });
     if (def.tex) { m.map = detailTex(def.tex); m.roughnessMap = m.map; }
+    if (def.glow != null) { m.emissive = new THREE.Color(def.glow); m.emissiveIntensity = def.glowK ?? 1; }
     stdCache.set(ck, m);
   }
   return m;
@@ -110,7 +127,11 @@ export function hdMat(key, extra) {
 export function flatMat(key, extra) {
   const def = (extra && extra[key]) || HD_MATS[key];
   let m = flatCache.get(def.color);
-  if (!m) { m = new THREE.MeshLambertMaterial({ color: def.color }); flatCache.set(def.color, m); }
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ color: def.color });
+    if (def.glow != null) { m.emissive = new THREE.Color(def.glow); m.emissiveIntensity = (def.glowK ?? 1) * 0.6; }
+    flatCache.set(def.color, m);
+  }
   return m;
 }
 

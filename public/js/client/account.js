@@ -5,7 +5,7 @@ import { settings, saveSettings, settingsHooks, replaceSettings } from './settin
 
 const TK = 'defuse.token', DIRTY = 'defuse.syncDirty', VIEW = 'defuse.acctView';
 export const LOCAL_ONLY = ['res', 'shadows', 'touchMode', 'lastMap', 'fullscreen'];
-export const SKIN_IDS = ['butterfly', 'karambit', 'm9', 'xeno'];
+export const SKIN_IDS = ['butterfly', 'karambit', 'm9', 'xeno', 'tianyu', 'shadow', 'dragon'];
 // state：'' 未登录 / loading 登录中 / ok 已同步 / pending 等待上传 / saving 上传中 / error 同步失败
 // coins：-1 表示无限（开发者模式）；owned：已解锁的刀（null = 还不知道）
 export const account = {
