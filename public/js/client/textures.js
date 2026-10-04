@@ -11,6 +11,7 @@ export const TEX_SCALE = {
   plaster: 3, brick: 2, concrete_wall: 4, metalwall: 2, container_r: 2.5, container_b: 2.5, container_g: 2.5,
   dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
   door: 1.6, iron: 1, stone: 2, darkwood: 2,
+  cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, woodfloor: 2, grass: 3, rooftile: 2,
 };
 
 const cache = new Map();
@@ -126,6 +127,67 @@ function corrugated(ctx, size, rnd, base, ribs = 16) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(0, 0, size, 5);
   ctx.fillRect(0, size - 5, size, 5);
+}
+
+function shutter(ctx, s, rnd, col) {
+  ctx.fillStyle = rgb(186, 172, 142);
+  ctx.fillRect(0, 0, s, s);
+  const m = s * 0.07, w = (s - m * 2) / 2;
+  for (let k = 0; k < 2; k++) {
+    const x0 = m + k * w + 2;
+    ctx.fillStyle = rgb(col[0] * 0.55, col[1] * 0.55, col[2] * 0.55);
+    ctx.fillRect(x0, m, w - 4, s - m * 2);
+    for (let y = m + 8; y < s - m - 10; y += 11) {
+      const c = vary(rnd, col, 0.12);
+      const g = ctx.createLinearGradient(0, y, 0, y + 9);
+      g.addColorStop(0, rgb(c[0] * 1.15, c[1] * 1.15, c[2] * 1.15)); g.addColorStop(1, rgb(c[0] * 0.72, c[1] * 0.72, c[2] * 0.72));
+      ctx.fillStyle = g;
+      ctx.fillRect(x0 + 7, y, w - 18, 8);
+    }
+    ctx.strokeStyle = rgb(col[0] * 0.9, col[1] * 0.9, col[2] * 0.9);
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x0 + 3, m + 3, w - 10, s - m * 2 - 6);
+  }
+  grain(ctx, s, rnd, 0.16);
+}
+
+// 灰泥墙：底色上有大片的深浅、从上往下淌的水渍，零星掉皮的地方露出砖
+function stucco(ctx, size, rnd, base) {
+  ctx.fillStyle = rgb(...base);
+  ctx.fillRect(0, 0, size, size);
+  grain(ctx, size, rnd, 0.2, [[2, 0.5], [5, 0.25], [20, 0.25]]);
+  for (let k = 0; k < 7; k++) {
+    const x = rnd() * size, w = 6 + rnd() * 16, h = size * (0.25 + rnd() * 0.5), y = rnd() * size * 0.4;
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, 'rgba(90,70,50,0.16)');
+    g.addColorStop(1, 'rgba(90,70,50,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+  }
+  for (let k = 0; k < 1; k++) {
+    const x = 20 + rnd() * (size - 80), y = size * 0.72 + rnd() * (size * 0.12), w = 18 + rnd() * 16, h = 10 + rnd() * 10;
+    ctx.globalAlpha = 0.55;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, rnd(), 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = rgb(120, 100, 84);
+    ctx.fillRect(x, y, w, h);
+    for (let r = 0; r * 7 < h; r++) for (let c = -1; c * 16 < w; c++) {
+      ctx.fillStyle = rgb(...vary(rnd, [156, 92, 66], 0.2));
+      ctx.fillRect(x + c * 16 + (r % 2 ? 8 : 0) + 1, y + r * 7 + 1, 14, 5);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = 'rgba(80,60,44,0.3)';
+  for (let k = 0; k < 3; k++) {
+    ctx.beginPath();
+    let x = rnd() * size, y = rnd() * size;
+    ctx.moveTo(x, y);
+    for (let j = 0; j < 5; j++) { x += (rnd() - 0.5) * 28; y += rnd() * 24; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
 }
 
 function devGrid(ctx, size, base, line, fine) {
@@ -266,6 +328,79 @@ const PAINTERS = {
   metalwall(ctx, s, rnd) { corrugated(ctx, s, rnd, [122, 132, 142], 18); },
   // 木板门（竖条木板）
   wood(ctx, s, rnd) { tiled(ctx, s, rnd, 6, 1, [128, 86, 50], [62, 40, 22], 4, 0.16); grain(ctx, s, rnd, 0.3); },
+  // 关着的百叶窗：石头窗框里两扇绿色的木百叶
+  shutter(ctx, s, rnd) { shutter(ctx, s, rnd, [62, 98, 76]); },
+  shutter_b(ctx, s, rnd) { shutter(ctx, s, rnd, [112, 78, 52]); },
+  // 关着的木门：石头门框里一扇厚木门
+  housedoor(ctx, s, rnd) {
+    ctx.fillStyle = rgb(176, 162, 132);
+    ctx.fillRect(0, 0, s, s);
+    const m = s * 0.09;
+    ctx.fillStyle = rgb(34, 24, 16);
+    ctx.fillRect(m, m, s - m * 2, s - m);
+    for (let k = 0; k < 4; k++) {
+      ctx.fillStyle = rgb(...vary(rnd, [98, 66, 40], 0.16));
+      ctx.fillRect(m + 3 + (k * (s - m * 2 - 6)) / 4, m + 3, (s - m * 2 - 6) / 4 - 2, s - m - 3);
+    }
+    ctx.fillStyle = rgb(40, 38, 36);
+    ctx.fillRect(m + 3, s * 0.3, s - m * 2 - 6, 7); ctx.fillRect(m + 3, s * 0.72, s - m * 2 - 6, 7);
+    ctx.beginPath(); ctx.arc(s * 0.74, s * 0.55, 6, 0, 7); ctx.fill();
+    grain(ctx, s, rnd, 0.2);
+  },
+  water(ctx, s, rnd) {
+    ctx.fillStyle = rgb(70, 128, 150);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.3, [[3, 0.5], [9, 0.3], [30, 0.2]]);
+  },
+  // 小镇的石块路：大小不一的圆角石块
+  cobble(ctx, s, rnd) {
+    ctx.fillStyle = rgb(96, 88, 76);
+    ctx.fillRect(0, 0, s, s);
+    const rows = 7, rh = s / rows;
+    for (let r = 0; r < rows; r++) {
+      let x = -rnd() * 30;
+      while (x < s) {
+        const w = 22 + rnd() * 26, c = vary(rnd, [158, 148, 132], 0.22);
+        for (const ox of [0, -s]) {
+          ctx.fillStyle = rgb(...c);
+          ctx.beginPath();
+          ctx.roundRect(x + ox + 2, r * rh + 2, w - 4, rh - 4, 7);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.10)';
+          ctx.beginPath();
+          ctx.roundRect(x + ox + 4, r * rh + 4, w - 10, rh / 3, 5);
+          ctx.fill();
+        }
+        x += w;
+      }
+    }
+    grain(ctx, s, rnd, 0.26);
+  },
+  // 灰泥墙（黄 / 橙 / 粉 / 米白）：底色 + 水渍 + 掉皮露出的砖
+  stucco_y(ctx, s, rnd) { stucco(ctx, s, rnd, [222, 190, 118]); },
+  stucco_o(ctx, s, rnd) { stucco(ctx, s, rnd, [212, 148, 96]); },
+  stucco_p(ctx, s, rnd) { stucco(ctx, s, rnd, [202, 138, 124]); },
+  stucco_w(ctx, s, rnd) { stucco(ctx, s, rnd, [226, 216, 194]); },
+  woodfloor(ctx, s, rnd) { tiled(ctx, s, rnd, 1, 8, [142, 104, 66], [70, 48, 28], 3, 0.16); grain(ctx, s, rnd, 0.28); },
+  grass(ctx, s, rnd) {
+    ctx.fillStyle = rgb(96, 124, 62);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.4, [[4, 0.4], [12, 0.3], [48, 0.3]]);
+    pixels(ctx, s, (x, y, i, c) => { const r = rnd(); if (r < 0.06) { c[0] *= 0.7; c[1] *= 0.75; c[2] *= 0.7; } else if (r > 0.95) { c[0] *= 1.2; c[1] *= 1.18; c[2] *= 1.05; } });
+  },
+  rooftile(ctx, s, rnd) {
+    ctx.fillStyle = rgb(120, 58, 40);
+    ctx.fillRect(0, 0, s, s);
+    const rows = 8, cols = 8, rh = s / rows, cw = s / cols;
+    for (let r = 0; r < rows; r++) for (let c = -1; c < cols; c++) {
+      const x = c * cw + (r % 2 ? cw / 2 : 0), col = vary(rnd, [186, 96, 64], 0.2);
+      const g = ctx.createLinearGradient(0, r * rh, 0, (r + 1) * rh);
+      g.addColorStop(0, rgb(col[0] * 0.7, col[1] * 0.7, col[2] * 0.7)); g.addColorStop(0.3, rgb(...col)); g.addColorStop(1, rgb(col[0] * 1.08, col[1] * 1.08, col[2] * 1.08));
+      ctx.fillStyle = g;
+      for (const ox of [0, s]) { ctx.beginPath(); ctx.roundRect(x + ox + 1, r * rh + 1, cw - 2, rh - 1, [0, 0, cw / 2, cw / 2]); ctx.fill(); }
+    }
+    grain(ctx, s, rnd, 0.2);
+  },
   // 大木门：竖条的厚木板，刷过一层蓝绿色的漆，下半截磨掉了露出木头
   door(ctx, s, rnd) {
     const planks = 5, pw = s / planks;
@@ -434,6 +569,7 @@ export function getTexture(name) {
 export const TEX_COLOR = {
   sand: '#c8b084', road: '#b2a286', tiles: '#cec4ac', site_d: '#bc8460', concrete: '#96968f', asphalt: '#4a4c50',
   site_i: '#80868a', metalfloor: '#767a7e', dev_floor: '#707070', dev_floor2: '#566270',
+  cobble: '#9e9484', woodfloor: '#8e6842', grass: '#607c3e',
 };
 
 // ---------- 精灵/特效贴图 ----------

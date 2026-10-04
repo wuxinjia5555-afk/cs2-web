@@ -5,6 +5,7 @@ import { getTexture, TEX_SCALE, siteLetter } from './textures.js';
 export const THEMES = {
   desert: { skyTop: 0x3d7fd0, skyHor: 0xe8dcc2, fog: 0xdcd2ba, fogNear: 80, fogFar: 260, sun: 0xfff1d8, sunI: 3.0, hemiSky: 0xd4e4ff, hemiGround: 0xa38a62, hemiI: 1.5, sunDir: [0.5, 0.78, 0.36], amb: 0.35 },
   industrial: { skyTop: 0x62758c, skyHor: 0xc7cdd4, fog: 0xb8bfc7, fogNear: 60, fogFar: 210, sun: 0xffffff, sunI: 2.3, hemiSky: 0xdde3ea, hemiGround: 0x6d655b, hemiI: 1.7, sunDir: [-0.42, 0.8, 0.42], amb: 0.45 },
+  village: { skyTop: 0x4a86cc, skyHor: 0xf0dcc0, fog: 0xe6d6bc, fogNear: 90, fogFar: 300, sun: 0xffe6c0, sunI: 3.1, hemiSky: 0xd8e6ff, hemiGround: 0x9a8262, hemiI: 1.45, sunDir: [-0.46, 0.74, 0.5], amb: 0.36 },
   dev: { skyTop: 0x3a78d0, skyHor: 0xbfd9f6, fog: 0xc4d8ef, fogNear: 60, fogFar: 220, sun: 0xffffff, sunI: 2.6, hemiSky: 0xe0ebff, hemiGround: 0x7a7a7a, hemiI: 1.6, sunDir: [0.42, 0.84, 0.32], amb: 0.4 },
 };
 
@@ -197,7 +198,10 @@ export function buildMapMeshes(map) {
   const barrels = [];
   if (map.hf) addTerrain(buckets, map);
   // 只画不挡人的装饰（梯子）
-  for (const bx of map.decos || []) addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale: TEX_SCALE[bx.mat] || 2 });
+  for (const bx of map.decos || []) {
+    if (bx.uv === 'box') addBox(bucket(buckets, bx.mat, 'b'), bx.min, bx.max, { boxUV: true, sideCol: 0.96 });
+    else addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale: TEX_SCALE[bx.mat] || 2 });
+  }
   for (const bx of map.boxes) {
     const scale = TEX_SCALE[bx.mat] || 2;
     switch (bx.kind) {

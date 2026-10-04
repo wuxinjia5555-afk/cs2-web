@@ -301,6 +301,42 @@ class Builder {
       put(this.decor, hu - 0.07, hu + 0.07, hy - 0.11, hy + 0.11, sgn < 0 ? -e - 0.06 : e, sgn < 0 ? -e : e + 0.06, 'iron');
     }
   }
+  // 给临街的墙面挂上窗户（关着的百叶窗 + 石窗台）和几扇关着的木门：纯装饰，贴在墙面上，不挡人。
+  // 只挂在「挨着地面的高墙」上；every：大约隔几格挂一个；rows：挂几层
+  facade(o = {}) {
+    const { W, H, S } = this, LH = this.def.levelH || LEVEL_H, every = o.every || 4;
+    const mats = o.mats || ['shutter', 'shutter', 'shutter_b'];
+    const isWall = (c, r) => c >= 0 && r >= 0 && c < W && r < H && this.type[r * W + c] === CELL.WALL && !this.wh[r * W + c];
+    const rnd = (c, r, k) => { const v = Math.sin(c * 127.1 + r * 311.7 + k * 74.7) * 43758.5453; return v - Math.floor(v); };
+    for (let r = 1; r < H - 1; r++) for (let c = 1; c < W - 1; c++) {
+      if (!isWall(c, r)) continue;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const j = (r + dz) * W + c + dx;
+        if (this.type[j] !== CELL.FLOOR || this.exp.has(j)) continue;
+        // 这面墙要够宽（左右两格也是同一面墙），而且按位置隔几格挑一个
+        const tx = dz ? 1 : 0, tz = dx ? 1 : 0;
+        if (!isWall(c + tx, r + tz) || !isWall(c - tx, r - tz)) continue;
+        if (this.type[(r + dz + tz) * W + c + dx + tx] !== CELL.FLOOR || this.type[(r + dz - tz) * W + c + dx - tx] !== CELL.FLOOR) continue;
+        const along = dz ? c : r;
+        if ((along + Math.floor(rnd(dz ? r : c, 0, 1) * every)) % every !== 0) continue;
+        const gy = this.level[j] * LH, px = (c + 0.5 + dx * 0.5) * S, pz = (r + 0.5 + dz * 0.5) * S; // 墙面的中点
+        const put = (y0, y1, half, out, mat, uv) => {
+          const mn = dx ? [Math.min(px, px + dx * out), y0, pz - half] : [px - half, y0, Math.min(pz, pz + dz * out)];
+          const mx = dx ? [Math.max(px, px + dx * out), y1, pz + half] : [px + half, y1, Math.max(pz, pz + dz * out)];
+          this.deco.push({ min: mn, max: mx, mat, uv });
+        };
+        const door = rnd(c, r, 2) < (o.doors ?? 0.16);
+        if (door) put(gy, gy + 2.25, 0.62, 0.05, 'housedoor', 'box');
+        for (let k = door ? 1 : 0; k < (o.rows || 2); k++) {
+          const y0 = gy + (k === 0 ? 1.15 : 3.75) + (door ? 0 : 0);
+          if (k === 0 && door) continue;
+          const mat = mats[Math.floor(rnd(c, r, 3 + k) * mats.length)];
+          put(y0, y0 + 1.35, 0.52, 0.05, mat, 'box');
+          put(y0 - 0.1, y0, 0.62, 0.13, 'stone');
+        }
+      }
+    }
+  }
   // 只对寻路生效的“不可走”格子（用于自由尺寸的方块，比如门扇）
   noWalk(c0, r0, c1, r1) { this.rect(c0, r0, c1, r1, (i) => { this.blocked.add(i); }); }
 }
@@ -586,7 +622,7 @@ export function buildMap(id) {
       cx: ((s.c0 + s.c1 + 1) / 2) * S, cz: ((s.r0 + s.r1 + 1) / 2) * S, y: 0,
       cells: [],
     };
-    B.rect(s.c0, s.r0, s.c1, s.r1, (i) => { if (B.type[i] === CELL.FLOOR) sites[name].cells.push(i); });
+    B.rect(s.c0, s.r0, s.c1, s.r1, (i) => { if (B.type[i] === CELL.FLOOR && !B.blocked.has(i)) sites[name].cells.push(i); });
     // 包点的高度：正中间那格的地面；正中间是箱子就取整块的平均
     const mid = rc * W + cc, cs = sites[name].cells;
     sites[name].y = ground[mid] ? gy[mid] : cs.length ? cs.reduce((a, i) => a + gy[i], 0) / cs.length : 0;
@@ -825,6 +861,125 @@ export const MAPS = {
       b.spawnNear('CT', 79, 178, 10, -Math.PI / 2);
       b.buyzone('T', 212, 76, 238, 110);
       b.buyzone('CT', 66, 158, 92, 198);
+    },
+  },
+  // 炼狱小镇：Inferno 的布局（1 格 = 1 米，高度每级 0.4 米）。意大利小镇：石块路、各色灰泥墙的房子
+  inferno: {
+    name: '炼狱小镇', desc: 'Inferno 布局：香蕉道、B 点喷泉、中路、A 小、拱门 / 图书馆 / 长廊、公寓阳台、A 点的坑', theme: 'village',
+    w: 108, h: 100, cell: 1, wallH: 9, wallAbove: 6, wallVar: 3, wallBlock: 11,
+    floorMat: 'cobble', wallMat: 'stucco_y', crateMat: 'crate', lowMat: 'sandbag', roofMat: 'darkwood', cliffMat: 'stone',
+    build(b) {
+      const Y = (lv) => lv * 0.4;
+      // ---- T 出生点（西南角的小广场）和上去的坡 ----
+      b.floor(4, 78, 18, 92, 0);
+      b.slope(19, 81, 32, 88, 'x', 0, 4);                 // T 坡：往东上坡
+      b.floor(33, 72, 44, 88, 4);                         // 坡顶的小广场
+      b.floor(36, 60, 44, 71, 4);                         // 小广场往北的街，通到中路西头
+
+      // ---- 中路、二道（alt mid）----
+      b.slope(45, 60, 60, 66, 'x', 4, 6);                 // 中路：一路缓缓上坡
+      b.floor(61, 52, 67, 68, 6);                         // 中路东头的路口：往东上 A 小，往北过拱门，往南去二道
+      b.floor(45, 74, 66, 80, 4);                         // 二道（和 T 坡错开，出生点看不穿）
+      b.slope(62, 69, 66, 73, 'z', 6, 4);                 // 路口 ↔ 二道 的小巷
+
+      // ---- A 小、A 点 ----
+      b.slope(68, 52, 76, 56, 'x', 6, 8);                 // A 小：上坡进 A 点（和中路错开，中路西头看不进 A 点）
+      b.floor(77, 52, 99, 74, 8, 'tiles');
+      b.flat(93, 67, 99, 74, 5);                          // 坑：A 点东南角凹下去的一块
+      b.slope(89, 69, 92, 73, 'x', 8, 5);
+      b.floor(94, 46, 100, 51, 8, 'grass');               // 墓地：A 点东北角矮墙后面的草地
+      b.objs('h', [[94, 52], [95, 52], [96, 52], [97, 52]]);
+
+      // ---- 公寓：二道东头上楼梯，楼上一条走廊，北墙开门出去是俯瞰 A 点的阳台 ----
+      b.stairs(67, 78, 74, 80, 'x', 4, 14, 'woodfloor', 'stone');
+      b.floor(75, 78, 91, 84, 14, 'woodfloor');
+      b.floor(84, 77, 85, 77, 14, 'woodfloor'); b.door(84, 77, 85, 77, 2.5, 'stone');
+      b.floor(79, 75, 90, 76, 14, 'woodfloor');           // 阳台
+      b.objs('h', [[79, 75], [80, 75], [81, 75], [82, 75], [87, 75], [88, 75], [89, 75], [90, 75]]);
+      b.roof(67, 78, 91, 84, 3.2);
+      b.wall(79, 80, 80, 82, 'crate', Y(14) + 1.2);       // 走廊里的箱子
+      b.wall(87, 83, 88, 84, 'stone', Y(14) + 2.2);       // 锅炉
+
+      // ---- 拱门、图书馆、长廊（A 大）----
+      b.floor(61, 44, 67, 51, 6);
+      b.wall(61, 48, 61, 48, 'stone'); b.wall(67, 48, 67, 48, 'stone'); b.door(62, 48, 66, 48, 3.9, 'stone');   // 拱门
+      b.floor(61, 36, 83, 43, 6);                         // 拱门北边的小广场
+      b.floor(69, 44, 82, 49, 6, 'woodfloor');            // 图书馆
+      b.floor(68, 46, 68, 47, 6, 'woodfloor'); b.door(68, 46, 68, 47, 2.6, 'stone');
+      b.floor(83, 46, 83, 47, 6, 'woodfloor'); b.door(83, 46, 83, 47, 2.6, 'stone');
+      b.roof(68, 44, 83, 49, 3.3);
+      b.wall(72, 44, 78, 44, 'darkwood', Y(6) + 2.2);     // 书架
+      b.wall(74, 48, 76, 49, 'darkwood', Y(6) + 0.9);     // 书桌
+      b.floor(84, 36, 91, 47, 6);                         // 长廊
+      b.slope(84, 48, 91, 51, 'z', 6, 8);
+
+      // ---- CT 出生点、去 B 点的街 ----
+      b.floor(76, 16, 100, 31, 5);
+      b.slope(76, 32, 91, 35, 'z', 5, 6);
+      // 往西一路上坡到 B 点：中间拐一个弯（B 点一眼看不到 CT 出生点）
+      b.slope(64, 16, 75, 22, 'x', 7, 5);
+      b.floor(58, 16, 63, 30, 7);
+      b.slope(46, 24, 57, 30, 'x', 9, 7);
+
+      // ---- B 点：喷泉广场 ----
+      b.floor(16, 6, 45, 31, 9);
+      // 喷泉：一圈矮石沿，中间一根柱子
+      const fy = Y(9);
+      b.box(27.5, fy, 15.5, 32.5, fy + 0.55, 16.1, 'stone', 'low'); b.box(27.5, fy, 19.9, 32.5, fy + 0.55, 20.5, 'stone', 'low');
+      b.box(27.5, fy, 16.1, 28.1, fy + 0.55, 19.9, 'stone', 'low'); b.box(31.9, fy, 16.1, 32.5, fy + 0.55, 19.9, 'stone', 'low');
+      b.box(29.5, fy, 17.5, 30.5, fy + 1.7, 18.5, 'stone', 'low');
+      b.decor(28.1, fy + 0.02, 16.1, 31.9, fy + 0.4, 19.9, 'water');
+      b.decor(29.2, fy + 1.7, 17.2, 30.8, fy + 1.9, 18.8, 'stone');
+      b.noWalk(27, 15, 32, 20);
+      // 棺材（北墙根的几个矮石台）、新箱子、暗角
+      for (const x of [19, 23, 27]) b.box(x, fy, 6.3, x + 2.2, fy + 0.7, 7.3, 'stone', 'low');
+      b.noWalk(19, 6, 29, 7);
+      b.wall(40, 8, 41, 9, 'crate', fy + 2.3); b.wall(42, 8, 42, 8, 'crate', fy + 1.15);
+      b.wall(18, 26, 19, 27, 'crate', fy + 1.2); b.wall(36, 28, 37, 29, 'crate', fy + 1.2);
+      b.objs('o', [[17, 12], [44, 30]]);
+
+      // ---- 香蕉道：从底下拐个弯一路上坡到 B 点 ----
+      b.slope(26, 32, 33, 41, 'z', 9, 6);                 // 上半段
+      b.floor(12, 42, 33, 46, 6);                         // 中间横着的一段（上下两段错开，从 B 点一眼看不到底）
+      b.slope(12, 47, 19, 57, 'z', 6, 3);                 // 下半段
+      b.floor(6, 58, 26, 70, 3);                          // 香蕉道口
+      b.slope(8, 71, 14, 77, 'z', 3, 0);                  // 香蕉道口 ↔ T 出生点
+      // 香蕉道口 ↔ 坡顶小广场：一条拐弯的小巷
+      b.floor(27, 66, 30, 68, 3); b.slope(28, 69, 30, 73, 'z', 3, 4); b.floor(28, 74, 32, 76, 4);
+      b.objs('h', [[15, 51], [16, 51], [17, 51], [22, 43], [23, 43]]);   // 沙袋
+      b.objs('o', [[13, 45], [32, 36]]);
+      b.wall(27, 37, 27, 38, 'crate', Y(7.5) + 1.2);
+      // 香蕉道口的小汽车
+      const cy = Y(3);
+      b.box(17.2, cy + 0.25, 60.4, 19.0, cy + 0.95, 64.6, 'container_r', 'low'); b.box(17.35, cy + 0.95, 61.4, 18.85, cy + 1.5, 63.7, 'container_r', 'low');
+      b.noWalk(17, 60, 18, 64);
+
+      // ---- 掩体 ----
+      b.wall(86, 60, 87, 61, 'crate', Y(8) + 2.4); b.wall(88, 61, 88, 61, 'crate', Y(8) + 1.2);   // A 点的箱子
+      b.wall(81, 66, 82, 66, 'crate', Y(8) + 1.2); b.wall(95, 56, 96, 57, 'crate', Y(8) + 1.2);
+      b.objs('o', [[78, 73], [98, 53]]);
+      b.wall(52, 60, 53, 60, 'crate', Y(5) + 1.2);                       // 中路
+      b.objs('o', [[61, 67], [44, 61]]);
+      b.wall(34, 73, 35, 74, 'crate', Y(4) + 1.2); b.wall(55, 79, 56, 80, 'crate', Y(4) + 1.2);
+      b.wall(97, 17, 99, 18, 'crate', Y(5) + 1.2); b.wall(77, 30, 78, 31, 'crate', Y(5) + 2.3);
+      b.objs('o', [[5, 79], [18, 91], [61, 37], [90, 37]]);
+      b.wall(5, 90, 6, 92, 'crate', Y(0) + 1.2);
+
+      // ---- 大木门（装饰）：公寓楼梯口、图书馆 ----
+      b.leaf('z', 76.05, 77.9, 66.93, Y(4), Y(4) + 2.6, { hinge: 'a0' });
+      b.leaf('x', 69.05, 70.6, 46.06, Y(6), Y(6) + 2.5, { hinge: 'a0' }); b.leaf('x', 81.4, 82.95, 47.94, Y(6), Y(6) + 2.5, { hinge: 'a1' });
+
+      b.facade({ every: 4, rows: 2 });
+      // ---- 各片房子的墙面颜色 ----
+      b.wallMat(0, 0, 52, 38, 'stucco_p'); b.wallMat(53, 0, 107, 34, 'stucco_w');
+      b.wallMat(56, 35, 107, 99, 'stucco_o'); b.wallMat(28, 46, 55, 70, 'stucco_w');
+
+      b.site('A', 80, 56, 92, 67);
+      b.site('B', 22, 10, 40, 26);
+      b.spawnNear('T', 11, 85, 10, -Math.PI / 2);
+      b.spawnNear('CT', 88, 23, 10, Math.PI);
+      b.buyzone('T', 4, 78, 18, 92);
+      b.buyzone('CT', 76, 16, 100, 31);
     },
   },
   // 靶场（训练场）：不出现在普通地图列表里
