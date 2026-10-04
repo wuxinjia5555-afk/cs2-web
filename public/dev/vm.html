@@ -29,7 +29,7 @@
 <script type="module">
 // 开发用的模型预览页：/dev/vm.html?w=ak47&team=CT&view=fp
 import * as THREE from 'three';
-import { ViewModel } from '../js/client/viewmodel.js';
+import { ViewModel, RECOIL } from '../js/client/viewmodel.js';
 import { makeWeapon } from '../js/client/models.js';
 import { WEAPONS } from '../js/shared/weapons.js';
 import { HAND_POSES } from '../js/client/hdmodels.js';
@@ -69,6 +69,9 @@ function zoomTo(cam, w, h) {
 }
 function render() {
   const w = S.w || canvas.clientWidth || 1280, h = S.h || canvas.clientHeight || 720;
+  // S.green：绿幕背景（和参考视频对比、量轮廓用）
+  bg.background.set(S.green ? 0x00ff00 : 0x9fb4cf);
+  ground.visible = wall.visible = !S.green;
   if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) renderer.setSize(w, h, false);
   renderer.autoClear = false;
   renderer.clear();
@@ -125,6 +128,25 @@ function sheet(frames, cols = 4, crop = [0, 0, 1, 1]) {
   });
 }
 
+// 调试用（要先开 S.green）：量武器和手的轮廓 —— 最左、最上在画面的什么位置（0~1），占画面多大
+function box() {
+  const c = document.createElement('canvas');
+  c.width = canvas.width; c.height = canvas.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(canvas, 0, 0);
+  const W = c.width, H = c.height, d = g.getImageData(0, 0, W, H).data;
+  const col = new Uint32Array(W), row = new Uint32Array(H);
+  let n = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4;
+    if (!(d[i + 1] > 200 && d[i] < 90 && d[i + 2] < 90)) { n++; col[x]++; row[y]++; }
+  }
+  let left = 0, top = 0;
+  while (left < W && col[left] < 4) left++;
+  while (top < H && row[top] < 4) top++;
+  return { left: +(left / W).toFixed(3), top: +(top / H).toFixed(3), area: +(n / (W * H)).toFixed(4) };
+}
+
 const acts = {
   fire: () => vm.onFire(now(), 1),
   reload: () => vm.onReload(now(), (WEAPONS[wid] && WEAPONS[wid].reload) || 2.5),
@@ -138,7 +160,7 @@ document.getElementById('ui').addEventListener('click', (e) => { const a = e.tar
 // 给调试脚本用
 // 调姿势：改 __POSES 里的数，再调 __rebuild() 重新搭一遍手
 function rebuild() { for (const g of vm.cache.values()) vm.root.remove(g); vm.cache.clear(); const w = vm.wid; vm.wid = null; vm.cur = null; vm.setWeapon(w, 0, 0); }
-Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild });
+Object.assign(window, { __vm: vm, __S: S, __tick: tick, __at: at, __sheet: sheet, __acts: acts, __THREE: THREE, __makeWeapon: makeWeapon, __renderer: renderer, __POSES: HAND_POSES, __rebuild: rebuild, __box: box, __RECOIL: RECOIL });
 </script>
 </body>
 </html>

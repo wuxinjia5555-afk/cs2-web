@@ -201,6 +201,22 @@ export function dmgAt(w, dist) {
   return w.dmg * Math.pow(w.rm || 1, dist / 12.7);
 }
 
+// 中弹减速：被这种武器打中后，最快只能跑到平时的几成（1 = 不减速）。步枪、狙击枪、霰弹枪、刀压得最狠，
+// 手枪、冲锋枪、手雷轻一些；摔伤、火烧、炸弹爆炸不减速。之后每秒恢复 TAG_RECOVER
+export const TAG_RECOVER = 0.9;
+export function tagOf(wid) {
+  if (wid === 'knife') return 0.5;
+  if (wid === 'he') return 0.65;
+  const w = WEAPONS[wid];
+  if (!w || !w.dmg) return 1;
+  return w.type === 'pistol' || w.type === 'smg' ? 0.65 : 0.5;
+}
+// 把水平速度压到不超过 max（中弹的那一瞬间用）
+export function capSpeed(s, max) {
+  const sp = Math.hypot(s.vx, s.vz);
+  if (sp > max) { s.vx *= max / sp; s.vz *= max / sp; }
+}
+
 export function moveSpeed(w, scoped) {
   if (!w) return 250 * U;
   return scoped && w.scopedSpeed ? w.scopedSpeed : w.speed;

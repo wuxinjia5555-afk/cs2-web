@@ -341,8 +341,9 @@ kbd { background: #2b3647; border: 1px solid #435066; border-bottom-width: 3px; 
 #fx-smoke, #fx-hurt, #fx-heal { z-index: -2; }
 #fx-heal { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(60, 255, 120, 0) 45%, rgba(40, 220, 100, .55)); }
 #scope .lens { position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) calc(min(46vh, 46vw) - 2px), #000 min(46vh, 46vw)); }
-#scope .h { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #000; }
-#scope .v { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: #000; }
+/* --sb：准星线糊多少（开着镜走动时由 hud.js 设）。线变粗的同时加模糊，站稳了是一条 1 像素的细线 */
+#scope .h { position: absolute; left: 0; right: 0; top: 50%; height: calc(1px + var(--sb, 0px)); margin-top: calc(var(--sb, 0px) / -2); background: #000; filter: blur(calc(var(--sb, 0px) * 0.55)); }
+#scope .v { position: absolute; top: 0; bottom: 0; left: 50%; width: calc(1px + var(--sb, 0px)); margin-left: calc(var(--sb, 0px) / -2); background: #000; filter: blur(calc(var(--sb, 0px) * 0.55)); }
 
 @media (max-width: 760px) {
   .grid2, .keys { grid-template-columns: 1fr; }

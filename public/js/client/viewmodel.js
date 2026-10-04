@@ -33,14 +33,18 @@ const LAYOUT = {
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
   knife_karambit: { pos: [0.1, -0.112, -0.33], rot: [0.06, -0.08, 0.06], scale: 1.08, bob: 0.8 },
 };
-// 开枪时枪身的后坐（每类枪）：z 往后顶多少米、pitch 枪口上抬多少、up 往上窜多少；
-// yaw / roll / x 是每一枪随机的左右晃、侧倾、横移（每枪都不一样，才有「抖」的感觉）
-const RECOIL = {
-  rifle: { z: 0.065, pitch: 0.06, up: 0.006, yaw: 0.02, roll: 0.035, x: 0.004 },
-  smg: { z: 0.045, pitch: 0.045, up: 0.004, yaw: 0.016, roll: 0.03, x: 0.003 },
-  pistol: { z: 0.045, pitch: 0.17, up: 0.01, yaw: 0.02, roll: 0.04, x: 0.003 },
-  sniper: { z: 0.09, pitch: 0.17, up: 0.012, yaw: 0.02, roll: 0.05, x: 0.004 },
-  shotgun: { z: 0.1, pitch: 0.2, up: 0.014, yaw: 0.03, roll: 0.06, x: 0.005 },
+// 开枪时枪身的后坐（每类枪），照 CS:GO 的样子逐帧量出来调的：
+//   back  顶到头（rk = 1）时整把枪挪多少 [右, 上, 后]（米）：枪是从右下角伸出来的，所以往后顶看起来是往右下滑、变大
+//   pitch 顶到头时枪口上抬多少（弧度）
+//   hit   每一枪瞬间顶多少；kick 再带着往后冲的速度；max 连射时最多顶到多少
+//   w     回位的快慢：步枪一枪顶到头、停火后约 0.3 秒回位；狙击枪是 0.1 秒冲到最高、半秒才落回来
+//   yaw / roll / x 每一枪随机的左右晃、侧倾、横移（每枪都不一样，才有「抖」的感觉）
+export const RECOIL = {
+  rifle: { back: [0.045, 0.012, 0.2], pitch: 0.02, hit: 0.65, kick: 8, max: 1, w: 17, yaw: 0.02, roll: 0.035, x: 0.004 },
+  smg: { back: [0.032, 0.008, 0.14], pitch: 0.02, hit: 0.65, kick: 7, max: 1, w: 19, yaw: 0.016, roll: 0.03, x: 0.003 },
+  pistol: { back: [0.01, 0.012, 0.09], pitch: 0.2, hit: 0.55, kick: 10, max: 1.15, w: 15, yaw: 0.02, roll: 0.04, x: 0.003 },
+  sniper: { back: [0.02, 0.03, 0.17], pitch: 0.14, hit: 0.12, kick: 22, max: 1.3, w: 9, yaw: 0.02, roll: 0.05, x: 0.004 },
+  shotgun: { back: [0.03, 0.025, 0.17], pitch: 0.16, hit: 0.3, kick: 20, max: 1.3, w: 11, yaw: 0.03, roll: 0.06, x: 0.005 },
 };
 // 刀在手里的摆法（相对手的位置）：爪子刀横着握，刀柄穿过拳头
 const GRIP = { karambit: { rot: [0, -Math.PI / 2, 0], pos: [0.02, -0.03, 0.03] } };
@@ -71,7 +75,7 @@ export class ViewModel {
     this.wid = null;
     this.t = 0;
     this.bobT = 0;
-    this.rk = 0; this.rv = 0;             // 后坐：往后顶了多少、还在往后冲的速度（一根弹簧）
+    this.rk = 0; this.rv = 0;             // 后坐：往后顶了多少（0~1 左右）、还在往后冲的速度
     this.jit = [0, 0, 0]; this.jitK = 0;  // 每一枪随机的左右晃 / 侧倾
     this.swayX = 0;
     this.swayY = 0;
@@ -201,8 +205,8 @@ export class ViewModel {
   onFire(now, strength = 1) {
     this.boltK = 1;
     // 后坐：瞬间往后一顿，再带着往后冲一小段（之后弹簧把它拉回来）；每一枪随机晃一个方向
-    this.rk = Math.min(1.6, this.rk + 0.55 * strength);
-    this.rv += 20 * strength;
+    const R = this.cur && RECOIL[this.cur.userData.type];
+    if (R) { this.rk = Math.min(R.max, this.rk + R.hit * strength); this.rv += R.kick * strength; }
     this.jit[0] = Math.random() * 2 - 1; this.jit[1] = Math.random(); this.jit[2] = Math.random() * 2 - 1;
     this.jitK = 1;
     this.flashT = now + 0.045;
@@ -247,9 +251,10 @@ export class ViewModel {
     const by = -Math.abs(Math.cos(this.bobT)) * 0.012 * sp * bob;
     this.swayX += (clamp(-st.mdx * 0.00045, -0.05, 0.05) - this.swayX) * Math.min(1, dt * 9);
     this.swayY += (clamp(-st.mdy * 0.00045, -0.05, 0.05) - this.swayY) * Math.min(1, dt * 9);
-    // 后坐的弹簧：猛地往后一顿之后约 0.1 秒弹回原位，略微过头一点点
+    // 后坐的弹簧（不来回弹）：顶上去之后平滑地落回原位
+    const R = RECOIL[type], rw = R ? R.w : 17;
     for (let n = Math.max(1, Math.ceil(dt / 0.006)), h = dt / n; n > 0; n--) {
-      this.rv += (-1150 * this.rk - 42 * this.rv) * h;
+      this.rv += (-rw * rw * this.rk - 2 * rw * this.rv) * h;
       this.rk += this.rv * h;
     }
     this.jitK *= Math.exp(-dt * 15);
@@ -260,10 +265,9 @@ export class ViewModel {
     let px = lay.pos[0] + bx - this.swayX * 0.6 * bob, py = lay.pos[1] + by + idle - this.landKick * 0.03 - (st.crouch ? 0.008 : 0), pz = lay.pos[2];
     let rx = this.swayY * 0.8, ry = this.swayX, rz = bx * 2;
 
-    const R = RECOIL[type];
     if (R) {
       const j = this.jitK;
-      pz += this.rk * R.z; py += this.rk * R.up; rx += this.rk * R.pitch;
+      px += this.rk * R.back[0]; py += this.rk * R.back[1]; pz += this.rk * R.back[2]; rx += this.rk * R.pitch;
       px += this.jit[0] * j * R.x; ry += this.jit[0] * j * R.yaw; rz += this.jit[2] * j * R.roll;
       // 连射时枪口跟着后坐力往上抬、往两边偏（和准星实际偏的方向一致）
       rx += clamp((st.punchP || 0) * 0.4, -0.03, 0.12);

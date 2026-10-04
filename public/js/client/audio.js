@@ -228,8 +228,8 @@ class AudioSys {
     if (!w) return;
     const key = gunProfileKey(w);
     const P = GUN_PROFILES[key];
-    const smp = this.gunSmp && this.gunSmp[key]; // 有真实录音就用录音（录音里自带现场的回声，混响少加一点）
-    const o = this._out(pos, P.ref, P.gain * (smp ? smp.g : 1) * settings.gunVol, (pos ? 0.3 : 0.12) * (smp ? 0.6 : 1));
+    const smp = this.gunSmp && this.gunSmp[key]; // 有真实录音就用录音（做好的枪声里已经带着尾音，混响少加一点）
+    const o = this._out(pos, P.ref, P.gain * (smp ? smp.g : 1) * settings.gunVol, (pos ? 0.3 : 0.12) * (smp ? 0.4 : 1));
     if (!o) return;
     const ctx = this.ctx;
     const src = ctx.createBufferSource();

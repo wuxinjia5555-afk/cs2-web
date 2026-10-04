@@ -1,4 +1,4 @@
-# 把真实枪声录音裁剪成游戏用的小文件。
+# 把真实枪声录音做成游戏用的小文件。
 #
 # 录音来自「The Free Firearm Sound Library」（Still North Media 录制，CC0 公有领域，可以随便用）：
 #   https://opengameart.org/content/the-free-firearm-sound-library  （下载 Prepared SFX Library.7z，194 MB，解压）
@@ -10,12 +10,13 @@
 #   public/js/client/gunsamples.js    每一声在文件里的位置和音量（audio.js 按它切开来用）
 #
 # 原始录音是 96kHz / 24bit / 立体声，每个文件里隔几秒打一枪。这里做的事：
-#   找到每一声的起点 → 只取一个声道 → 需要的话变一点调 → 降到 32kHz → 去掉低频杂音 → 尾巴淡出
-#   → 垫一层低频的「身体」（见 thump）→ 轻微压一下让声音更「实」，并把响度对齐到原来合成枪声的水平
+#   找到每一声的起点 → 只取一个声道 → 需要的话变一点调 → 降到 32kHz → 调音色 → 加尾音 → 压一压、对齐响度
 #
-# 为什么要垫低频：真实录音是在空旷的靶场录的，能量几乎全在开头那 15 毫秒的脆响里，之后 0.1 秒的低频很弱，
-# 单独听很真，放在游戏里却显得单薄、没分量。所以在录音下面垫两层：「低频冲击」（200Hz 以下，耳机里胸口那一下）
-# 和「闷响」（200~900Hz，手机喇叭也放得出来的厚度）。各垫多少，按「枪响后 15~120 毫秒这两段各有多响」来定（body 那一栏）。
+# 为什么要调：录音是在空旷的靶场近距离录的，能量集中在开头十几毫秒的脆响和 500Hz 以下，之后马上就没声了，
+# 单独听很真，放进游戏里却又闷又短、没有力量感。游戏里的枪声是「设计」出来的：中高频很足（小喇叭上也够响），
+# 后面拖着一段回声一样的尾音。所以这里照着 CS 里 AK 连射、AWP 单发的听感来调（LIKE、尾音那几栏）：
+# 那些数是从游戏录屏里量出来的指标 —— 各频段的能量占多少、响完之后每秒落多少分贝 —— 不是录屏里的声音本身，
+# 声音还是这套 CC0 录音加上程序合成的尾音。
 import os
 import struct
 import sys
@@ -25,19 +26,26 @@ import numpy as np
 RATE = 32000
 SRC_RATE = 96000
 PEAK = 0.85  # 峰值留一点余量：浏览器把 32kHz 换算成 48kHz 时波形会冒出去一点
+BANDS = np.array([40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000.0])
+# 各频段（BANDS 相邻两个数之间）的能量占比，dB。低频比量出来的留得多一些（录屏的低频被削过，戴耳机时还是要有一点分量）
+LIKE = {
+    'ak': [-27, -22, -18, -13.5, -7.4, -5.8, -8.6, -10.6, -11.6, -11.6, -12.2, -11.5, -17.5],
+    'awp': [-25, -20.5, -17, -13.5, -9.2, -8.5, -8.2, -8.2, -8.5, -8.6, -11.7, -14.1, -20.9],
+}
 # 游戏里的音色名: (录音文件, 用里面的第几声, 长度（秒）, 变调（小于 1 更低沉）, 前 0.2 秒的目标响度, 最多压到多大力度,
-#                 body [低频身体要多响, 中低频身体要多响], 低频冲击 [起始 Hz, 落到 Hz, 下落快慢, 衰减], 闷响 [中心 Hz, 衰减])
+#                 照哪种听感调, 尾音 [起始比开头那一下低多少 dB, 每秒落多少 dB, 先稳住多少秒再落],
+#                 低频冲击 [起始 Hz, 落到 Hz, 下落快慢, 衰减], 低频冲击垫多少)
 CLIPS = {
-    'ak47': ('AK-47/C_28P', [1, 2], 0.72, 1.0, 0.27, 3.0, [0.18, 0.205], [135, 46, 0.032, 0.085], [230, 0.06]),
-    'm4a4': ('AR-15/D_32P', [0, 1], 0.62, 1.0, 0.18, 3.0, [0.093, 0.104], [160, 58, 0.025, 0.062], [280, 0.045]),
-    'rifle': ('SKS/U_14P', [0, 1], 0.65, 1.0, 0.215, 3.0, [0.12, 0.167], [150, 52, 0.028, 0.07], [260, 0.052]),          # 加利尔、法玛斯
-    'pistol': ('Walther PPQ/X_39P', [1, 2], 0.45, 1.0, 0.135, 3.0, [0.031, 0.085], [210, 85, 0.018, 0.045], [320, 0.033]),  # Glock、P250
-    'deagle': ('1911/A_42P', [0, 1], 0.8, 0.9, 0.265, 3.0, [0.155, 0.218], [120, 40, 0.04, 0.12], [220, 0.075]),
-    'smg': ('PPSh/P_30P', [0, 2], 0.4, 1.0, 0.12, 3.0, [0.026, 0.072], [190, 78, 0.018, 0.04], [320, 0.03]),              # MAC-10、MP9
-    'ump45': ('Carl Gustav M45/G_31P', [0, 1], 0.45, 0.94, 0.168, 3.0, [0.084, 0.125], [170, 62, 0.022, 0.05], [280, 0.038]),
-    'shotgun': ('Nova/O_21P', [0, 1], 0.95, 1.0, 0.342, 4.0, [0.233, 0.272], [110, 38, 0.05, 0.15], [200, 0.1]),
-    'awp': ('Mosin Nagant/M_21P', [0, 1], 1.35, 0.93, 0.293, 4.0, [0.19, 0.227], [100, 35, 0.05, 0.18], [200, 0.09]),
-    'ssg08': ('Tikka/W_29P', [0, 1], 1.0, 1.0, 0.232, 3.0, [0.13, 0.186], [130, 45, 0.035, 0.12], [240, 0.068]),
+    'ak47': ('AK-47/C_28P', [1, 2], 0.72, 1.0, 0.27, 3.0, 'ak', [-8, 36, 0], [135, 46, 0.032, 0.085], 0.12),
+    'm4a4': ('AR-15/D_32P', [0, 1], 0.62, 1.0, 0.19, 3.0, 'ak', [-9, 44, 0], [160, 58, 0.025, 0.062], 0.09),
+    'rifle': ('SKS/U_14P', [0, 1], 0.65, 1.0, 0.215, 3.0, 'ak', [-9, 42, 0], [150, 52, 0.028, 0.07], 0.1),          # 加利尔、法玛斯
+    'pistol': ('Walther PPQ/X_39P', [1, 2], 0.45, 1.0, 0.135, 3.0, 'ak', [-11, 60, 0], [210, 85, 0.018, 0.045], 0.06),  # Glock、P250
+    'deagle': ('1911/A_42P', [0, 1], 0.8, 0.9, 0.265, 3.0, 'awp', [-6, 34, 0.03], [120, 40, 0.04, 0.12], 0.12),
+    'smg': ('PPSh/P_30P', [0, 2], 0.4, 1.0, 0.12, 3.0, 'ak', [-11, 65, 0], [190, 78, 0.018, 0.04], 0.05),              # MAC-10、MP9
+    'ump45': ('Carl Gustav M45/G_31P', [0, 1], 0.45, 0.94, 0.168, 3.0, 'ak', [-10, 58, 0], [170, 62, 0.022, 0.05], 0.08),
+    'shotgun': ('Nova/O_21P', [0, 1], 0.95, 1.0, 0.342, 4.0, 'awp', [-4, 30, 0.05], [110, 38, 0.05, 0.15], 0.14),
+    'awp': ('Mosin Nagant/M_21P', [0, 1], 1.35, 0.93, 0.293, 4.0, 'awp', [-3, 24, 0.12], [100, 35, 0.05, 0.18], 0.14),
+    'ssg08': ('Tikka/W_29P', [0, 1], 1.0, 1.0, 0.232, 3.0, 'awp', [-5, 30, 0.06], [130, 45, 0.035, 0.12], 0.11),
 }
 
 
@@ -86,44 +94,72 @@ def lowpass_fir(cut, taps=121):
     return h * np.blackman(taps)
 
 
-def tone(x, rate, fc=45.0, shelf=1.8, fs=170.0):
-    """去掉 45Hz 以下的杂音，再把 170Hz 以下抬高一点（真实录音的低频比较薄，抬一点开枪更有分量）。"""
+def highpass(x, fc=45.0):
+    """去掉 45Hz 以下的杂音。"""
     X = np.fft.rfft(x)
-    f = np.fft.rfftfreq(len(x), 1 / rate)
-    hp = f * f / (f * f + fc * fc)
-    low = 1 + (shelf - 1) / (1 + (f / fs) ** 4)
-    return np.fft.irfft(X * hp * low, len(x))
+    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    return np.fft.irfft(X * f * f / (f * f + fc * fc), len(x))
 
 
 def rms200(x):
     return float(np.sqrt(np.mean(x[:int(RATE * 0.2)] ** 2)))
 
 
-def body(x, lo, hi):
-    """枪响之后 15~120 毫秒、lo~hi 这段频率有多响：听起来的「分量」主要就在这里。"""
-    X = np.fft.rfft(x)
+def spectrum(x):
+    """各频段的能量占比（dB）：85 毫秒一帧、每次挪半帧，从枪响前半帧算到 0.47 秒（开头那一下「啪」也算进去）。"""
+    n = 2730
+    x = np.concatenate([np.zeros(n // 2), x[:int(RATE * 0.47)], np.zeros(n)])
+    win, f = np.hanning(n), np.fft.rfftfreq(n, 1 / RATE)
+    p = np.zeros(len(f))
+    for i in range(0, len(x) - n, n // 2):
+        p += np.abs(np.fft.rfft(x[i:i + n] * win)) ** 2
+    b = np.array([p[(f >= BANDS[i]) & (f < BANDS[i + 1])].sum() for i in range(len(BANDS) - 1)])
+    return 10 * np.log10(b / b.sum() + 1e-12)
+
+
+def match(x, want):
+    """把音色往 want（各频段能量占比）上调：缺的频段提上去、多的压下来，中间平滑过渡。
+    低频最多只压不怎么提（-10 ~ +2 dB），中高频最多提 15 dB。"""
+    g = np.array(want) - spectrum(x)
+    g -= np.mean(g[4:8])  # 以 250~1600Hz 为准，其余频段相对它调
+    fc = np.sqrt(BANDS[:-1] * BANDS[1:])
+    g = np.where(fc < 250, np.clip(g, -10, 2), np.clip(g, -8, 15))
     f = np.fft.rfftfreq(len(x), 1 / RATE)
-    X[(f < lo) | (f >= hi)] = 0
-    y = np.fft.irfft(X, len(x))
-    return float(np.sqrt(np.mean(y[int(RATE * 0.015):int(RATE * 0.12)] ** 2)))
+    curve = np.interp(np.log(np.maximum(f, 1)), np.log(fc), g)
+    return np.fft.irfft(np.fft.rfft(x) * 10 ** (curve / 20), len(x))
 
 
-def thump(n, boom, punch, seed):
-    """垫在录音下面的两层，返回 (低频冲击, 闷响)：
-    低频冲击 = 音高快速下落的正弦（胸口那一下）；闷响 = 只留 100~900Hz 的噪声，很快衰减（厚度）。"""
+def tail(n, want, rate_db, hold, seed):
+    """尾音：一段染成 want 这种音色的噪声，像回声一样拖在枪响后面。先稳住 hold 秒，再按每秒 rate_db 分贝落下去，
+    越高的频率落得越快（越往后越闷）。开头的响度是 1。"""
     t = np.arange(n) / RATE
-    env = lambda att, dec: np.where(t < att, t / att, np.exp(-(t - att) / dec))
+    W = np.fft.rfft(np.random.default_rng(seed).standard_normal(n))
+    f = np.fft.rfftfreq(n, 1 / RATE)
+    out, tot = np.zeros(n), 0.0
+    for b in range(len(BANDS) - 1):
+        nb = np.fft.irfft(np.where((f >= BANDS[b]) & (f < BANDS[b + 1]), W, 0), n)
+        amp = 10 ** (want[b] / 20)
+        k = float(np.clip(1 + 0.45 * np.log2(np.sqrt(BANDS[b] * BANDS[b + 1]) / 630), 0.6, 2.2))
+        out += nb / np.sqrt(np.mean(nb ** 2)) * amp * 10 ** (-rate_db * k * np.maximum(t - hold, 0) / 20)
+        tot += amp * amp
+    return out / np.sqrt(tot) * np.clip((t - 0.0015) / 0.004, 0, 1)  # 和录音的起点对齐（录音前面留了 1.5 毫秒），几毫秒内起来
+
+
+def boom_layer(n, boom):
+    """低频冲击：音高快速下落的一声闷响（戴耳机时胸口那一下；小喇叭放不出来，所以只是垫一点）。"""
+    t = np.arange(n) / RATE
     f0, f1, ft, dec = boom
     ph = 2 * np.pi * np.cumsum(f1 + (f0 - f1) * np.exp(-t / ft)) / RATE
-    low = np.sin(ph) * env(0.0012, dec)
-    fc, pdec = punch
-    N = np.fft.rfft(np.random.default_rng(seed).uniform(-1, 1, n))
-    f = np.fft.rfftfreq(n, 1 / RATE)
-    N *= (f / fc) / (1 + (f / fc) ** 2) / (1 + (f / (3 * fc)) ** 4)
-    noise = np.fft.irfft(N, n)
-    noise = noise / np.sqrt(np.mean(noise[:int(RATE * 0.05)] ** 2)) * env(0.001, pdec)
-    pad = np.zeros(int(RATE * 0.0015))  # 和录音的起点对齐（录音前面留了 1.5 毫秒）
-    return np.concatenate([pad, low])[:n], np.concatenate([pad, noise])[:n]
+    low = np.sin(ph) * np.where(t < 0.0012, t / 0.0012, np.exp(-(t - 0.0012) / dec))
+    return np.concatenate([np.zeros(int(RATE * 0.0015)), low])[:n]
+
+
+def env_db(x, at):
+    """枪响后 at 秒附近 10 毫秒的响度，相对最响的那 10 毫秒（dB）。"""
+    h = int(RATE * 0.01)
+    e = np.array([np.sqrt(np.mean(x[i:i + h] ** 2)) for i in range(0, len(x) - h, h)])
+    i = min(len(e) - 1, int(at / 0.01))
+    return 20 * np.log10(e[i] / e.max() + 1e-9)
 
 
 def shape(x, target, most):
@@ -156,7 +192,7 @@ def cut(a, at, length, pitch):
         i = pos.astype(int)
         x = x[i] * (1 - (pos - i)) + x[i + 1] * (pos - i)
     x = np.convolve(x, lowpass_fir(14500.0), mode='same')[::SRC_RATE // RATE]
-    x = tone(x, RATE)[:int(length * RATE)]
+    x = highpass(x)[:int(length * RATE)]
     n = len(x)
     fi = int(RATE * 0.001)
     x[:fi] *= np.linspace(0, 1, fi)
@@ -170,39 +206,29 @@ def main():
     root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
     pack, index, gap = [], {}, np.zeros(256)
     cache = {}
-    for key, (rel, picks, length, pitch, target, most, want, boom, punch) in CLIPS.items():
+    for key, (rel, picks, length, pitch, target, most, like, tl, boom, boom_mix) in CLIPS.items():
         if rel not in cache:
             cache[rel] = read_wav(os.path.join(src, rel + '.wav'))
         a = cache[rel]
         shots = find_shots(a)
+        want = LIKE[like]
         at, loud = [], []
         for p in picks:
-            x = cut(a, shots[p], length, pitch)
+            x = match(cut(a, shots[p], length, pitch), want)
             x = x / np.abs(x).max()
-            low, mid = thump(len(x), boom, punch, 7 + p)
-            # 两层各垫多少：试到「压完之后、按游戏里的音量放出来」的低频 / 中低频身体正好是 want
-            def made(ka, kb):
-                y, r, d = shape(x + ka * low + kb * mid, target, most)
-                k = min(1.6, target / r) * 0.9 / PEAK
-                return y, r, d, body(y, 0, 200) * k, body(y, 200, 900) * k
-            mix = [0.0, 0.0]
-            for _ in range(4):
-                for i, j in ((0, 3), (1, 4)):  # 轮流调两层（互相有一点影响，来回几遍就稳了）
-                    lo, hi = 0.0, 4.0
-                    for _ in range(14):
-                        mix[i] = (lo + hi) / 2
-                        if made(*mix)[j] < want[i]:
-                            lo = mix[i]
-                        else:
-                            hi = mix[i]
-                    mix[i] = lo
-            y, r, d, b0, b1 = made(*mix)
-            y[-int(RATE * 0.03):] *= np.linspace(1, 0, int(RATE * 0.03))  # 垫的低频拖得比录音长：结尾再收一下，免得「咔」一声
+            h = int(RATE * 0.01)
+            e0 = max(np.sqrt(np.mean(x[i:i + h] ** 2)) for i in range(0, int(RATE * 0.05), h // 2))  # 开头最响的那 10 毫秒
+            x = x + e0 * 10 ** (tl[0] / 20) * tail(len(x), want, tl[1], tl[2], 7 + p) + boom_mix * boom_layer(len(x), boom)
+            y, r, d = shape(x, target, most)
+            y[-int(RATE * 0.03):] *= np.linspace(1, 0, int(RATE * 0.03))  # 尾音一直拖到最后：结尾收一下，免得「咔」一声
             pos = sum(len(s) for s in pack)
             pack += [y, gap]
             at.append([pos, len(y)])
             loud.append(r)
-            print(f'{key:8s} 第 {p + 1}/{len(shots)} 声 {len(y) / RATE:.2f}s  垫 低频 {mix[0]:.2f} 闷响 {mix[1]:.2f}  压 {d:.2f}  响度 {r:.3f}/{target}  身体 {b0:.3f}/{want[0]}  {b1:.3f}/{want[1]}')
+            sp = spectrum(y)
+            print(f'{key:8s} 第 {p + 1}/{len(shots)} 声 {len(y) / RATE:.2f}s  压 {d:.2f}  响度 {r:.3f}/{target}'
+                  f'  响完后 0.05/0.1/0.2/0.3/0.5 秒：{" ".join(f"{env_db(y, t):.0f}" for t in (0.05, 0.1, 0.2, 0.3, 0.5))} dB'
+                  f'  音色差 {" ".join(f"{v:+.0f}" for v in sp - np.array(want))}')
         # 压到头还不够响（或者本来就更响）的，用音量补齐
         # 目标响度是按峰值 0.9 定的；这里峰值是 PEAK，一并补回来
         index[key] = {'g': round(float(np.clip(target / np.mean(loud), 0.6, 1.6)) * 0.9 / PEAK, 2), 'at': at}

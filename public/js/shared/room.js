@@ -1,7 +1,7 @@
 // 房间：权威游戏逻辑（回合、经济、伤害、炸弹、投掷物、掉落、机器人）
 // 服务端与"离线练习"共用同一份代码。io = { send(pid, msg), broadcast(msg, exceptPid) }
 import { P, TICK_RATE, F, ECON, TIMES, HG, HG_MULT, otherTeam } from './constants.js';
-import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from './weapons.js';
+import { WEAPONS, EQUIP, NADE_TYPES, MAX_NADES, defaultPistol, dmgAt, moveSpeed, tagOf, capSpeed, TAG_RECOVER, inaccuracy, spreadDir, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from './weapons.js';
 import { getMap, inRect } from './maps.js';
 import { stepPlayer, traceShot, segSphere, hullBlocked } from './physics.js';
 import { NADE, NADE_STEP, makeProjectile, stepProjectile } from './grenades.js';
@@ -244,6 +244,7 @@ export class Room {
     p.hp = 100;
     p.x = sp.x; p.y = sp.y; p.z = sp.z;
     p.vx = p.vy = p.vz = 0;
+    p.tagK = 1;
     p.onGround = true; p.crouched = false; p.jumpHeld = false;
     p.yaw = sp.yaw || 0; p.pitch = 0; p.scoped = false;
     p.slot = p.inv[1] ? 1 : p.inv[2] ? 2 : 3;
@@ -522,7 +523,8 @@ export class Room {
         p.bot.update(DT);
         const cmd = p.bot.cmd;
         cmd.yaw = p.yaw;
-        cmd.speed = moveSpeed(this.curWeapon(p), p.scoped);
+        p.tagK = Math.min(1, (p.tagK ?? 1) + DT * TAG_RECOVER); // 中弹减速慢慢恢复
+        cmd.speed = moveSpeed(this.curWeapon(p), p.scoped) * p.tagK;
         cmd.frozen = this.phase === 'freeze' || p.planting || p.defusing;
         stepPlayer(p, cmd, DT, this.world);
         if (p.y < -30) { this.damage(p, null, 'world', 500, HG.CHEST, { noHg: true, noArmor: true }); continue; }
@@ -701,6 +703,12 @@ export class Room {
     const from = opts.from || (a ? [a.x, eyeOf(a), a.z] : null);
     this.send(v, { t: 'hurt', a: a ? a.id : -1, d: real, hp: Math.max(0, v.hp), ar: v.armor, o: from ? [r2(from[0]), r2(from[1]), r2(from[2])] : null, g, w: wid });
     if (a && a !== v) this.send(a, { t: 'hit', v: v.id, d: real, g: opts.noHg ? 1 : g, hm: helmetHit ? 1 : 0, k: v.hp <= 0 ? 1 : 0 });
+    // 中弹减速（机器人在这里算；真人的移动是自己那边算的，收到 hurt 消息后自己减速）
+    const tag = tagOf(wid);
+    if (tag < 1 && v.bot) {
+      v.tagK = Math.min(v.tagK ?? 1, tag);
+      capSpeed(v, moveSpeed(this.curWeapon(v), v.scoped) * tag);
+    }
     if (v.bot) v.bot.onHurt(a);
     if (v.hp <= 0) this.kill(v, a, wid, g === HG.HEAD && !opts.noHg);
   }

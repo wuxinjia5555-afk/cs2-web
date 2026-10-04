@@ -1,5 +1,6 @@
 // HUD 与游戏内界面：雷达、状态、计时比分、击杀信息、伤害方向、买枪菜单、记分板、聊天
-import { WEAPONS, EQUIP, BUY_MENU } from '../shared/weapons.js';
+import { WEAPONS, EQUIP, BUY_MENU, moveSpeed } from '../shared/weapons.js';
+import { clamp } from '../shared/util.js';
 import { F, TEAM_NAME } from '../shared/constants.js';
 import { mapImage } from './mapimg.js';
 import { settings, applyCrosshair } from './settings.js';
@@ -15,6 +16,7 @@ const REASON = { elim: '全歼敌人', time: '时间耗尽', bomb: '目标已被
 
 export class Hud {
   constructor(game) {
+    this.scopeBlur = 0; this.scopeBlurPx = 0; // 开着镜走动时准星线糊多少
     this.g = game;
     this.root = $('hud');
     this.cache = {};
@@ -194,7 +196,17 @@ export class Hud {
     $('fx-smoke').style.opacity = g.smokeAlpha.toFixed(3);
     $('fx-hurt').style.opacity = Math.max(0, g.hurtT - now).toFixed(3);
     $('fx-heal').style.opacity = Math.max(0, ((g.healT || 0) - now) * 1.6).toFixed(3);
-    this.toggle('scope', (me.alive && g.w.scope > 0) || (!me.alive && !!g.specScoped));
+    const scoped = me.alive && g.w.scope > 0;
+    this.toggle('scope', scoped || (!me.alive && !!g.specScoped));
+    // 开着镜走动 / 跳起来：准星线变粗变糊（这时候打不准），站稳了才是一条细线
+    let blur = 0;
+    if (scoped) {
+      const s = g.sim, ms = moveSpeed(g.curWeapon(), true);
+      blur = s.onGround ? clamp((Math.hypot(s.vx, s.vz) - ms * 0.3) / (ms * 0.7), 0, 1) : 1;
+    }
+    this.scopeBlur += (blur - this.scopeBlur) * Math.min(1, dt * (blur > this.scopeBlur ? 14 : 9));
+    const sb = Math.round(this.scopeBlur * 14) / 2; // 最多 7 像素，按半个像素一档（免得每帧都改样式）
+    if (sb !== this.scopeBlurPx) { this.scopeBlurPx = sb; $('scope').style.setProperty('--sb', sb + 'px'); }
     // 进度条
     let prog = null;
     if (g.w.planting) prog = ['正在安放炸弹…', (now - g.w.plantStart) / 3.2];

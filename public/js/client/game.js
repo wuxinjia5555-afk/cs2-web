@@ -1,7 +1,7 @@
 // 客户端游戏主循环：本地预测移动、武器、命中判定、插值、观战、特效与界面联动
 import * as THREE from 'three';
 import { P, PHYS_DT, F, INTERP_DELAY, HG } from '../shared/constants.js';
-import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from '../shared/weapons.js';
+import { WEAPONS, NADE_TYPES, inaccuracy, spreadDir, moveSpeed, tagOf, capSpeed, TAG_RECOVER, isGun, recoverRecoil, patternKick, nextSpray, steady, CROUCH_RECOIL, CROUCH_FIRE } from '../shared/weapons.js';
 import { getMap, inRect } from '../shared/maps.js';
 import { stepPlayer, traceShot, newMoveState, rayPlayer, hullBlocked } from '../shared/physics.js';
 import { makeProjectile, stepProjectile, NADE_STEP, throwVelocity, NADE } from '../shared/grenades.js';
@@ -96,7 +96,7 @@ export class Game {
     this.smokeAlpha = 0;
     this.hurtT = 0;
     this.shake = 0;
-    this.tagUntil = 0;
+    this.tagK = 1; // 中弹减速：现在最快只能跑到平时的几成（1 = 没被减速）
     this.stepAcc = 0;
     this.targetName = '';
     this.chatOpen = false;
@@ -666,6 +666,7 @@ export class Game {
     const s = this.sim;
     s.x = m.p[0]; s.y = m.p[1]; s.z = m.p[2];
     s.vx = s.vy = s.vz = 0;
+    this.tagK = 1;
     s.onGround = true;
     this.prev.x = s.x; this.prev.y = s.y; this.prev.z = s.z;
     this.acc = 0;
@@ -830,7 +831,12 @@ export class Game {
     this.me.hp = m.hp;
     this.me.armor = m.ar;
     this.hurtT = this.now + Math.min(0.6, 0.15 + m.d / 60);
-    this.tagUntil = this.now + 0.3;
+    // 中弹减速：速度一下子被压下来，之后慢慢恢复
+    const tag = tagOf(m.w);
+    if (tag < 1) {
+      this.tagK = Math.min(this.tagK, tag);
+      capSpeed(this.sim, moveSpeed(this.curWeapon(), this.w.scope > 0) * tag);
+    }
     audio.play('hurt', null, Math.min(1, 0.3 + m.d / 60));
     this.vibrate(Math.round(Math.min(70, 20 + m.d)));
     if (m.o) {
@@ -917,7 +923,7 @@ export class Game {
     // 正在观战这个人：他的枪跟着后坐 / 挥刀
     if (this.svm && m.id === this.svmId && this.specView) {
       if (m.w === 'knife') this.svm.onKnife(this.now, !!m.stab);
-      else { const sw = WEAPONS[m.w]; this.svm.onFire(this.now, sw && sw.type === 'sniper' ? 1.4 : 1); }
+      else this.svm.onFire(this.now);
     }
     if (m.w === 'knife') { audio.play('knife', m.o); return; }
     audio.shot(m.w, m.o);
@@ -1326,7 +1332,8 @@ export class Game {
     this.touchMoveWas = touchMove;
     cmd.yaw = this.yaw;
     cmd.pitch = this.pitch;
-    cmd.speed = moveSpeed(w, this.w.scope > 0) * (this.now < this.tagUntil ? 0.55 : 1);
+    this.tagK = Math.min(1, this.tagK + dt * TAG_RECOVER);
+    cmd.speed = moveSpeed(w, this.w.scope > 0) * this.tagK;
     cmd.frozen = this.frozen();
     this.acc += dt;
     let n = 0;
@@ -1580,7 +1587,7 @@ export class Game {
     W.punchY += pat[0] * DEG * (0.9 + Math.random() * 0.2) * rs;
     W.punchP += pat[1] * DEG * rs;
     W.spray = nextSpray(w, W.spray);
-    this.vm.onFire(now, w.type === 'sniper' ? 1.4 : 1);
+    this.vm.onFire(now);
     audio.shot(w.id, null);
     this.net.send({ t: 'fire', w: w.id, o: [r2(eye.x), r2(eye.y), r2(eye.z)], h: hits, e: ends.slice(0, 12) });
     if (w.type === 'sniper' && W.scope > 0) {
