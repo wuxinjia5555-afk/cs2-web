@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>map view</title>
+<style>html,body{margin:0;background:#111;color:#ccc;font:12px monospace;overflow:hidden}canvas{display:block}</style>
+<script>
+  (function () {
+    var local = '/lib/three/three.module.js', cdn = 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js', ok = false;
+    try { var x = new XMLHttpRequest(); x.open('HEAD', local, false); x.send(); ok = x.status === 200; } catch (e) {}
+    var s = document.createElement('script');
+    s.type = 'importmap';
+    s.textContent = JSON.stringify({ imports: { three: ok ? local : cdn } });
+    document.currentScript.after(s);
+  })();
+</script>
+</head><body><canvas id="c"></canvas>
+<script type="module">
+// 开发用：把地图摆出来看（不进游戏）。__views([[x, y, z, yaw, pitch, fov], ...]) 从上到下叠着画几个视角；y 给 null = 站在地上的眼睛高度
+import * as THREE from 'three';
+import { getMap } from '/js/shared/maps.js';
+import { buildMapMeshes, setupEnvironment } from '/js/client/world.js';
+const q = new URLSearchParams(location.search);
+const map = getMap(q.get('map') || 'dust2');
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const env = setupEnvironment(scene, map, true);
+scene.add(buildMapMeshes(map));
+const cam = new THREE.PerspectiveCamera(74, 16 / 9, 0.03, 700);
+cam.rotation.order = 'YXZ';
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
+let last = [[40, null, 100, 0, 0, 74]];
+function size() {
+  const w = Math.floor(innerWidth), h = Math.floor(innerHeight);
+  renderer.setPixelRatio(1.5);
+  renderer.setSize(w, h);
+  return [w, h];
+}
+window.__views = (list) => {
+  last = list;
+  const [w, h] = size(), n = list.length, vh = Math.floor(h / n);
+  renderer.setScissorTest(true);
+  list.forEach((v, k) => {
+    let [x, y, z, yaw, pitch, fov] = v;
+    if (y == null) y = map.world.groundY(x, z) + 1.63;
+    renderer.setViewport(0, h - (k + 1) * vh, w, vh - 2);
+    renderer.setScissor(0, h - (k + 1) * vh, w, vh - 2);
+    if (fov === 'top') { // 俯视：yaw 当成画面的半宽（米）
+      const hw = yaw, hh = (hw * (vh - 2)) / w;
+      ortho.left = -hw; ortho.right = hw; ortho.top = hh; ortho.bottom = -hh;
+      ortho.position.set(x, 200, z); ortho.rotation.set(-Math.PI / 2, 0, 0); ortho.updateProjectionMatrix();
+      env.follow(ortho.position);
+      renderer.render(scene, ortho);
+    } else {
+      cam.fov = fov || 74; cam.aspect = w / (vh - 2); cam.updateProjectionMatrix();
+      cam.position.set(x, y, z); cam.rotation.set(pitch || 0, yaw || 0, 0);
+      env.follow(cam.position);
+      renderer.render(scene, cam);
+    }
+  });
+  return list.map((v) => [v[0], +(v[1] == null ? map.world.groundY(v[0], v[2]) + 1.63 : v[1]).toFixed(2), v[2]]);
+};
+window.__map = map; window.__THREE = THREE; window.__scene = scene;
+window.__g = (x, z) => +map.world.groundY(x, z).toFixed(3);
+addEventListener('resize', () => __views(last));
+__views(last);
+</script></body></html>

@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>frame</title>
+<!-- 开发用：把游戏装在一个固定大小的框里看（比如手机横屏 844×390）。控制台里 size(宽, 高) 改大小，W() / D() 是里面那个页面的 window / document，
+     W().__game 是正在进行的那一局。换网址：document.getElementById('f').src = '/?touch=1' -->
+<style>html,body{margin:0;background:#222;overflow:hidden}iframe{border:0;transform-origin:0 0;position:absolute;left:0;top:0}</style>
+<iframe id="f" width="1280" height="720" src="/"></iframe>
+<script>
+const f = document.getElementById('f');
+window.size = (w, h) => { f.width = w; f.height = h; view(); };
+window.view = (s = innerWidth / f.width, x = 0, y = 0) => { f.style.transform = `scale(${s}) translate(${-x}px, ${-y}px)`; };
+window.W = () => f.contentWindow; window.D = () => f.contentDocument;
+view();
+</script>
