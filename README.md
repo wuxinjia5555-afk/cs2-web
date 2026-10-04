@@ -2,7 +2,7 @@
 
 浏览器里直接玩的 3D 多人第一人称射击游戏，玩法规则参考 CS2：T / CT 两个阵营、爆破模式（下包 / 拆包）、经济系统、买枪菜单、半场换边、死斗模式、人机机器人，支持联机房间。
 
-> 地图、人物、武器模型、贴图和音效全部由代码程序生成（原创），没有使用任何 Valve / CS2 的素材。
+> 地图、人物、武器模型、贴图全部由代码程序生成（原创）；音效大部分是程序合成的，枪声用的是公有领域（CC0）的真实录音（[The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library)，见 `public/sfx/README.txt`）。没有使用任何 Valve / CS2 的素材。
 
 ## 功能
 

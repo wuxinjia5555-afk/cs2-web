@@ -2,6 +2,7 @@
 import { WEAPONS } from '../shared/weapons.js';
 import { settings } from './settings.js';
 import { GUN_PROFILES, gunProfileKey, synthGun, synthStep, synthFx, synthKnife, synthMech, MECH } from './gunsynth.js';
+import { GUN_SAMPLES } from './gunsamples.js';
 
 const KNIFE_GAIN = { kn_swish: 0.2, kn_tick: 0.3, kn_clack: 0.5, kn_catch: 0.42 };
 
@@ -13,6 +14,7 @@ class AudioSys {
     this.lx = 0; this.ly = 0; this.lz = 0; this.lyaw = 0;
     this.lastVoice = 0;
     this.gunBufs = {};
+    this.gunSmp = null; // 真实枪声录音：{ 音色: { g 音量补偿, bufs: [两声不同的] } }。还没下载好 / 下载失败时用合成的枪声
     this.stepBufs = {};
     this.fxBufs = {};
   }
@@ -53,6 +55,32 @@ class AudioSys {
     this.reverb.connect(this.revGain);
     this.revGain.connect(this.master);
     this.warmGuns();
+    this.loadGunSamples();
+  }
+
+  // 真实枪声（CC0 录音，见 gunsamples.js）：一个文件里接着 20 声，下载、解码之后按位置切开。消音武器没有录音，还是用合成的
+  async loadGunSamples() {
+    if (this.gunSmp || this.smpLoading || !this.ctx) return;
+    this.smpLoading = true;
+    try {
+      const res = await fetch(GUN_SAMPLES.file);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const ab = await res.arrayBuffer(), ctx = this.ctx;
+      const all = await new Promise((ok, no) => { const p = ctx.decodeAudioData(ab, ok, no); if (p && p.catch) p.catch(no); });
+      const k = all.sampleRate / GUN_SAMPLES.rate, src = all.getChannelData(0), out = {};
+      for (const [key, c] of Object.entries(GUN_SAMPLES.clips)) {
+        out[key] = { g: c.g, bufs: c.at.map(([a, n]) => {
+          const i0 = Math.round(a * k), len = Math.max(1, Math.min(src.length - i0, Math.round(n * k)));
+          const b = ctx.createBuffer(1, len, all.sampleRate);
+          b.getChannelData(0).set(src.subarray(i0, i0 + len));
+          return b;
+        }) };
+      }
+      this.gunSmp = out;
+    } catch (e) {
+      console.warn('真实枪声没加载成功，先用合成的枪声', e);
+    }
+    this.smpLoading = false;
   }
 
   // 枪声缓冲区：每种枪 2 份略有不同的波形，用到时才合成（并在空闲时提前合成好）
@@ -114,7 +142,7 @@ class AudioSys {
     const step = () => {
       if (!this.ctx || k >= keys.length * 2) return;
       const key = keys[k % keys.length], arr = this.gunBufs[key] || (this.gunBufs[key] = []);
-      if (arr.length < 2) arr.push(this._renderGun(key, arr.length));
+      if (arr.length < 2 && !(this.gunSmp && this.gunSmp[key])) arr.push(this._renderGun(key, arr.length)); // 有录音的就不用再合成了
       k++;
       setTimeout(step, 30);
     };
@@ -200,11 +228,12 @@ class AudioSys {
     if (!w) return;
     const key = gunProfileKey(w);
     const P = GUN_PROFILES[key];
-    const o = this._out(pos, P.ref, P.gain * settings.gunVol, pos ? 0.3 : 0.12);
+    const smp = this.gunSmp && this.gunSmp[key]; // 有真实录音就用录音（录音里自带现场的回声，混响少加一点）
+    const o = this._out(pos, P.ref, P.gain * (smp ? smp.g : 1) * settings.gunVol, (pos ? 0.3 : 0.12) * (smp ? 0.6 : 1));
     if (!o) return;
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
-    src.buffer = this._gunBuf(key);
+    src.buffer = smp ? smp.bufs[(Math.random() * smp.bufs.length) | 0] : this._gunBuf(key);
     src.playbackRate.value = 0.95 + Math.random() * 0.1;
     let node = src;
     if (o.far > 0.03) {

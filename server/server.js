@@ -5,6 +5,8 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { handleUpgrade } from './ws.js';
 import { Room } from '../public/js/shared/room.js';
@@ -28,8 +30,12 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
-  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8', '.wav': 'audio/wav',
 };
+// 文本类的文件压缩后再发（手机直接连电脑玩的时候省流量；Render 上前面的 CDN 也会压）
+const GZIP = new Set(['.html', '.js', '.mjs', '.css', '.json', '.svg', '.txt', '.webmanifest']);
+// 每个文件算一个内容指纹（ETag）：浏览器下次来问「还是这个吗」，没变就回 304，不用重新下载
+const fileInfo = new Map(); // 路径 -> { mtime, size, etag, gz }
 
 function serveFile(req, res, file) {
   fs.stat(file, (err, st) => {
@@ -39,13 +45,35 @@ function serveFile(req, res, file) {
       return;
     }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Content-Length': st.size,
-      'Cache-Control': file.startsWith(THREE_DIR) ? 'public, max-age=604800' : 'no-cache',
+    const send = (c) => {
+      const headers = {
+        'Content-Type': MIME[ext] || 'application/octet-stream',
+        'Cache-Control': file.startsWith(THREE_DIR) ? 'public, max-age=604800' : 'no-cache',
+        ETag: c.etag,
+      };
+      if (c.gz) headers.Vary = 'Accept-Encoding';
+      const asked = String(req.headers['if-none-match'] || '').split(',').map((t) => t.trim().replace(/^W\//, ''));
+      if (asked.includes(c.etag)) { res.writeHead(304, headers); res.end(); return; }
+      const gz = c.gz && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+      if (gz) headers['Content-Encoding'] = 'gzip';
+      headers['Content-Length'] = gz ? c.gz.length : st.size;
+      res.writeHead(200, headers);
+      if (req.method === 'HEAD') res.end();
+      else if (gz) res.end(c.gz);
+      else fs.createReadStream(file).pipe(res);
+    };
+    const c = fileInfo.get(file);
+    if (c && c.mtime === st.mtimeMs && c.size === st.size) { send(c); return; }
+    fs.readFile(file, (e2, buf) => {
+      if (e2) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404'); return; }
+      const info = {
+        mtime: st.mtimeMs, size: st.size,
+        etag: '"' + crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 20) + '"',
+        gz: GZIP.has(ext) && buf.length > 1024 ? zlib.gzipSync(buf, { level: 8 }) : null,
+      };
+      fileInfo.set(file, info);
+      send(info);
     });
-    if (req.method === 'HEAD') { res.end(); return; }
-    fs.createReadStream(file).pipe(res);
   });
 }
 
