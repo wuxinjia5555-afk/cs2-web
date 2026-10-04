@@ -12,7 +12,8 @@ export const TEX_SCALE = {
   dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
   door: 1.6, iron: 1, stone: 2, darkwood: 2,
   cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, stucco_r: 5, stucco_g: 5, woodfloor: 2, grass: 3, rooftile: 2, plywood: 2, tarp: 2,
-  kerb: 2, paint_w: 2, paint_b: 3, awning: 1.2, car_t: 2, glass_d: 2, pavers: 2, rooftile_t: 2, container_l: 2.5,
+  kerb: 2, paint_w: 2, paint_b: 3, awning: 1.2, car_t: 2, car_w: 2, glass_d: 2, pavers: 2, rooftile_t: 2, container_l: 2.5,
+  metalbox: 1.5, metalbox14: 1.5,
 };
 
 const cache = new Map();
@@ -416,6 +417,60 @@ const PAINTERS = {
       ctx.fillStyle = g;
       ctx.fillRect(x - r, y - r, r * 2, r * 2);
     }
+  },
+  // 白车：发黄的旧白漆，锈得厉害
+  car_w(ctx, s, rnd) {
+    ctx.fillStyle = rgb(214, 208, 192);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.16, [[3, 0.4], [16, 0.6]]);
+    for (let k = 0; k < 22; k++) {
+      const x = rnd() * s, y = rnd() * s, r = 5 + rnd() * 18;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(128,78,40,0.42)'); g.addColorStop(1, 'rgba(128,78,40,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  },
+  // 铁皮箱：灰白色的铁板，四边压了框，角上有铆钉
+  metalbox(ctx, s, rnd) {
+    ctx.fillStyle = rgb(148, 154, 150);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.16, [[2, 0.4], [10, 0.6]]);
+    ctx.strokeStyle = 'rgba(60,64,62,0.8)'; ctx.lineWidth = 5;
+    ctx.strokeRect(5, 5, s - 10, s - 10);
+    ctx.strokeStyle = 'rgba(210,214,208,0.5)'; ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, s - 20, s - 20);
+    ctx.fillStyle = 'rgba(52,54,54,0.9)';
+    for (const [x, y] of [[16, 16], [s - 16, 16], [16, s - 16], [s - 16, s - 16]]) { ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fill(); }
+    for (let k = 0; k < 12; k++) {
+      const x = rnd() * s, y = rnd() * s, r = 4 + rnd() * 14;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(110,66,34,0.4)'); g.addColorStop(1, 'rgba(110,66,34,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  },
+  // 喷了编号的铁皮箱
+  metalbox14(ctx, s, rnd) {
+    PAINTERS.metalbox(ctx, s, rnd);
+    ctx.fillStyle = 'rgba(44,46,50,0.78)';
+    ctx.font = `bold ${Math.round(s * 0.4)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('14', s / 2, s * 0.54);
+  },
+  // 包点的牌子：白底红字
+  sign_a(ctx, s, rnd) { PAINTERS.sign_x(ctx, s, rnd, 'A'); },
+  sign_b(ctx, s, rnd) { PAINTERS.sign_x(ctx, s, rnd, 'B'); },
+  sign_x(ctx, s, rnd, ch) {
+    ctx.fillStyle = rgb(232, 226, 210);
+    ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = rgb(186, 44, 36); ctx.lineWidth = s * 0.04;
+    ctx.strokeRect(s * 0.06, s * 0.06, s * 0.88, s * 0.88);
+    ctx.fillStyle = rgb(186, 44, 36);
+    ctx.font = `bold ${Math.round(s * 0.7)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ch, s / 2, s * 0.54);
+    grain(ctx, s, rnd, 0.18);
   },
   // 车窗：发暗的玻璃，上面一道天光
   glass_d(ctx, s, rnd) {
