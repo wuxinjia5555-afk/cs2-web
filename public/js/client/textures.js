@@ -12,6 +12,7 @@ export const TEX_SCALE = {
   dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
   door: 1.6, iron: 1, stone: 2, darkwood: 2,
   cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, stucco_r: 5, stucco_g: 5, woodfloor: 2, grass: 3, rooftile: 2, plywood: 2, tarp: 2,
+  kerb: 2, paint_w: 2, paint_b: 3, awning: 1.2, car_t: 2, glass_d: 2, pavers: 2, rooftile_t: 2, container_l: 2.5,
 };
 
 const cache = new Map();
@@ -149,6 +150,33 @@ function shutter(ctx, s, rnd, col) {
     ctx.strokeRect(x0 + 3, m + 3, w - 10, s - m * 2 - 6);
   }
   grain(ctx, s, rnd, 0.16);
+}
+
+// 卷帘门：门框里一扇落下来的铁皮卷帘（一道道横条，底下一根横档）
+function rollDoor(ctx, s, rnd, col) {
+  ctx.fillStyle = rgb(150, 142, 126);
+  ctx.fillRect(0, 0, s, s);
+  const m = s * 0.045;
+  ctx.fillStyle = rgb(col[0] * 0.5, col[1] * 0.5, col[2] * 0.5);
+  ctx.fillRect(m, m, s - m * 2, s - m);
+  for (let y = m + 2; y < s - 14; y += 9) {
+    const c = vary(rnd, col, 0.05);
+    const g = ctx.createLinearGradient(0, y, 0, y + 9);
+    g.addColorStop(0, rgb(c[0] * 1.06, c[1] * 1.06, c[2] * 1.06)); g.addColorStop(0.7, rgb(...c)); g.addColorStop(1, rgb(c[0] * 0.66, c[1] * 0.66, c[2] * 0.66));
+    ctx.fillStyle = g;
+    ctx.fillRect(m + 2, y, s - m * 2 - 4, 9);
+  }
+  ctx.fillStyle = rgb(col[0] * 0.6, col[1] * 0.6, col[2] * 0.6);
+  ctx.fillRect(m + 2, s - 14, s - m * 2 - 4, 14);
+  // 从上往下淌的脏印
+  for (let k = 0; k < 9; k++) {
+    const x = m + rnd() * (s - m * 2), w = 4 + rnd() * 12, h = s * (0.2 + rnd() * 0.6);
+    const g = ctx.createLinearGradient(0, m, 0, m + h);
+    g.addColorStop(0, 'rgba(70,58,44,0.3)'); g.addColorStop(1, 'rgba(70,58,44,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, m, w, h);
+  }
+  grain(ctx, s, rnd, 0.14);
 }
 
 // 灰泥墙：底色上有大片的深浅、从上往下淌的水渍，零星掉皮的地方露出砖
@@ -331,6 +359,74 @@ const PAINTERS = {
   // 关着的百叶窗：石头窗框里两扇绿色的木百叶
   shutter(ctx, s, rnd) { shutter(ctx, s, rnd, [62, 98, 76]); },
   shutter_b(ctx, s, rnd) { shutter(ctx, s, rnd, [112, 78, 52]); },
+  shutter_w(ctx, s, rnd) { shutter(ctx, s, rnd, [70, 116, 164]); },
+  garage(ctx, s, rnd) { rollDoor(ctx, s, rnd, [216, 210, 194]); },
+  garage_b(ctx, s, rnd) { rollDoor(ctx, s, rnd, [104, 142, 184]); },
+  // 刷成蓝色的木门：白门框
+  housedoor_b(ctx, s, rnd) {
+    ctx.fillStyle = rgb(222, 216, 200);
+    ctx.fillRect(0, 0, s, s);
+    const m = s * 0.09;
+    ctx.fillStyle = rgb(24, 34, 46);
+    ctx.fillRect(m, m, s - m * 2, s - m);
+    for (let k = 0; k < 2; k++) {
+      const x = m + 3 + (k * (s - m * 2 - 6)) / 2, w = (s - m * 2 - 6) / 2 - 3;
+      ctx.fillStyle = rgb(...vary(rnd, [74, 118, 166], 0.08));
+      ctx.fillRect(x, m + 3, w, s - m - 3);
+      ctx.strokeStyle = rgb(52, 86, 126); ctx.lineWidth = 3;
+      ctx.strokeRect(x + 8, m + 12, w - 16, s * 0.36); ctx.strokeRect(x + 8, m + 22 + s * 0.36, w - 16, s * 0.36);
+    }
+    ctx.fillStyle = rgb(40, 38, 36);
+    ctx.beginPath(); ctx.arc(s * 0.56, s * 0.56, 5, 0, 7); ctx.fill();
+    grain(ctx, s, rnd, 0.16);
+  },
+  // 路缘石：红白相间（横竖都相间，朝哪个方向铺都是一格红一格白）
+  kerb(ctx, s, rnd) {
+    for (let j = 0; j < 2; j++) for (let k = 0; k < 2; k++) {
+      ctx.fillStyle = rgb(...vary(rnd, (j + k) % 2 ? [226, 220, 206] : [178, 52, 44], 0.06));
+      ctx.fillRect((k * s) / 2, (j * s) / 2, s / 2, s / 2);
+    }
+    ctx.fillStyle = 'rgba(40,30,24,0.4)';
+    for (let k = 0; k < 2; k++) { ctx.fillRect((k * s) / 2 - 1, 0, 2, s); ctx.fillRect(0, (k * s) / 2 - 1, s, 2); }
+    grain(ctx, s, rnd, 0.3, [[2, 0.5], [9, 0.5]]);
+  },
+  // 路面上的白线（磨得有点花）
+  paint_w(ctx, s, rnd) {
+    ctx.fillStyle = rgb(224, 222, 212);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.3, [[2, 0.5], [7, 0.5]]);
+    pixels(ctx, s, (x, y, i, c) => { if (rnd() < 0.08) { c[0] *= 0.55; c[1] *= 0.56; c[2] *= 0.58; } });
+  },
+  // 墙脚刷的一截蓝漆
+  paint_b(ctx, s, rnd) { stucco(ctx, s, rnd, [112, 150, 190]); },
+  // 遮阳棚：红白竖条
+  awning(ctx, s, rnd) {
+    for (let k = 0; k < 8; k++) { ctx.fillStyle = rgb(...vary(rnd, k % 2 ? [228, 220, 204] : [176, 58, 48], 0.05)); ctx.fillRect((k * s) / 8, 0, s / 8 + 1, s); }
+    grain(ctx, s, rnd, 0.22);
+  },
+  // 车漆：青绿色，有点旧
+  car_t(ctx, s, rnd) {
+    ctx.fillStyle = rgb(74, 138, 132);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.14, [[3, 0.4], [16, 0.6]]);
+    for (let k = 0; k < 10; k++) {
+      const x = rnd() * s, y = rnd() * s, r = 5 + rnd() * 16;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(120,84,50,0.3)'); g.addColorStop(1, 'rgba(120,84,50,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  },
+  // 车窗：发暗的玻璃，上面一道天光
+  glass_d(ctx, s, rnd) {
+    const g = ctx.createLinearGradient(0, 0, 0, s);
+    g.addColorStop(0, rgb(120, 150, 170)); g.addColorStop(0.4, rgb(44, 58, 70)); g.addColorStop(1, rgb(26, 34, 42));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.1);
+  },
+  // 人行道的地砖：浅色的小方砖
+  pavers(ctx, s, rnd) { tiled(ctx, s, rnd, 4, 4, [196, 186, 166], [128, 118, 100], 3, 0.1); grain(ctx, s, rnd, 0.24); },
   // 关着的木门：石头门框里一扇厚木门
   housedoor(ctx, s, rnd) {
     ctx.fillStyle = rgb(176, 162, 132);
@@ -415,12 +511,15 @@ const PAINTERS = {
     grain(ctx, s, rnd, 0.4, [[4, 0.4], [12, 0.3], [48, 0.3]]);
     pixels(ctx, s, (x, y, i, c) => { const r = rnd(); if (r < 0.06) { c[0] *= 0.7; c[1] *= 0.75; c[2] *= 0.7; } else if (r > 0.95) { c[0] *= 1.2; c[1] *= 1.18; c[2] *= 1.05; } });
   },
-  rooftile(ctx, s, rnd) {
-    ctx.fillStyle = rgb(120, 58, 40);
+  rooftile(ctx, s, rnd) { PAINTERS.rooftile_c(ctx, s, rnd, [186, 96, 64]); },
+  rooftile_t(ctx, s, rnd) { PAINTERS.rooftile_c(ctx, s, rnd, [84, 158, 146]); },   // 青绿色的瓦
+  container_l(ctx, s, rnd) { corrugated(ctx, s, rnd, [108, 150, 198], 14); },        // 浅蓝色的铁皮箱
+  rooftile_c(ctx, s, rnd, base) {
+    ctx.fillStyle = rgb(base[0] * 0.64, base[1] * 0.6, base[2] * 0.62);
     ctx.fillRect(0, 0, s, s);
     const rows = 8, cols = 8, rh = s / rows, cw = s / cols;
     for (let r = 0; r < rows; r++) for (let c = -1; c < cols; c++) {
-      const x = c * cw + (r % 2 ? cw / 2 : 0), col = vary(rnd, [186, 96, 64], 0.2);
+      const x = c * cw + (r % 2 ? cw / 2 : 0), col = vary(rnd, base, 0.2);
       const g = ctx.createLinearGradient(0, r * rh, 0, (r + 1) * rh);
       g.addColorStop(0, rgb(col[0] * 0.7, col[1] * 0.7, col[2] * 0.7)); g.addColorStop(0.3, rgb(...col)); g.addColorStop(1, rgb(col[0] * 1.08, col[1] * 1.08, col[2] * 1.08));
       ctx.fillStyle = g;
@@ -596,7 +695,7 @@ export function getTexture(name) {
 export const TEX_COLOR = {
   sand: '#c8b084', road: '#b2a286', tiles: '#cec4ac', site_d: '#bc8460', concrete: '#96968f', asphalt: '#4a4c50',
   site_i: '#80868a', metalfloor: '#767a7e', dev_floor: '#707070', dev_floor2: '#566270',
-  cobble: '#9e9484', woodfloor: '#8e6842', grass: '#607c3e',
+  cobble: '#9e9484', woodfloor: '#8e6842', grass: '#607c3e', pavers: '#bfb6a2',
 };
 
 // ---------- 精灵/特效贴图 ----------
