@@ -38,6 +38,7 @@ const env = (t, att, dec) => (t < att ? t / att : Math.exp(-(t - att) / dec));
 // 各类枪的音色（时间单位秒，频率 Hz）
 // pulse：枪口冲击波（类似 Friedlander 波形）  crack：极短的高频脆响  body：扫频的爆风噪声  punch：低中频的“砰”
 // boom：低频冲击  mech：机械动作声  echo：回声  tail：环境尾音  drive：软削波强度
+// air：[音量, 高通频率, 衰减]（消音武器的气声）  lp：最后削掉多高以上的频率（不写是 9kHz）
 export const GUN_PROFILES = {
   rifle: {
     len: 0.65, punch: [0.8, 260, 0.035], pulse: [0.9, 0.0005], crack: [0.35, 2600, 0.004],
@@ -109,20 +110,21 @@ export const GUN_PROFILES = {
     mech: [], echo: [[0.06, 0.28, 1400], [0.16, 0.16, 800]],
     tail: { amp: 0.26, lp: 900, dec: 0.4 }, drive: 2.3, gain: 0.46, ref: 28,
   },
-  // 消音：没有爆风和回声，主要是“噗”的一声加上枪机撞击的金属声
+  // 消音（照 CS 里 USP-S、M4A1-S 的听感调的：各频段占多少、多快落下去是从录屏里量的）：
+  // 没有爆风和回声，是一声带着气声的「噗 / 嘶」加上枪机撞击的金属声。手枪的中频多、拖得长一点；步枪的更亮更短
   silenced: {
-    len: 0.3, punch: [0.35, 380, 0.015], pulse: [0.25, 0.0003], crack: [0.08, 4000, 0.0015],
-    body: { amp: 0.75, f0: 1900, f1: 950, sweep: 0.012, q: 1.2, dec: 0.017 },
-    boom: { amp: 0.17, f0: 210, f1: 90, ft: 0.015, dec: 0.03 },
-    mech: [[0.003, 0.45, 3000, 5, 0.009], [0.048, 0.28, 2300, 5, 0.008]], echo: [],
-    tail: { amp: 0.05, lp: 1500, dec: 0.06 }, drive: 1.5, gain: 0.3, ref: 8,
+    len: 0.38, punch: [0.8, 520, 0.06], pulse: [0.25, 0.0003], crack: [0.15, 5000, 0.004], air: [1.0, 600, 0.1], lp: 10000,
+    body: { amp: 0.9, f0: 2200, f1: 1300, sweep: 0.03, q: 0.7, dec: 0.07 },
+    boom: { amp: 0.05, f0: 210, f1: 90, ft: 0.015, dec: 0.03 },
+    mech: [[0.003, 0.3, 3000, 5, 0.009], [0.048, 0.2, 2300, 5, 0.008]], echo: [],
+    tail: { amp: 0.2, lp: 5000, dec: 0.12 }, drive: 1.5, gain: 0.3, ref: 8,
   },
   silenced_rifle: {
-    len: 0.32, punch: [0.45, 340, 0.018], pulse: [0.3, 0.0004], crack: [0.08, 3600, 0.0018],
-    body: { amp: 0.8, f0: 1700, f1: 800, sweep: 0.014, q: 1.1, dec: 0.02 },
-    boom: { amp: 0.21, f0: 180, f1: 75, ft: 0.018, dec: 0.035 },
-    mech: [[0.004, 0.42, 2700, 5, 0.01], [0.04, 0.24, 2000, 5, 0.008]], echo: [],
-    tail: { amp: 0.06, lp: 1300, dec: 0.07 }, drive: 1.5, gain: 0.32, ref: 9,
+    len: 0.34, punch: [0.8, 320, 0.05], pulse: [0.3, 0.0004], crack: [0.3, 5000, 0.006], air: [1.6, 2200, 0.055], lp: 12000,
+    body: { amp: 1.2, f0: 2200, f1: 700, sweep: 0.025, q: 0.8, dec: 0.05 },
+    boom: { amp: 0.1, f0: 180, f1: 75, ft: 0.018, dec: 0.035 },
+    mech: [[0.004, 0.2, 2700, 5, 0.01], [0.04, 0.12, 2000, 5, 0.008]], echo: [],
+    tail: { amp: 0.06, lp: 2500, dec: 0.05 }, drive: 1.5, gain: 0.32, ref: 9,
   },
 };
 
@@ -142,6 +144,7 @@ export function synthGun(P, sr, seed = 1) {
   const out = new Float32Array(n);
   const nz = () => R() * 2 - 1;
   const crackF = new Biquad(sr).set('hp', P.crack[1], 0.7);
+  const airF = P.air ? new Biquad(sr).set('hp', P.air[1], 0.7) : null;
   const bodyF = new Biquad(sr), bodyF2 = new Biquad(sr);
   const tailF = new Biquad(sr).set('lp', P.tail.lp, 0.6), tailF2 = new Biquad(sr).set('lp', P.tail.lp * 1.3, 0.6);
   const mechF = P.mech.map((m) => new Biquad(sr).set('bp', m[2], m[3]));
@@ -159,6 +162,8 @@ export function synthGun(P, sr, seed = 1) {
     if (t < pT * 8) s += pa * (1 - t / pT) * Math.exp((-2.2 * t) / pT);
     // 2) 高频脆响
     s += crackF.p(w) * P.crack[0] * 3.2 * Math.exp(-t / P.crack[2]);
+    // 2b) 气声（消音武器）：消音器喷出来的那一下「嘶」—— 高通噪声，比脆响拖得长
+    if (airF) s += airF.p(w) * P.air[0] * 3 * env(t, 0.001, P.air[2] * dj);
     // 3) 爆风：带通噪声，中心频率从高往低扫
     if ((i & 15) === 0) {
       const fc = (B.f1 + (B.f0 - B.f1) * Math.exp(-t / B.sweep)) * fj;
@@ -190,7 +195,7 @@ export function synthGun(P, sr, seed = 1) {
   }
   for (let i = 0; i < n; i++) out[i] += dry[i];
   // 去掉 55Hz 以下的闷响（喇叭放不出来，只会占音量），再柔和地削掉 9kHz 以上
-  const hp = new Biquad(sr).set('hp', 55, 0.7), lp = new Biquad(sr).set('lp', 9000, 0.7);
+  const hp = new Biquad(sr).set('hp', 55, 0.7), lp = new Biquad(sr).set('lp', P.lp || 9000, 0.7);
   let peak = 0;
   for (let i = 0; i < n; i++) { out[i] = lp.p(hp.p(out[i])); peak = Math.max(peak, Math.abs(out[i])); }
   // 软削波让声音更“实”，最后统一峰值

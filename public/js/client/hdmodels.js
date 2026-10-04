@@ -347,6 +347,9 @@ export const HAND_SHAPES = shapes({
   // 抛刀 / 接刀：手掌摊平，大拇指躺在手掌边上（刀在手掌前面转，什么都碰不到）
   flat: { curl: [[0.04, 0.1, 0.08], [0.02, 0.1, 0.08], [0.05, 0.12, 0.1], [0.12, 0.16, 0.12]], splay: [-0.16, -0.04, 0.06, 0.18],
     thumb: [[0.84, 0.54, -0.06], [0.8, 0.6, -0.04], [0.72, 0.69, 0]] },
+  // 握握把（食指伸出去搭扳机）；转枪时食指勾在扳机护圈里当轴，其余手指松开
+  grip: { curl: CURL.grip, splay: SPLAY, thumb: THUMB.wrap },
+  twirl: { curl: [[0.5, 0.95, 0.6], [0.3, 0.4, 0.25], [0.34, 0.44, 0.27], [0.4, 0.5, 0.3]], splay: [-0.1, 0, 0.06, 0.14], thumb: THUMB.open },
   // M9 切刀：刀绕着食指转一圈 —— 食指半勾着当轴，其余手指伸直让开，大拇指躺在手掌边上
   spin: { curl: [[0.55, 0.7, 0.4], [0.02, 0.1, 0.08], [0.05, 0.12, 0.1], [0.12, 0.16, 0.12]], splay: [-0.1, -0.04, 0.06, 0.18],
     thumb: [[0.84, 0.54, -0.06], [0.8, 0.6, -0.04], [0.72, 0.69, 0]] },
@@ -434,7 +437,7 @@ const POSES = {
   mp9: { right: rGrip(-0.055, 0.02, -0.17), left: lWrap(-0.045, -0.195, { hold: [0, 0.1, 0.032], elbow: [-0.34, -0.3, 0.18] }), leftAct: lOver(0.076, 0.026) },
   mac10: { right: rGrip(-0.055, 0.011, -0.05), left: lWrap(-0.06, 0.008), leftAct: lOver(0.086, -0.07) },
   pistol: { right: rGrip(-0.045, 0.022, -0.34), left: lWrap(-0.06, 0.012), leftAct: lOver(0.052, -0.004), leftMag: lPush(-0.112, 0.045) },
-  deagle: { right: rGrip(-0.052, 0.025, -0.34), left: lWrap(-0.068, 0.014), leftAct: lOver(0.064, -0.004), leftMag: lPush(-0.128, 0.05) },
+  deagle: { right: rGrip(-0.052, 0.025, -0.34, { pose: HAND_SHAPES.grip, rig: true }), left: lWrap(-0.068, 0.014), leftAct: lOver(0.064, -0.004), leftMag: lPush(-0.128, 0.05) },
   knife: { right: rKnife(0.011, 0.028) },
   knife_m9: { right: rKnife(0.017, 0.022) },
   knife_butterfly: { right: rKnife(0.012, 0.036) },

@@ -123,7 +123,7 @@ export class ViewModel {
     this.clip = null;    // 正在放的一段动作：{ def, kind, t0, dur, last }
     this.off = null;     // 拿刀时空着的左手
     // 这一帧各条轨道的值
-    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
+    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, spin: 0, rhOpen: 0, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
     this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0 };
   }
 
@@ -317,7 +317,7 @@ export class ViewModel {
     // ---- 正在放的动作（切枪 / 换弹 / 拉栓 / 拔拉环）：算出这一帧各条轨道的值 ----
     const A = this.A;
     A.g.fill(0); A.mag.fill(0); A.lh.fill(0);
-    A.magHide = A.lhHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = 0;
+    A.magHide = A.lhHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = A.spin = A.rhOpen = 0;
     const C = this.clip;
     if (C) {
       const u = (now - C.t0) / C.dur, d = C.def;
@@ -331,6 +331,8 @@ export class ViewModel {
         if (d.lh) sample(d.lh, u, A.lh);
         if (d.magOff) A.magHide = u > d.magOff[0] && u < d.magOff[1];
         if (d.lhOff) for (const w of d.lhOff) if (u > w[0] && u < w[1]) A.lhHide = true;
+        if (d.spin) A.spin = sample(d.spin, u);
+        if (d.rhOpen) A.rhOpen = sample(d.rhOpen, u);
         if (d.bolt) A.bolt = sample(d.bolt, u);
         if (d.boltUp) A.boltUp = sample(d.boltUp, u);
         if (d.pump) A.pump = sample(d.pump, u);
@@ -364,6 +366,15 @@ export class ViewModel {
       U.pin.visible = !U.pinGone;
       U.pin.position.set(b.x + (A.pin > 0 ? A.lh[0] : 0), b.y + (A.pin > 0 ? A.lh[1] : 0), b.z + (A.pin > 0 ? A.lh[2] : 0));
     }
+
+    // 整把枪在手指上转（沙鹰切枪）：绕扳机护圈那个点转，转的时候右手其余手指松开
+    if (A.spin || U.spun) {
+      const a = A.spin, at = (C && C.def.spinAt) || U.spun, c = Math.cos(a), s = Math.sin(a);
+      gun.rotation.x = a;
+      gun.position.set(0, at[0] - (at[0] * c - at[1] * s), at[1] - (at[0] * s + at[1] * c));
+      U.spun = a ? at : null;
+    }
+    if (U.rig && !gun.userData.kfx) U.rig.userData.setShape(U.shape0, (C && HAND_SHAPES[C.def.rhShape]) || U.shape0, A.rhOpen);
 
     // ---- 两只手：算出手现在握着的那个点，把对应姿势的那只手挪过去 ----
     const put = (grp, on, home) => { if (grp) { grp.visible = on; if (on) grp.position.subVectors(T1, home); } };
