@@ -9,6 +9,7 @@ import { clamp } from '../shared/util.js';
 import { clipFor, sample, KNIFE_FX, KNIFE_POSES, KNIFE_HIT, seg, eOut, sstep, easeOf } from './vmanims.js';
 
 // 摆位的朝向：dir = 枪口 / 刀尖朝哪，face = 模型右侧面（+X）朝哪（都是相机坐标；face 会自动修正成和 dir 垂直）
+// 刀也可以不写 face，改写 elbow（手肘大概在哪）：由握法算出刀该绕自己转到什么角度（见 elbowQuat）
 function aim(dir, face) {
   const z = new THREE.Vector3(...dir).normalize().negate();
   const x = new THREE.Vector3(...face);
@@ -28,8 +29,9 @@ const LAYOUT = {
   c4: { pos: [0.03, -0.24, -0.42], rot: [0.6, 0, 0] },
   // 刀照 CS:GO 的拿法：拳头在画面右下、手背对着自己，刀身朝左前方斜着指出去（刀面朝上对着镜头，刀背靠近自己）
   knife: { pos: [0.127, -0.097, -0.26], dir: [-0.86, 0.3, -0.41], face: [-0.1, 0.8, 0.59], scale: 1.15, bob: 0.7 },
-  // 剥皮小刀照瓦罗兰特的拿法：刀立得更直，在画面右侧
-  knife_xeno: { pos: [0.17, -0.15, -0.36], dir: [-0.45, 0.6, -0.66], face: [-0.5, 0.3, 0.81], scale: 1.15, bob: 0.7 },
+  // 剥皮小刀照瓦罗兰特的拿法：刀立得更直，在画面右侧。朝向用「刀尖朝哪 + 手肘在哪」来写（和 KNIFE_POSES 一样）：
+  // 刀要立起来、小臂又要从右下方伸上来，看到的就是握刀的手指这一面（要是让手背对着自己，小臂只能从左下方来，像左手）
+  knife_xeno: { pos: [0.21, -0.215, -0.38], dir: [-0.58, 0.66, -0.48], elbow: [0.667, -0.281, -0.52], scale: 1.15, bob: 0.7 },
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
   knife_karambit: { pos: [0.1, -0.112, -0.33], rot: [0.06, -0.08, 0.06], scale: 1.08, bob: 0.8 },
 };
@@ -55,17 +57,17 @@ const v3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 
 // 刀的一个姿势（vmanims.js 里的 KNIFE_POSES）算成位置 + 朝向。'idle' 是平时的拿法。
 // 朝向 = 刀尖朝 dir，再绕刀身转到「小臂正好朝着 elbow 那边伸过去」（U.elbowAng：手肘在这把刀自己坐标里的方位）
+function elbowQuat(ang, sp) {
+  const z = v3(sp.dir).normalize().negate(), f = v3(sp.elbow).sub(v3(sp.pos));
+  f.addScaledVector(z, -f.dot(z)).normalize();
+  const x = f.clone().multiplyScalar(Math.cos(ang)).addScaledVector(new THREE.Vector3().crossVectors(z, f), -Math.sin(ang));
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z));
+}
 function knifePose(U, name) {
   let c = U.kpose[name];
   if (c) return c;
   if (name === 'idle') c = { p: v3(U.lay.pos), q: U.lay.q };
-  else {
-    const sp = KNIFE_POSES[name];
-    const z = v3(sp.dir).normalize().negate(), f = v3(sp.elbow).sub(v3(sp.pos));
-    f.addScaledVector(z, -f.dot(z)).normalize();
-    const x = f.clone().multiplyScalar(Math.cos(U.elbowAng)).addScaledVector(new THREE.Vector3().crossVectors(z, f), -Math.sin(U.elbowAng));
-    c = { p: v3(sp.pos), q: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z)) };
-  }
+  else c = { p: v3(KNIFE_POSES[name].pos), q: elbowQuat(U.elbowAng, KNIFE_POSES[name]) };
   return (U.kpose[name] = c);
 }
 // 姿势轨道 [[时刻, 姿势名, 缓动?]…] 在 t 时刻的位置（写进 P）和朝向（写进 Q）
@@ -148,7 +150,7 @@ export class ViewModel {
     const w = WEAPONS[wid];
     const type = w ? (w.type === 'grenade' ? 'grenade' : w.type) : 'knife';
     const lay = (HD[wid] && HD[wid].lay) || (wid === 'knife' && LAYOUT['knife_' + this.knifeSkin]) || LAYOUT[type] || LAYOUT.rifle;
-    layQ(lay);
+    if (!lay.elbow) layQ(lay); // 写了 elbow 的摆法（刀）要等知道握法之后再算朝向
     const g = new THREE.Group(), U = g.userData;
     if (lay.scale) g.scale.setScalar(lay.scale);
     const gun = makeWeapon(wid, false, wid === 'knife' ? this.knifeSkin : null);
@@ -169,6 +171,7 @@ export class ViewModel {
     U.rig = (U.rh && U.rh.userData.rig) || null;
     U.kpose = {};
     if (pose && pose.right) { U.shape0 = pose.right.pose; U.elbowAng = Math.atan2(pose.right.elbow[1], pose.right.elbow[0]); }
+    if (lay.elbow && !lay.q) lay.q = elbowQuat(U.elbowAng, lay);
     U.travel = P.boltTravel ?? 0.05;     // 枪机 / 套筒能拉开多远
     U.kickBolt = P.boltKick ?? (P.manual ? 0 : U.travel * 0.8); // 开枪时自己往后弹多少（栓动的不弹）
     U.lift = P.boltLift ?? 0;            // 栓动步枪：拉机柄抬起的角度
