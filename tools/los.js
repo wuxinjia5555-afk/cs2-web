@@ -1,7 +1,7 @@
 // 地图视线检查：双方从出生点出发，最早几秒能互相看到？最早几秒能看到对方出生区？
 // 用法：node tools/los.js [地图id ...] [--limit 秒] [--fine]
 import { getMap, MAPS, CELL } from '../public/js/shared/maps.js';
-import { P, LEVEL_H } from '../public/js/shared/constants.js';
+import { P } from '../public/js/shared/constants.js';
 
 const RUN = 250 * 0.0254; // 拿刀奔跑速度 m/s
 const args = process.argv.slice(2);
@@ -13,9 +13,9 @@ const ids = args.filter((a, i) => !a.startsWith('--') && (li < 0 || i !== li + 1
 // --fine：每个格子再取 4 个角附近的点（更严格，也更慢）
 const OFF = args.includes('--fine') ? [[0, 0], [-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]] : [[0, 0]];
 
-// 从出生点出发到每个格子的最短时间（8 方向，台阶最多差 1 级）
+// 从出生点出发到每个格子的最短时间（8 方向，和机器人寻路同一套「能不能迈过去」的规则）
 function reachTimes(map, team) {
-  const { W, H, S, type, level } = map;
+  const { W, H, S, type, nav } = map;
   const t = new Float64Array(W * H).fill(Infinity);
   const walk = (c, r) => c >= 0 && r >= 0 && c < W && r < H && type[r * W + c] === CELL.FLOOR;
   const open = [];
@@ -37,7 +37,7 @@ function reachTimes(map, team) {
       if (!walk(nc, nr)) continue;
       if (dr && dc && (!walk(c + dc, r) || !walk(c, r + dr))) continue;
       const j = nr * W + nc;
-      if (Math.abs(level[j] - level[i]) > 1) continue;
+      if (!(nav.moves[i] & (dc > 0 ? 1 : dc < 0 ? 2 : 0) || !dc) || !(nav.moves[i] & (dr > 0 ? 4 : dr < 0 ? 8 : 0) || !dr)) continue;
       const nt = t[i] + ((dr && dc ? Math.SQRT2 : 1) * S) / RUN;
       if (nt < t[j]) { t[j] = nt; open.push(j); }
     }
@@ -47,9 +47,9 @@ function reachTimes(map, team) {
 
 // a 处的人（站立视线）能否看到 b 处的人（头或胸）
 function visible(map, a, b) {
-  const { W, S, level, world } = map;
+  const { W, S, gy, world } = map;
   const ca = a % W, ra = (a / W) | 0, cb = b % W, rb = (b / W) | 0;
-  const ya = level[a] * LEVEL_H + P.standEye, yb = level[b] * LEVEL_H;
+  const ya = gy[a] + P.standEye, yb = gy[b];
   for (const [ox, oz] of OFF) {
     const ax = (ca + 0.5) * S + ox, az = (ra + 0.5) * S + oz;
     for (const [px, pz] of OFF) {

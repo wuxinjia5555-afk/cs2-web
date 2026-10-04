@@ -404,7 +404,8 @@ $('btn-start-offline').addEventListener('click', () => {
 $('btn-range').addEventListener('click', () => {
   audio.init();
   goFullscreen();
-  const net = new LocalNet({ map: 'range', mode: 'range', bots: false }, playerName());
+  // 开发用：网址带 ?devmap=地图id 时，「靶场」按钮改成一个人在那张地图里逛（没有敌人、买枪不要钱）
+  const net = new LocalNet({ map: new URLSearchParams(location.search).get('devmap') || 'range', mode: 'range', bots: false }, playerName());
   net.onmessage = (m) => {
     if (m.t === 'init' && !game && !starting) startGame(net, m);
     else if (starting) starting.pending.push(m);

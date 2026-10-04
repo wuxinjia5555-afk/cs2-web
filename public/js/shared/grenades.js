@@ -41,7 +41,7 @@ export function stepProjectile(g, dt, world, grav = G_GRAV) {
       g.bounces++;
       if (Math.abs(vn) > 1.5) bounced = true;
       if (h.ny > 0.7) {
-        g.ground = true; g.hitGround = true;
+        g.ground = true; g.hitGround = true; g.slope = h.ny < 0.995;
         if (g.vy < 1.2) g.vy = 0;
       }
     }
@@ -52,7 +52,8 @@ export function stepProjectile(g, dt, world, grav = G_GRAV) {
     if (d) {
       const f = Math.max(0, 1 - 2.5 * dt);
       g.vx *= f; g.vz *= f;
-      if (g.vx * g.vx + g.vz * g.vz < 0.04) { g.vx = 0; g.vz = 0; g.rest = true; }
+      // 在坡上每一步都会被重力往下带一点，速度到不了 0：滚得够慢就算停住
+      if (g.vx * g.vx + g.vz * g.vz < (g.slope ? 0.36 : 0.04)) { g.vx = 0; g.vz = 0; g.rest = true; }
     } else {
       g.ground = false;
     }

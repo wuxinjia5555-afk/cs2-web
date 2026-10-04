@@ -1,12 +1,16 @@
-// 物理：世界碰撞（AABB + 网格加速）、玩家移动（Source 风格）、射线检测、命中盒
+// 物理：世界碰撞（AABB + 网格加速，地面是高度场）、玩家移动（Source 风格）、射线检测、命中盒
 import { P, HG } from './constants.js';
+import { NO_GROUND } from './terrain.js';
 
 const EPS = 1e-4;
 const tmpList = [];
+const tmpHit = { nx: 0, ny: 0, nz: 0, i: -1 };
 
 export class World {
-  constructor(boxes) {
+  // boxes：墙、箱子这些长方体；hf：地面（高度场，见 terrain.js），没有就只有长方体
+  constructor(boxes, hf) {
     this.boxes = boxes;
+    this.hf = hf || null;
     const n = boxes.length;
     const b = (this.b = new Float64Array(n * 6));
     let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
@@ -63,7 +67,7 @@ export class World {
     return out.length;
   }
 
-  // 射线（dir 需归一化），返回最近命中 {t, i, nx, ny, nz} 或 null
+  // 射线（dir 需归一化），返回最近命中 {t, i, nx, ny, nz, mat} 或 null。打在地面上时 i = -1
   raycast(ox, oy, oz, dx, dy, dz, maxT) {
     const b = this.b, gs = this.gs, st = this.stamp;
     const sid = this._nextSid();
@@ -107,14 +111,21 @@ export class World {
       else { t = tMaxZ; tMaxZ += tDZ; cz += stepZ; }
       if (t > best) break;
     }
+    if (this.hf) {
+      const t = this.hf.raycast(ox, oy, oz, dx, dy, dz, best, tmpHit);
+      if (t >= 0 && (t < best || hit < 0)) return { t, i: -1, nx: tmpHit.nx, ny: tmpHit.ny, nz: tmpHit.nz, mat: this.hf.mats[this.hf.mat[tmpHit.i]] || '' };
+    }
     if (hit < 0) return null;
     let nx = 0, ny = 0, nz = 0;
     if (axis === 0) nx = dx > 0 ? -1 : 1;
     else if (axis === 1) ny = dy > 0 ? -1 : 1;
     else if (axis === 2) nz = dz > 0 ? -1 : 1;
     else { nx = -dx; ny = -dy; nz = -dz; }
-    return { t: best, i: hit, nx, ny, nz };
+    return { t: best, i: hit, nx, ny, nz, mat: this.boxes[hit].mat || '' };
   }
+
+  // (x, z) 处的地面高度（只算地面，不算箱子顶）；没有地面返回 NO_GROUND
+  groundY(x, z) { return this.hf ? this.hf.height(x, z) : NO_GROUND; }
 
   // 两点之间是否无遮挡
   clear(ax, ay, az, bx, by, bz) {
@@ -134,7 +145,7 @@ export function hullBlocked(world, x, y, z, h) {
 // 沿单轴移动并处理碰撞，返回是否被阻挡
 function moveAxis(world, s, axis, amount, h) {
   if (amount === 0) return false;
-  const r = P.radius, b = world.b;
+  const r = P.radius, b = world.b, T = world.hf;
   const steps = Math.max(1, Math.ceil(Math.abs(amount) / 0.3));
   const inc = amount / steps;
   for (let k = 0; k < steps; k++) {
@@ -154,6 +165,14 @@ function moveAxis(world, s, axis, amount, h) {
         if (inc > 0) { if (s.z + r <= b[o + 2] + 1e-3) { z = Math.min(z, b[o + 2] - r - EPS); blocked = true; } }
         else if (s.z - r >= b[o + 5] - 1e-3) { z = Math.max(z, b[o + 5] + r + EPS); blocked = true; }
       }
+    }
+    // 地面上的坎：对面比脚高就挡住（连着的坡面不挡，顺着走上去）
+    if (T && axis === 0) {
+      const X = inc > 0 ? T.blockX(s.x + r, x + r, s.z - r, s.z + r, s.y + 0.02) : T.blockX(s.x - r, x - r, s.z - r, s.z + r, s.y + 0.02);
+      if (X === X) { x = inc > 0 ? Math.min(x, X - r - EPS) : Math.max(x, X + r + EPS); blocked = true; }
+    } else if (T && axis === 2) {
+      const Z = inc > 0 ? T.blockZ(s.z + r, z + r, s.x - r, s.x + r, s.y + 0.02) : T.blockZ(s.z - r, z - r, s.x - r, s.x + r, s.y + 0.02);
+      if (Z === Z) { z = inc > 0 ? Math.min(z, Z - r - EPS) : Math.max(z, Z + r + EPS); blocked = true; }
     }
     s.x = x; s.y = y; s.z = z;
     if (blocked) return true;
@@ -254,9 +273,14 @@ export function stepPlayer(s, cmd, dt, world) {
         s.vy = climb * P.ladderSpeed;
       }
       s.onGround = false;
+      const ly = s.y;
       if (moveAxis(world, s, 0, s.vx * dt, h)) s.vx = 0;
       if (moveAxis(world, s, 2, s.vz * dt, h)) s.vz = 0;
       if (moveAxis(world, s, 1, s.vy * dt, h)) { if (s.vy < 0) s.onGround = true; s.vy = 0; }
+      if (world.hf) {
+        const g = world.hf.support(s.x, s.z, P.radius, ly + P.stepH);
+        if (s.y <= g) { s.y = g; if (s.vy <= 0) { s.onGround = true; s.vy = 0; } }
+      }
       return;
     }
   }
@@ -309,15 +333,24 @@ export function stepPlayer(s, cmd, dt, world) {
     if (moveAxis(world, s, 2, dz, h)) s.vz = 0;
   }
 
-  const vyBefore = s.vy;
+  const vyBefore = s.vy, yBefore = s.y;
   if (moveAxis(world, s, 1, s.vy * dt, h)) {
     if (vyBefore < 0) s.onGround = true;
     s.vy = 0;
   }
-  // 贴地：下台阶时不腾空
+  // 地面（高度场）：掉到地面以下就站住；上坡时每一步被地面托上去
+  let g = NO_GROUND;
+  if (world.hf) {
+    g = world.hf.support(s.x, s.z, P.radius, yBefore + P.stepH);
+    if (s.y <= g) {
+      s.y = g;
+      if (s.vy <= 0) { s.onGround = true; s.vy = 0; }
+    }
+  }
+  // 贴地：下台阶、下坡时不腾空
   if (wasGround && !s.onGround && vyBefore <= 0) {
-    const y0 = s.y;
-    if (moveAxis(world, s, 1, -P.stepH, h)) { s.onGround = true; s.vy = 0; }
+    const y0 = s.y, near = y0 - g <= P.stepH;
+    if (moveAxis(world, s, 1, near ? g - y0 : -P.stepH, h) || near) { s.onGround = true; s.vy = 0; }
     else s.y = y0;
   }
 }
@@ -358,7 +391,7 @@ export function rayPlayer(ox, oy, oz, dx, dy, dz, px, py, pz, crouched, maxT) {
 export function traceShot(world, ox, oy, oz, dx, dy, dz, maxDist, targets, skipId) {
   const w = world.raycast(ox, oy, oz, dx, dy, dz, maxDist);
   let t = w ? w.t : maxDist;
-  let res = w ? { kind: 1, t, nx: w.nx, ny: w.ny, nz: w.nz, i: w.i } : { kind: 0, t };
+  let res = w ? { kind: 1, t, nx: w.nx, ny: w.ny, nz: w.nz, i: w.i, mat: w.mat } : { kind: 0, t };
   for (let k = 0; k < targets.length; k++) {
     const tg = targets[k];
     if (tg.id === skipId) continue;

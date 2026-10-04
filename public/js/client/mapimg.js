@@ -7,6 +7,10 @@ export function mapImage(map, ppc = 8, opts = {}) {
   c.height = map.H * ppc;
   const ctx = c.getContext('2d');
   const { W, H } = map;
+  // 地面越高越亮（按这张图自己的高低范围）
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < W * H; i++) if (map.type[i] !== CELL.WALL) { lo = Math.min(lo, map.gy[i]); hi = Math.max(hi, map.gy[i]); }
+  const span = Math.max(2.8, hi - lo);
   for (let r = 0; r < H; r++) {
     for (let col = 0; col < W; col++) {
       const i = r * W + col;
@@ -17,7 +21,7 @@ export function mapImage(map, ppc = 8, opts = {}) {
       else if (t === CELL.LOW) fill = '#8a7c5e';
       else if (t === CELL.BARREL) fill = '#7b3a2d';
       else {
-        const l = 84 + map.level[i] * 16;
+        const l = Math.round(84 + ((map.gy[i] - lo) / span) * 112);
         fill = `rgb(${l},${l + 6},${l + 14})`;
       }
       ctx.fillStyle = fill;

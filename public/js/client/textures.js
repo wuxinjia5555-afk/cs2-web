@@ -10,6 +10,7 @@ export const TEX_SCALE = {
   sand: 3, road: 4, tiles: 2, site_d: 2, concrete: 3, asphalt: 4, site_i: 4, metalfloor: 2,
   plaster: 3, brick: 2, concrete_wall: 4, metalwall: 2, container_r: 2.5, container_b: 2.5, container_g: 2.5,
   dev_floor: 2, dev_floor2: 2, dev_wall: 2, dev_crate: 2, dev_low: 2, roof: 3, metal: 2, barrier: 2, sandbag: 2, wood: 2,
+  door: 1.6, iron: 1, stone: 2, darkwood: 2,
 };
 
 const cache = new Map();
@@ -265,6 +266,46 @@ const PAINTERS = {
   metalwall(ctx, s, rnd) { corrugated(ctx, s, rnd, [122, 132, 142], 18); },
   // 木板门（竖条木板）
   wood(ctx, s, rnd) { tiled(ctx, s, rnd, 6, 1, [128, 86, 50], [62, 40, 22], 4, 0.16); grain(ctx, s, rnd, 0.3); },
+  // 大木门：竖条的厚木板，刷过一层蓝绿色的漆，下半截磨掉了露出木头
+  door(ctx, s, rnd) {
+    const planks = 5, pw = s / planks;
+    ctx.fillStyle = rgb(38, 30, 22);
+    ctx.fillRect(0, 0, s, s);
+    for (let k = 0; k < planks; k++) {
+      const wood = vary(rnd, [118, 84, 52], 0.18), paint = vary(rnd, [70, 112, 108], 0.14);
+      const g = ctx.createLinearGradient(0, 0, 0, s);
+      g.addColorStop(0, rgb(...paint)); g.addColorStop(0.45 + rnd() * 0.2, rgb(...paint)); g.addColorStop(0.8 + rnd() * 0.15, rgb(...wood)); g.addColorStop(1, rgb(wood[0] * 0.8, wood[1] * 0.8, wood[2] * 0.8));
+      ctx.fillStyle = g;
+      ctx.fillRect(k * pw + 1.5, 0, pw - 3, s);
+      // 掉漆的划痕
+      for (let j = 0; j < 9; j++) {
+        ctx.fillStyle = `rgba(${wood[0] | 0},${wood[1] | 0},${wood[2] | 0},${0.35 + rnd() * 0.4})`;
+        ctx.fillRect(k * pw + 3 + rnd() * (pw - 8), rnd() * s, 1 + rnd() * 3, 6 + rnd() * 40);
+      }
+    }
+    pixels(ctx, s, (x, y, i, c) => {
+      const k = 0.93 + 0.07 * Math.sin(y * 0.09 + Math.sin(x * 0.21) * 2.5 + (x % 37) * 0.5);
+      c[0] *= k; c[1] *= k; c[2] *= k;
+    });
+    grain(ctx, s, rnd, 0.22);
+  },
+  // 生了锈的黑铁（门上的铁箍、合页）
+  iron(ctx, s, rnd) {
+    ctx.fillStyle = rgb(54, 50, 47);
+    ctx.fillRect(0, 0, s, s);
+    grain(ctx, s, rnd, 0.3);
+    for (let k = 0; k < 26; k++) {
+      const x = rnd() * s, y = rnd() * s, r = 6 + rnd() * 22;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(120,66,30,0.5)');
+      g.addColorStop(1, 'rgba(120,66,30,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  },
+  // 砂岩石块（门框、台阶、矮墙）
+  stone(ctx, s, rnd) { tiled(ctx, s, rnd, 2, 4, [198, 180, 142], [128, 112, 86], 5, 0.12, true); grain(ctx, s, rnd, 0.24, [[3, 0.4], [10, 0.3], [40, 0.3]]); },
+  darkwood(ctx, s, rnd) { tiled(ctx, s, rnd, 6, 1, [84, 58, 36], [36, 24, 14], 4, 0.16); grain(ctx, s, rnd, 0.3); },
   container_r(ctx, s, rnd) { corrugated(ctx, s, rnd, [156, 48, 36], 14); },
   container_b(ctx, s, rnd) { corrugated(ctx, s, rnd, [40, 82, 142], 14); },
   container_g(ctx, s, rnd) { corrugated(ctx, s, rnd, [52, 112, 62], 14); },

@@ -1,7 +1,7 @@
 // 找机器人卡住的地方：纯机器人对局，记下「想走却走不动」和「找不到路」的位置，按格子汇总
 // 用法：node tools/stuck.js [地图] [模式 bomb/dm] [分钟] [随机种子个数]
 import { Room } from '../public/js/shared/room.js';
-import { TICK_RATE, LEVEL_H } from '../public/js/shared/constants.js';
+import { TICK_RATE } from '../public/js/shared/constants.js';
 import { getMap } from '../public/js/shared/maps.js';
 
 const mapId = process.argv[2] || 'mirage';
@@ -28,7 +28,7 @@ for (let run = 0; run < runs; run++) {
     if (!r && s >= 0 && g >= 0) {
       noPathN++;
       const c = nav.center(s, {}), k = keyOf(c.x, c.z);
-      const e = noPath.get(k) || { n: 0, from: [s % W, (s / W) | 0], lv: nav.level[s], to: [g % W, (g / W) | 0], glv: nav.level[g] };
+      const e = noPath.get(k) || { n: 0, from: [s % W, (s / W) | 0], lv: +nav.ys[s].toFixed(2), to: [g % W, (g / W) | 0], glv: +nav.ys[g].toFixed(2) };
       e.n++;
       noPath.set(k, e);
     }
@@ -60,7 +60,7 @@ for (let run = 0; run < runs; run++) {
               const wp = b.path ? b.path[Math.min(b.pathIdx, b.path.length - 1)] : null;
               e.samples.push({
                 pos: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)], cell: [Math.floor(p.x / S), Math.floor(p.z / S)],
-                navWalk: ci >= 0 ? nav.walk[ci] : -1, navY: ci >= 0 ? +(nav.level[ci] * LEVEL_H).toFixed(2) : null,
+                navWalk: ci >= 0 ? nav.walk[ci] : -1, navY: ci >= 0 ? +nav.ys[ci].toFixed(2) : null,
                 onGround: p.onGround, vis: !!b.visible, goal: b.goalKey, wp: wp ? [+wp.x.toFixed(1), +wp.z.toFixed(1), +(wp.y ?? 0).toFixed(1)] : null,
                 cmd: [+c.fwd.toFixed(1), +c.side.toFixed(1)], team: p.team,
               });
@@ -84,4 +84,4 @@ for (const [k, e] of top) {
 }
 const np = [...noPath.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 8);
 console.log(`找不到路 ${noPathN} 次，前 ${np.length} 处起点：`);
-for (const [k, e] of np) console.log(`  (${k}) 米  ${e.n} 次  起点格 ${e.from} 高度级 ${e.lv} → 目标格 ${e.to} 高度级 ${e.glv}`);
+for (const [k, e] of np) console.log(`  (${k}) 米  ${e.n} 次  起点格 ${e.from} 高度 ${e.lv} → 目标格 ${e.to} 高度 ${e.glv}`);

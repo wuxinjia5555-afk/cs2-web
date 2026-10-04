@@ -1386,7 +1386,7 @@ export class Game {
   surfaceUnder(x, y, z) {
     const h = this.world.raycast(x, y + 0.2, z, 0, -1, 0, 0.6);
     if (!h) return 'hard';
-    const mat = this.map.boxes[h.i].mat || '';
+    const mat = h.mat || '';
     if (mat === 'sand') return 'sand';
     if (mat.startsWith('metal') || mat.startsWith('container')) return 'metal';
     return 'hard';
@@ -1594,7 +1594,7 @@ export class Game {
         if (this.isEnemyId(res.id)) hits.push([res.id, res.g, r2(res.x), r2(res.y), r2(res.z), r2(res.tg.x), r2(res.tg.y), r2(res.tg.z)]);
         this.fx.blood(res.x, res.y, res.z, dir[0], dir[1], dir[2], res.g === HG.HEAD);
       } else if (res.kind === 1) {
-        const bm = (this.map.boxes[res.i] && this.map.boxes[res.i].mat) || '';
+        const bm = res.mat || '';
         this.fx.impact(res.x, res.y, res.z, res.nx, res.ny, res.nz, bm.startsWith('metal') || bm.startsWith('container') ? 'metal' : 'wall');
       }
       if (k < 3 && (w.type !== 'pistol' || Math.random() < 0.5)) this.fx.tracer(muz.x, muz.y, muz.z, res.x, res.y, res.z);

@@ -71,10 +71,131 @@ function addBox(B, mn, mx, o) {
   side(B, o, [x1, z0], [x0, z0], y0, y1, [0, 0, -1], -x1, -x0, s);
 }
 
+
+// 往桶里加一个多边形（扇形三角化），每个顶点各有自己的法线、贴图坐标和明暗
+function poly(B, pts) {
+  const base = B.pos.length / 3;
+  for (const p of pts) {
+    B.pos.push(p[0], p[1], p[2]);
+    B.nor.push(p[3], p[4], p[5]);
+    B.uv.push(p[6], p[7]);
+    B.col.push(p[8], p[8], p[8]);
+  }
+  for (let k = 1; k + 1 < pts.length; k++) B.idx.push(base, base + k, base + k + 1);
+}
+
+// 坎的侧面（竖直的面）：a → b 是从外面看过去从左到右的底边；ta / tb 是两头顶上的高度，ba / bb 是两头底下的高度
+function skirt(B, ax, az, bx, bz, ta, tb, ba, bb, s) {
+  if (ta - ba < 1e-3 && tb - bb < 1e-3) return;
+  const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
+  const nx = -dz / len, nz = dx / len; // 从左到右的方向是 (nz, -nx)
+  const ua = (ax * nz - az * nx) / s, ub = (bx * nz - bz * nx) / s;
+  const col = (h) => 0.62 + 0.38 * Math.max(0, Math.min(1, h / 1.4));
+  const V = (x, z, u, y, h) => [x, y, z, nx, 0, nz, u, y / s, col(h)];
+  const band = (a0, b0, a1, b1) => { // 一条横带：下沿 a0 / b0，上沿 a1 / b1（都是高度）
+    const pts = [V(ax, az, ua, a0, a0 - ba), V(bx, bz, ub, b0, b0 - bb)];
+    if (b1 - b0 > 1e-4) pts.push(V(bx, bz, ub, b1, b1 - bb));
+    if (a1 - a0 > 1e-4) pts.push(V(ax, az, ua, a1, a1 - ba));
+    if (pts.length >= 3) poly(B, pts);
+  };
+  // 高的坎分两段：底下 1.4 米从暗到亮（墙根的阴影），上面是正常亮度
+  const ma = Math.min(ta, ba + 1.4), mb = Math.min(tb, bb + 1.4);
+  band(ba, bb, ma, mb);
+  if (ta - ma > 1e-4 || tb - mb > 1e-4) band(ma, mb, ta, tb);
+}
+
+// 地面（高度场）：平的格子合并成大块；斜的格子一格一格画（扭着的格子从中心分成 4 个三角）；格子之间、格子和矮墙之间的坎补上竖直的面
+function addTerrain(buckets, map) {
+  const hf = map.hf, { W, H, S, y, on } = hf, n = W * H;
+  const hide = hf.hide, cliffMat = map.def.cliffMat || map.def.wallMat;
+  const flat = (i) => { const o = i * 4; return Math.abs(y[o] - y[o + 1]) < 1e-4 && Math.abs(y[o] - y[o + 2]) < 1e-4 && Math.abs(y[o] - y[o + 3]) < 1e-4; };
+  const used = new Uint8Array(n);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = r * W + c;
+    if (used[i] || !on[i] || (hide && hide[i])) continue;
+    const mat = hf.mats[hf.mat[i]], s = TEX_SCALE[mat] || 2, B = bucket(buckets, mat, 'w');
+    if (flat(i)) {
+      const same = (j) => !used[j] && on[j] && !(hide && hide[j]) && hf.mat[j] === hf.mat[i] && flat(j) && Math.abs(y[j * 4] - y[i * 4]) < 1e-4;
+      let c1 = c, r1 = r;
+      while (c1 + 1 < W && same(r * W + c1 + 1)) c1++;
+      outer: while (r1 + 1 < H) {
+        for (let cc = c; cc <= c1; cc++) if (!same((r1 + 1) * W + cc)) break outer;
+        r1++;
+      }
+      for (let rr = r; rr <= r1; rr++) for (let cc = c; cc <= c1; cc++) used[rr * W + cc] = 1;
+      const x0 = c * S, x1 = (c1 + 1) * S, z0 = r * S, z1 = (r1 + 1) * S, h = y[i * 4];
+      quad(B, [[x0, h, z1], [x1, h, z1], [x1, h, z0], [x0, h, z0]], [0, 1, 0], [[x0 / s, z1 / s], [x1 / s, z1 / s], [x1 / s, z0 / s], [x0 / s, z0 / s]], [1, 1, 1, 1]);
+      continue;
+    }
+    used[i] = 1;
+    const o = i * 4, x0 = c * S, x1 = x0 + S, z0 = r * S, z1 = z0 + S;
+    // 每个角的法线：把这个角上接在一起的几格的坡度平均一下，坡面看起来就是圆滑的，不是一格一格的棱
+    const vert = (k) => {
+      const u = k & 1, v = k >> 1, vc = c + u, vr = r + v, h = y[o + k];
+      let gx = 0, gz = 0, cnt = 0;
+      for (let q = 0; q < 4; q++) {
+        const jc = vc - 1 + (q & 1), jr = vr - 1 + (q >> 1);
+        if (jc < 0 || jr < 0 || jc >= W || jr >= H) continue;
+        const j = jr * W + jc, p = j * 4, ku = 1 - (q & 1), kv = 1 - (q >> 1);
+        if (!on[j] || Math.abs(y[p + kv * 2 + ku] - h) > 2e-3) continue;
+        gx += ((1 - kv) * (y[p + 1] - y[p]) + kv * (y[p + 3] - y[p + 2])) / S;
+        gz += ((1 - ku) * (y[p + 2] - y[p]) + ku * (y[p + 3] - y[p + 1])) / S;
+        cnt++;
+      }
+      gx /= cnt || 1; gz /= cnt || 1;
+      const il = 1 / Math.sqrt(gx * gx + 1 + gz * gz), x = u ? x1 : x0, z = v ? z1 : z0;
+      return [x, h, z, -gx * il, il, -gz * il, x / s, z / s, 1];
+    };
+    const v00 = vert(0), v10 = vert(1), v01 = vert(2), v11 = vert(3);
+    if (Math.abs(y[o] - y[o + 1] - y[o + 2] + y[o + 3]) < 1e-3) poly(B, [v01, v11, v10, v00]);
+    else {
+      const hm = (y[o] + y[o + 1] + y[o + 2] + y[o + 3]) / 4, gx = (y[o + 1] - y[o] + y[o + 3] - y[o + 2]) / (2 * S), gz = (y[o + 2] - y[o] + y[o + 3] - y[o + 1]) / (2 * S);
+      const il = 1 / Math.sqrt(gx * gx + 1 + gz * gz), xm = x0 + S / 2, zm = z0 + S / 2;
+      const m = [xm, hm, zm, -gx * il, il, -gz * il, xm / s, zm / s, 1];
+      poly(B, [m, v01, v11]); poly(B, [m, v11, v10]); poly(B, [m, v10, v00]); poly(B, [m, v00, v01]);
+    }
+  }
+  // 坎的侧面
+  const CB = bucket(buckets, cliffMat, 'w'), cs = TEX_SCALE[cliffMat] || 2;
+  const pair = (ax, az, bx, bz, iA, iB, jA, jB) => {
+    // 一条边的两头 A、B；i 这边两头的高度是 iA / iB，j 那边是 jA / jB。a → b 的走向要保证 i 高的时候面朝 j
+    const dA = iA - jA, dB = iB - jB;
+    if (Math.abs(dA) < 2e-3 && Math.abs(dB) < 2e-3) return;
+    if (dA >= -2e-3 && dB >= -2e-3) skirt(CB, ax, az, bx, bz, iA, iB, jA, jB, cs);
+    else if (dA <= 2e-3 && dB <= 2e-3) skirt(CB, bx, bz, ax, az, jB, jA, iB, iA, cs);
+    else {
+      // 两头一高一低：从交叉的那一点分成两半
+      const t = dA / (dA - dB), mx = ax + (bx - ax) * t, mz = az + (bz - az) * t, hm = iA + (iB - iA) * t;
+      if (dA > 0) { skirt(CB, ax, az, mx, mz, iA, hm, jA, hm, cs); skirt(CB, bx, bz, mx, mz, jB, hm, iB, hm, cs); }
+      else { skirt(CB, mx, mz, ax, az, hm, jA, hm, iA, cs); skirt(CB, mx, mz, bx, bz, hm, iB, hm, jB, cs); }
+    }
+  };
+  const wallTop = (j) => map.wtop[j];
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    const i = r * W + c, o = i * 4;
+    if (!on[i]) continue;
+    const x0 = c * S, x1 = x0 + S, z0 = r * S, z1 = z0 + S;
+    // 右边、下边的邻居：是地面就两格比一比；是墙 / 箱子而且比这边的地面矮，就把露出来的那一截补上
+    if (c + 1 < W) {
+      const j = i + 1, p = j * 4;
+      if (on[j]) pair(x1, z1, x1, z0, y[o + 3], y[o + 1], y[p + 2], y[p]);
+      else { const t = wallTop(j); pair(x1, z1, x1, z0, y[o + 3], y[o + 1], Math.min(t, y[o + 3]), Math.min(t, y[o + 1])); }
+    }
+    if (r + 1 < H) {
+      const j = i + W, p = j * 4;
+      if (on[j]) pair(x0, z1, x1, z1, y[o + 2], y[o + 3], y[p], y[p + 1]);
+      else { const t = wallTop(j); pair(x0, z1, x1, z1, y[o + 2], y[o + 3], Math.min(t, y[o + 2]), Math.min(t, y[o + 3])); }
+    }
+    if (c > 0 && !on[i - 1]) { const t = wallTop(i - 1); pair(x0, z0, x0, z1, y[o], y[o + 2], Math.min(t, y[o]), Math.min(t, y[o + 2])); }
+    if (r > 0 && !on[i - W]) { const t = wallTop(i - W); pair(x1, z0, x0, z0, y[o + 1], y[o], Math.min(t, y[o + 1]), Math.min(t, y[o])); }
+  }
+}
+
 export function buildMapMeshes(map) {
   const group = new THREE.Group();
   const buckets = new Map();
   const barrels = [];
+  if (map.hf) addTerrain(buckets, map);
   // 只画不挡人的装饰（梯子）
   for (const bx of map.decos || []) addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale: TEX_SCALE[bx.mat] || 2 });
   for (const bx of map.boxes) {

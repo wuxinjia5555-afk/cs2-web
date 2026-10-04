@@ -1,14 +1,15 @@
 // 机器人寻路：基于地图格子的 A*（8 方向）+ 路径平滑
-import { LEVEL_H } from './constants.js';
 
 const DC = [1, -1, 0, 0, 1, 1, -1, -1];
 const DR = [0, 0, 1, -1, 1, -1, 1, -1];
 const CORNERS = [[0.45, 0.45], [-0.45, 0.45], [0.45, -0.45], [-0.45, -0.45], [0, 0]];
 
 export class Nav {
-  constructor(W, H, S, walk, level) {
+  // ys：每格中心的地面高度（米）；moves：每格能不能迈到右 / 左 / 下 / 上的邻居（位 1 / 2 / 4 / 8）；
+  // maxRise：相邻两格中心的高度差超过它，就是隔着一道坎（走不上去）
+  constructor(W, H, S, walk, ys, moves, maxRise = 0.5) {
     this.W = W; this.H = H; this.S = S;
-    this.walk = walk; this.level = level;
+    this.walk = walk; this.ys = ys; this.moves = moves; this.maxRise = maxRise;
     const n = W * H;
     this.g = new Float32Array(n);
     this.f = new Float32Array(n);
@@ -31,12 +32,20 @@ export class Nav {
     const c = i % this.W, r = (i / this.W) | 0;
     out.x = (c + 0.5) * this.S;
     out.z = (r + 0.5) * this.S;
-    out.y = this.level[i] * LEVEL_H;
+    out.y = this.ys[i];
     return out;
   }
 
+  // 从格子 a 能不能走到相邻的格子 b
   canStep(a, b) {
-    return !!this.walk[b] && this.level[b] - this.level[a] <= 1;
+    if (!this.walk[b]) return false;
+    const W = this.W, mv = this.moves, dc = (b % W) - (a % W), dr = ((b / W) | 0) - ((a / W) | 0);
+    if (dc > 1 || dc < -1 || dr > 1 || dr < -1) return this.ys[b] - this.ys[a] <= this.maxRise;
+    const hb = dc > 0 ? 1 : 2, vb = dr > 0 ? 4 : 8;
+    if (dr === 0) return dc === 0 || !!(mv[a] & hb);
+    if (dc === 0) return !!(mv[a] & vb);
+    // 斜着走：「先横后竖」「先竖后横」两条路都得走得通
+    return !!(mv[a] & hb) && !!(mv[a + dc] & vb) && !!(mv[a] & vb) && !!(mv[a + dr * W] & hb);
   }
 
   // 从格子 i 能走到的相邻格子（和 A* 同一套规则：斜着走要两边都能走）
@@ -102,9 +111,9 @@ export class Nav {
   // 离 (x, z) 最近的可走格子。给了 y（脚的高度）就只找「不比脚高出一步以上」的格子，
   // 免得人站在台子下面，却被当成站在台子上面；strict：找不到合适高度的就返回 -1（不退而求其次）
   nearestWalkable(x, z, y, strict) {
-    const hasY = y != null, maxLv = hasY ? (y + 0.5) / LEVEL_H : 0;
+    const hasY = y != null, maxY = hasY ? y + 0.5 : 0;
     const i0 = this.cellOf(x, z);
-    if (i0 >= 0 && this.walk[i0] && (!hasY || this.level[i0] <= maxLv)) return i0;
+    if (i0 >= 0 && this.walk[i0] && (!hasY || this.ys[i0] <= maxY)) return i0;
     const c0 = Math.floor(x / this.S), r0 = Math.floor(z / this.S);
     for (let rad = 1; rad <= 8; rad++) {
       let best = -1, bd = Infinity;
@@ -114,7 +123,7 @@ export class Nav {
           const c = c0 + dc, r = r0 + dr;
           if (c < 0 || r < 0 || c >= this.W || r >= this.H) continue;
           const i = r * this.W + c;
-          if (!this.walk[i] || (hasY && this.level[i] > maxLv)) continue;
+          if (!this.walk[i] || (hasY && this.ys[i] > maxY)) continue;
           const d = dc * dc + dr * dr;
           if (d < bd) { bd = d; best = i; }
         }
@@ -184,7 +193,7 @@ export class Nav {
           if (!this.canStep(cur, r * W + nc) || !this.canStep(cur, nr * W + c)) continue;
           cost = 1.4142;
         }
-        if (this.level[cur] - this.level[ni] > 1) cost += 2;
+        if (this.ys[cur] - this.ys[ni] > this.maxRise) cost += 2;
         const ng = g[cur] + cost;
         if (seen[ni] !== gen || ng < g[ni]) {
           seen[ni] = gen; g[ni] = ng; f[ni] = ng + heu(ni); par[ni] = cur;
@@ -205,12 +214,12 @@ export class Nav {
       const t = k / n, x = x0 + dx * t, z = z0 + dz * t;
       const ci = this.cellOf(x, z);
       if (ci < 0 || !this.walk[ci]) return false;
-      const lc = this.level[ci];
-      if (prev >= 0 && lc - prev > 1) return false;
-      prev = lc;
+      if (prev >= 0 && prev !== ci && !this.canStep(prev, ci)) return false;
+      prev = ci;
+      const yc = this.ys[ci];
       for (let q = 0; q < 4; q++) {
         const i = this.cellOf(x + CORNERS[q][0], z + CORNERS[q][1]);
-        if (i < 0 || !this.walk[i] || Math.abs(this.level[i] - lc) > 1) return false;
+        if (i < 0 || !this.walk[i] || Math.abs(this.ys[i] - yc) > this.maxRise) return false;
       }
     }
     return true;
