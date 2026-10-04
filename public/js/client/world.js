@@ -210,6 +210,18 @@ export function buildMapMeshes(map) {
       case 'low':
         addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale, skipBottom: true, ao: true, aoBase: bx.min[1], aoMin: 0.7 });
         break;
+      case 'crates': {
+        // 一堆箱子：碰撞是一整块，画出来按 1.3 米左右一个切成小箱子（横着切、也一层一层往上码），箱子之间留一条细缝
+        const B2 = bucket(buckets, bx.mat, 'b'), [x0, , z0] = bx.min, [x1, top, z1] = bx.max, base = Math.min(bx.base, top - 0.3);
+        const nx = Math.max(1, Math.round((x1 - x0) / 1.3)), nz = Math.max(1, Math.round((z1 - z0) / 1.3)), ny = Math.max(1, Math.round((top - base) / 1.25));
+        const g = 0.012;
+        for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
+          const a = [x0 + ((x1 - x0) * ix) / nx + (ix ? g : 0), base + ((top - base) * iy) / ny - (iy ? 0 : 0.6), z0 + ((z1 - z0) * iz) / nz + (iz ? g : 0)];
+          const b = [x0 + ((x1 - x0) * (ix + 1)) / nx - (ix < nx - 1 ? g : 0), base + ((top - base) * (iy + 1)) / ny - (iy < ny - 1 ? g : 0), z0 + ((z1 - z0) * (iz + 1)) / nz - (iz < nz - 1 ? g : 0)];
+          addBox(B2, a, b, { boxUV: true, skipBottom: true, skipTop: iy < ny - 1, ao: iy === 0, aoBase: base, aoMin: 0.72 });
+        }
+        break;
+      }
       case 'roof':
         addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale, bottomCol: 0.5, sideCol: 0.8 });
         break;

@@ -134,6 +134,76 @@ class Builder {
       }
     }
   }
+  // 中值滤波：每格地面取周围 (2r+1)² 范围里「和它差不到 3 级」的地面的中位数。毛边、零星的高低被抹平；整片的坡（楼梯）和断崖不受影响
+  median(r = 2, passes = 1) {
+    const { W, H } = this, buf = [];
+    for (let p = 0; p < passes; p++) {
+      const out = Float32Array.from(this.level);
+      for (let rr = 0; rr < H; rr++) for (let c = 0; c < W; c++) {
+        const i = rr * W + c;
+        if (this.type[i] !== CELL.FLOOR) continue;
+        const lv = this.level[i];
+        buf.length = 0;
+        for (let dr = -r; dr <= r; dr++) for (let dc = -r; dc <= r; dc++) {
+          const c2 = c + dc, r2 = rr + dr;
+          if (c2 < 0 || r2 < 0 || c2 >= W || r2 >= H) continue;
+          const j = r2 * W + c2;
+          if (this.type[j] === CELL.FLOOR && Math.abs(this.level[j] - lv) < 3) buf.push(this.level[j]);
+        }
+        buf.sort((a, b) => a - b);
+        out[i] = buf[buf.length >> 1];
+      }
+      this.level.set(out);
+    }
+  }
+  // 把一块地面整平：这一块里和中位高度差不超过 tol 级的地面，都拉到中位高度（包点这种本来就该是平的地方）
+  flatten(c0, r0, c1, r1, tol = 1) {
+    const lv = [];
+    this.rect(c0, r0, c1, r1, (i) => { if (this.type[i] === CELL.FLOOR) lv.push(this.level[i]); });
+    if (!lv.length) return;
+    lv.sort((a, b) => a - b);
+    const m = lv[lv.length >> 1], W = this.W;
+    // 挨着更高 / 更低的坡的格子不动（不然会把本来连着的坡切出一道坎）
+    const todo = [];
+    this.rect(c0, r0, c1, r1, (i) => {
+      if (this.type[i] !== CELL.FLOOR || this.level[i] === m || Math.abs(this.level[i] - m) > tol) return;
+      for (const j of [i + 1, i - 1, i + W, i - W]) if (this.type[j] === CELL.FLOOR && Math.abs(this.level[j] - m) > 1 && Math.abs(this.level[j] - this.level[i]) <= 1) return;
+      todo.push(i);
+    });
+    for (const i of todo) this.level[i] = m;
+  }
+  // 去掉小块的鼓包 / 小坑（雷达图的杂点）：一小片同样高度的地面，四周的地面全都比它高（或者全都比它低），就把它拉到四周最接近的高度。
+  // 楼梯的每一级都是「一边高一边低」，不会被动到
+  denoise(maxCells = 30, passes = 3) {
+    const { W, H } = this, n = W * H;
+    const fl = (i) => this.type[i] === CELL.FLOOR;
+    for (let p = 0; p < passes; p++) {
+      const seen = new Uint8Array(n);
+      let changed = 0;
+      for (let i0 = 0; i0 < n; i0++) {
+        if (seen[i0] || !fl(i0)) continue;
+        const lv = this.level[i0], comp = [i0];
+        let up = Infinity, down = -Infinity;
+        seen[i0] = 1;
+        for (let k = 0; k < comp.length; k++) {
+          const i = comp[k], c = i % W;
+          for (const j of [c + 1 < W ? i + 1 : -1, c > 0 ? i - 1 : -1, i + W < n ? i + W : -1, i >= W ? i - W : -1]) {
+            if (j < 0 || !fl(j)) continue;
+            const l2 = this.level[j];
+            if (l2 === lv) { if (!seen[j]) { seen[j] = 1; comp.push(j); } }
+            else if (l2 > lv) up = Math.min(up, l2);
+            else down = Math.max(down, l2);
+          }
+        }
+        if (comp.length > maxCells) continue;
+        const to = up < Infinity && down === -Infinity ? up : down > -Infinity && up === Infinity ? down : null;
+        if (to == null || Math.abs(to - lv) > 2) continue;
+        for (const i of comp) this.level[i] = to;
+        changed++;
+      }
+      if (!changed) break;
+    }
+  }
   // 楼板（桥）：下面是通道，上面能走人；寻路按楼板上面那层算。holes：楼板上留的洞（梯子口）[[c0, r0, c1, r1]]
   bridge(c0, r0, c1, r1, level, mat, holes = []) { this.bridges.push({ c0, r0, c1, r1, level, mat, holes }); }
   // 梯子：格子范围 + 高度级范围，nx/nz 是梯子朝外（人站的那边）的方向
@@ -298,6 +368,31 @@ export function buildMap(id) {
     gLo[i] = Math.min(y4[o], y4[o + 1], y4[o + 2], y4[o + 3]);
     gHi[i] = Math.max(y4[o], y4[o + 1], y4[o + 2], y4[o + 3]);
   }
+  // 走不到、也跳不上去的高台（雷达图里把屋顶也当成了地面）：改成实心的墙
+  {
+    const mvOf = (i, j, side) => { // 能不能从 i 迈到相邻的 j（side：0 右 1 左 2 下 3 上），和后面寻路用的是同一条规矩
+      const o = i * 4, p = j * 4;
+      const a = side === 0 ? [y4[o + 1], y4[o + 3]] : side === 1 ? [y4[o], y4[o + 2]] : side === 2 ? [y4[o + 2], y4[o + 3]] : [y4[o], y4[o + 1]];
+      const b2 = side === 0 ? [y4[p], y4[p + 2]] : side === 1 ? [y4[p + 1], y4[p + 3]] : side === 2 ? [y4[p], y4[p + 1]] : [y4[p + 2], y4[p + 3]];
+      return Math.max(b2[0] - a[0], b2[1] - a[1]);
+    };
+    const reach = new Uint8Array(n), q = [];
+    for (const team of ['T', 'CT']) for (const [c, r] of (B.spawns[team] ? B.spawns[team].cells : [])) { const i = r * W + c; if (ground[i] && !reach[i]) { reach[i] = 1; q.push(i); } }
+    const JUMP = 1.9; // 蹲跳够得着的高度
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k], c = i % W, r = (i / W) | 0;
+      const go = (j, side) => { if (ground[j] && !reach[j] && mvOf(i, j, side) <= JUMP) { reach[j] = 1; q.push(j); } };
+      if (c + 1 < W) go(i + 1, 0);
+      if (c > 0) go(i - 1, 1);
+      if (r + 1 < H) go(i + W, 2);
+      if (r > 0) go(i - W, 3);
+    }
+    if (q.length) for (let i = 0; i < n; i++) {
+      if (!ground[i] || reach[i] || B.type[i] !== CELL.FLOOR) continue;
+      // 楼板底下的通道、梯子通着的地方不算
+      ground[i] = 0; B.type[i] = CELL.WALL; B.wh[i] = 0; B.wmat[i] = def.wallMat; gHi[i] = -Infinity;
+    }
+  }
   const hf = new Terrain(W, H, S, y4, ground, cellMat, mats);
   hf.hide = B.hide;
   const rectHi = (c0, r0, c1, r1) => { let m = -Infinity; B.rect(c0, r0, c1, r1, (i) => { if (ground[i] && gHi[i] > m) m = gHi[i]; }); return m === -Infinity ? 0 : m; };
@@ -332,7 +427,7 @@ export function buildMap(id) {
     }
   }
   // 字符图里的箱子（大写字母）：字母级比旁边的地面高的，顶 = 旁边最高的地面 + 每级 0.4 米；不比旁边的地面高的，是和高处地面差不多齐平的台子
-  const wh = B.wh;
+  const wh = B.wh, boxLo = new Float32Array(n).fill(Infinity);
   {
     const ref = new Array(n), q = [];
     for (let i = 0; i < n; i++) {
@@ -347,6 +442,18 @@ export function buildMap(id) {
         if (gLo[j] < lo) lo = gLo[j];
       }
       if (lvMax > -Infinity) { ref[i] = { lvMax, hi, lo }; q.push(i); }
+    }
+    // 箱子堆（包括手摆的）下面的地面有多高：画的时候从这里往上一层一层码
+    for (let i = 0; i < n; i++) {
+      if (B.type[i] !== CELL.WALL || !wh[i] || B.wmat[i] !== def.crateMat) continue;
+      if (ref[i]) { boxLo[i] = ref[i].lo; continue; }
+      const c = i % W, r = (i / W) | 0;
+      let lo = Infinity;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const cc = c + dc, rr = r + dr, j = rr * W + cc;
+        if (cc >= 0 && rr >= 0 && cc < W && rr < H && ground[j] && gLo[j] < lo) lo = gLo[j];
+      }
+      boxLo[i] = lo;
     }
     for (let k = 0; k < q.length; k++) {
       const i = q[k], c = i % W, r = (i / W) | 0;
@@ -365,10 +472,16 @@ export function buildMap(id) {
       wh[i] = Math.round(Math.max(top, f.lo + 1.0) * 20) / 20;
     }
   }
-  // 墙
+  // 墙；箱子堆（材质是箱子的矮墙）单独标出来，画的时候切成一个一个的箱子
   greedy(W, H, (i) => (B.type[i] === CELL.WALL ? B.wmat[i] + '|' + (wh[i] || wtop[i]) : null), (c0, r0, c1, r1, k) => {
     const [mat, h] = k.split('|');
-    boxes.push({ min: [c0 * S, -1, r0 * S], max: [(c1 + 1) * S, +h, (r1 + 1) * S], mat, kind: 'wall' });
+    const bx = { min: [c0 * S, -1, r0 * S], max: [(c1 + 1) * S, +h, (r1 + 1) * S], mat, kind: 'wall' };
+    if (mat === def.crateMat && wh[r0 * W + c0]) {
+      let base = Infinity;
+      B.rect(c0, r0, c1, r1, (i) => { if (boxLo[i] < base) base = boxLo[i]; });
+      if (base < Infinity) { bx.kind = 'crates'; bx.base = base; }
+    }
+    boxes.push(bx);
   });
   // 矮墙 / 沙袋
   greedy(W, H, (i) => (B.type[i] === CELL.LOW ? gLo[i].toFixed(2) + '|' + gy[i].toFixed(2) : null), (c0, r0, c1, r1, k) => {
@@ -684,12 +797,19 @@ export const MAPS = {
   },
   mirage: {
     name: '荒漠迷城', desc: 'Mirage 布局：A 坡道 / Palace / A 点、中路 / 窗口 / 连接、B 公寓、B 小道、地下通道和梯子间', theme: 'desert',
-    w: 256, h: 256, cell: 0.508, wallH: 14,
-    floorMat: 'sand', wallMat: 'plaster', crateMat: 'crate', lowMat: 'sandbag', roofMat: 'roof',
+    w: 256, h: 256, cell: 0.508, wallH: 14, rampHalf: 2, wallAbove: 5, wallVar: 2, wallBlock: 12,
+    floorMat: 'sand', wallMat: 'plaster', crateMat: 'crate', lowMat: 'sandbag', roofMat: 'roof', cliffMat: 'stone',
     build(b) {
       b.heights(decodeRows(MIRAGE_ROWS));
       b.cleanBoxes();
       b.despeckle();
+      b.median(2);
+      b.denoise(40);
+      // 两个包点、两边出生点本来就是平地
+      b.flatten(100, 172, 142, 206); b.flatten(28, 58, 98, 96); b.flatten(60, 146, 90, 204); b.flatten(196, 76, 236, 126);
+      // 室内：宫殿（Palace）、B 公寓，铺地砖、盖屋顶
+      b.floorMat(176, 182, 224, 206, 'tiles'); b.roof(176, 182, 224, 206, 3.4);
+      b.floorMat(100, 42, 158, 68, 'tiles'); b.roof(114, 42, 158, 58, 3.4); b.roof(100, 42, 113, 58, 3.4); b.roof(126, 59, 158, 68, 3.4);
       // 地下通道：后巷那头的台阶下到底 → 往南从 B 小道下面穿过（上面盖楼板）→ 梯子间 → 台阶上到中路窗口下面
       b.floor(106, 60, 113, 99, 1, 'concrete');
       b.ramp(106, 100, 113, 111, 'y', 1, 5, 'concrete');
