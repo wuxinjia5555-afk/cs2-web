@@ -153,12 +153,13 @@ export const EQUIP = {
   kit: { id: 'kit', name: '拆弹器', price: 400, team: 'CT' },
 };
 
+// 买枪菜单的分类（顺序照 CS2：装备、手枪、中级武器、步枪、投掷物；数字键也是这个顺序）
 export const BUY_MENU = [
-  { cat: '手枪', items: ['glock', 'usp', 'p250', 'deagle'] },
-  { cat: '微冲 / 霰弹', items: ['mac10', 'mp9', 'ump45', 'nova'] },
-  { cat: '步枪', items: ['galil', 'famas', 'ak47', 'm4a4', 'm4a1s', 'ssg08', 'awp'] },
-  { cat: '装备', items: ['vest', 'vesthelm', 'kit'] },
-  { cat: '投掷物', items: ['flash', 'smoke', 'he', 'molotov', 'incgrenade'] },
+  { cat: '装备', en: 'EQUIPMENT', items: ['vest', 'vesthelm', 'kit'] },
+  { cat: '手枪', en: 'PISTOLS', items: ['glock', 'usp', 'p250', 'deagle'] },
+  { cat: '中级武器', en: 'MID-TIER', items: ['mac10', 'mp9', 'ump45', 'nova'] },
+  { cat: '步枪', en: 'RIFLES', items: ['galil', 'famas', 'ak47', 'm4a4', 'm4a1s', 'ssg08', 'awp'] },
+  { cat: '投掷物', en: 'GRENADES', items: ['flash', 'smoke', 'he', 'molotov', 'incgrenade'] },
 ];
 
 export const NADE_TYPES = ['he', 'flash', 'smoke', 'molotov', 'incgrenade'];

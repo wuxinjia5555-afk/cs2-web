@@ -1,9 +1,11 @@
 // HUD 与游戏内界面：雷达、状态、计时比分、击杀信息、伤害方向、买枪菜单、记分板、聊天
-import { WEAPONS, EQUIP, BUY_MENU, moveSpeed } from '../shared/weapons.js';
+import { WEAPONS, EQUIP, BUY_MENU, MAX_NADES, moveSpeed } from '../shared/weapons.js';
 import { clamp } from '../shared/util.js';
 import { F, TEAM_NAME } from '../shared/constants.js';
 import { mapImage } from './mapimg.js';
 import { settings, applyCrosshair } from './settings.js';
+import { audio } from './audio.js';
+import { weaponIcon, iconsDone, EQUIP_ICON } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -12,6 +14,18 @@ const WNAME = { world: '摔落', c4: 'C4 爆炸', he: '手雷', molotov: '燃烧
 export const weaponName = (w) => WNAME[w] || (WEAPONS[w] && WEAPONS[w].name) || (EQUIP[w] && EQUIP[w].name) || w;
 export const SKIN_NAME = { butterfly: '蝴蝶刀', karambit: '爪子刀', m9: 'M9 刺刀', xeno: '剥皮小刀', tianyu: '天御刀', shadow: '影刃', dragon: '威龙之刃' };
 const knifeLabel = (skin) => SKIN_NAME[skin] || '匕首';
+// 买枪菜单里的说明
+const TYPE_NAME = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '步枪', sniper: '狙击枪', grenade: '投掷物' };
+const ITEM_DESC = {
+  vest: '护甲 100：身体中弹时受到的伤害降低',
+  vesthelm: '护甲 100 + 头盔：头部中弹时受到的伤害也降低。已经有防弹衣时只补头盔，$350',
+  kit: '拆弹器：拆包从 10 秒缩短到 5 秒',
+  flash: '闪光弹：闪瞎看向它的人，最多带 2 颗',
+  smoke: '烟雾弹：放出一团挡住视线的烟',
+  he: '高爆手雷：落地后爆炸，范围伤害',
+  molotov: '燃烧瓶：砸在地上烧出一片火，挡路、逼走位',
+  incgrenade: '燃烧弹：砸在地上烧出一片火，挡路、逼走位',
+};
 const REASON = { elim: '全歼敌人', time: '时间耗尽', bomb: '目标已被摧毁', defuse: '炸弹已被拆除' };
 
 export class Hud {
@@ -532,38 +546,57 @@ export class Hud {
   }
 
   // ---------------- 买枪菜单 ----------------
+  // 电脑端照 CS2：一整块深色面板，左边是队友和他们的钱，中间五列卡片（装备 / 手枪 / 中级武器 / 步枪 / 投掷物），
+  // 卡片上是武器的侧面图、名字、价格，鼠标放上去下面出详细数据；点一下就买，右键退款；对面阵营才能买的东西不摆出来。
+  // 手机端照无畏契约手游：同样的卡片换一套样式，点第一下只是选中（卡片外面套一个框、下面出数据），再点一下才真的买
   buildBuyMenu() {
     const grid = $('buy-grid');
     grid.innerHTML = '';
+    this.buyCards = new Map();              // 物品 → 卡片
+    this.buyVis = BUY_MENU.map(() => []);   // 每一列现在摆出来的物品（数字键按这个顺序）
+    this.buySel = null;                     // 手机：选中的那张
+    this.buyHover = null;                   // 电脑：鼠标指着的那张
     BUY_MENU.forEach((col, ci) => {
       const div = document.createElement('div');
-      div.className = 'buy-col';
+      div.className = 'bm-col';
       div.dataset.cat = ci;
-      div.innerHTML = `<h4><kbd>${ci + 1}</kbd>${col.cat}</h4>`;
-      col.items.forEach((id, ii) => {
+      div.innerHTML = `<h4><kbd>${ci + 1}</kbd><span>${col.cat}</span><small>${col.en}</small></h4><div class="bm-list"></div>`;
+      const list = div.lastChild;
+      for (const id of col.items) {
         const w = WEAPONS[id] || EQUIP[id];
         const b = document.createElement('button');
-        b.className = 'buy-item';
+        b.className = 'bm-card';
         b.dataset.item = id;
-        const team = w.team ? (w.team === 'CT' ? '仅 CT' : '仅 T') : '';
-        let stat = '';
-        if (w.dmg) stat = `伤害 ${w.dmg}${w.pellets ? '×' + w.pellets : ''} · ${w.mag} 发`;
-        b.innerHTML = `<kbd>${ii + 1}</kbd><b>${w.name}</b><span>$${w.price}</span><small>${team} ${stat}</small><i class="buy-rf" title="原价退回">↩ 退款</i>`;
-        b.addEventListener('click', (e) => {
-          if (e.target.closest('.buy-rf')) { this.g.refund(id); return; }
-          this.g.buy(id);
-        });
+        b.innerHTML = `<kbd></kbd><span class="bm-price"></span><span class="bm-ico">${EQUIP_ICON[id] || '<img alt="" draggable="false">'}</span><b>${esc(w.name)}</b><i class="bm-tag"></i>`;
+        b.addEventListener('click', () => this.buyTap(id));
         // 电脑：右键退款（和 CS2 一样）
         b.addEventListener('contextmenu', (e) => { e.preventDefault(); if (b.classList.contains('rf')) this.g.refund(id); });
-        div.appendChild(b);
-      });
+        b.addEventListener('pointerenter', () => { if (!this.g.isTouch) { this.buyHover = id; this.buyInfo(); } });
+        b.addEventListener('pointerleave', () => { if (this.buyHover === id) { this.buyHover = null; this.buyInfo(); } });
+        list.appendChild(b);
+        this.buyCards.set(id, b);
+      }
       grid.appendChild(div);
     });
+    $('buy-rf').onclick = () => { const id = this.g.isTouch ? this.buySel : this.buyHover; if (id) this.g.refund(id); };
+    // 图标一张一张地拍（每张要搭一次模型），不挤在进游戏的那一下；还没拍完就打开菜单的话当场补齐
+    const todo = [...this.buyCards.keys()].filter((id) => WEAPONS[id]);
+    this.buyIcons = () => {
+      const id = todo.shift();
+      if (!id) { iconsDone(); this.buyIcons = null; return false; }
+      this.buyCards.get(id).querySelector('img').src = weaponIcon(id);
+      return true;
+    };
+    const step = () => { if (this.buyIcons && this.buyIcons()) setTimeout(step, 60); };
+    setTimeout(step, 1500);
   }
 
   openBuy() {
     this.buyOpen = true;
     this.buyCat = -1;
+    this.buySel = this.buyHover = null;
+    while (this.buyIcons && this.buyIcons());
+    for (const el of document.querySelectorAll('.bm-col')) el.classList.remove('active');
     $('buymenu').classList.remove('hidden');
     this.cache._buyState = null;
     this.updateBuyMenu();
@@ -573,48 +606,118 @@ export class Hud {
     $('buymenu').classList.add('hidden');
   }
 
+  // 点了一张卡片。电脑：直接买。手机：第一下只是选中，再点同一张才买
+  buyTap(id) {
+    if (this.g.isTouch && this.buySel !== id) {
+      this.buySel = id;
+      audio.play('click');
+    } else {
+      this.buySel = null;
+      this.g.buy(id);
+    }
+    this.cache._buyState = null;
+    this.updateBuyMenu();
+  }
+
+  // 数字键：先按分类，再按这一列里的第几个
   buyKey(n) {
     if (this.buyCat < 0) {
-      if (n >= 1 && n <= BUY_MENU.length) this.buyCat = n - 1;
+      if (n >= 1 && n <= BUY_MENU.length && this.buyVis[n - 1].length) this.buyCat = n - 1;
     } else {
-      const id = BUY_MENU[this.buyCat].items[n - 1];
+      const id = this.buyVis[this.buyCat][n - 1];
       if (id) this.g.buy(id);
       this.buyCat = -1;
     }
-    document.querySelectorAll('.buy-col').forEach((el) => el.classList.toggle('active', +el.dataset.cat === this.buyCat));
+    for (const el of document.querySelectorAll('.bm-col')) el.classList.toggle('active', +el.dataset.cat === this.buyCat);
+  }
+
+  // 最下面那一条：鼠标指着的（手机上是选中的）那件东西的数据
+  buyInfo() {
+    const g = this.g, id = g.isTouch ? this.buySel : this.buyHover;
+    const box = $('buy-info'), rf = $('buy-rf'), hint = $('bi-hint');
+    box.classList.toggle('idle', !id);
+    if (!id) {
+      rf.classList.add('hidden');
+      hint.textContent = g.isTouch ? '点一下选中，再点一下购买' : '数字键：先按分类 1-5，再按卡片左上角的数字 · 右键退掉这回合买的东西 · B / Esc 关闭';
+      return;
+    }
+    const w = WEAPONS[id] || EQUIP[id], b = this.buyCards.get(id);
+    const sub = [WEAPONS[id] ? TYPE_NAME[w.type] : '装备', w.team ? (w.team === 'CT' ? '仅警察' : '仅匪徒') : '', w.killReward ? '击杀奖励 $' + w.killReward : ''];
+    $('bi-main').innerHTML = `<b>${esc(w.name)}</b><span>${esc(sub.filter(Boolean).join(' · '))}</span>`;
+    if (w.dmg) {
+      const ups = w.speed / 0.0254; // 换回游戏单位，好和 CS 的数对上
+      const st = [['伤害', w.dmg + (w.pellets ? '×' + w.pellets : ''), (w.dmg * (w.pellets ? 3.4 : 1)) / 115], ['射速', Math.round(w.rpm) + ' 发/分', w.rpm / 860],
+        ['穿甲', Math.round(w.pen * 100) + '%', w.pen], ['机动', Math.round(ups), (ups - 180) / 70], ['弹匣', w.mag + ' / ' + w.res, w.mag / 35]];
+      $('bi-stats').innerHTML = st.map(([n, v, k]) => `<div class="bi-stat"><span>${n}</span><b>${v}</b><div class="bi-bar"><i style="width:${Math.round(clamp(k, 0.04, 1) * 100)}%"></i></div></div>`).join('');
+    } else $('bi-stats').innerHTML = `<p>${esc(ITEM_DESC[id] || '')}</p>`;
+    const canRf = b.classList.contains('rf');
+    rf.classList.toggle('hidden', !canRf);
+    if (g.isTouch) hint.textContent = b.dataset.why || (b.classList.contains('poor') ? '钱不够' : '再点一次购买');
+    else hint.textContent = canRf ? '右键也能退款' : b.dataset.why || (b.classList.contains('poor') ? '钱不够' : '');
   }
 
   updateBuyMenu() {
     const g = this.g, me = g.me;
-    const free = g.round.ph === 'warmup' || g.round.ph === 'dm';
-    const svNow = g.serverNow();
-    const rfs = me.rf || [];
-    const state = [me.money, me.team, me.armor, me.helmet, me.kit, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), free, Math.ceil((g.round.be - svNow) / 1000), rfs.join(), g.inBuyZone()].join('|');
+    const free = g.round.ph === 'warmup' || g.round.ph === 'dm' || g.round.ph === 'range';
+    const svNow = g.serverNow(), rfs = me.rf || [], left = Math.ceil((g.round.be - svNow) / 1000), inZone = g.inBuyZone();
+    const mates = [];
+    for (const p of g.players.values()) if (p.team === me.team) mates.push(p);
+    const state = [me.money, me.team, me.armor, me.helmet, me.kit, me.inv[1] && me.inv[1].w, me.inv[2] && me.inv[2].w, me.inv[4].join(), free, g.round.ph, left, rfs.join(), inZone,
+      this.buySel, mates.map((p) => p.id + ':' + (p.money ?? 0) + (p.alive ? 'a' : 'd')).join()].join('|');
     if (this.cache._buyState === state) return;
     this.cache._buyState = state;
-    this.set('buy-money', '$' + me.money);
-    let tip = free ? '热身/死斗：免费购买' : '';
-    if (!free && rfs.length && g.canBuy()) tip = (g.isTouch ? '点“↩ 退款”' : '右键或点“↩ 退款”') + '可以原价退回这回合买的东西 · ';
-    if (!free) {
-      if (g.round.ph === 'freeze') tip += '购买阶段';
-      else if (g.round.ph === 'live' && svNow < g.round.be) tip += `购买时间剩余 ${Math.ceil((g.round.be - svNow) / 1000)} 秒`;
-      else tip = '购买时间已结束';
-      if (!g.inBuyZone()) tip += ' · 不在购买区';
-    }
+    $('buymenu').dataset.team = me.team;
+    this.set('buy-money', free ? '免费' : '$' + me.money);
+    let tip;
+    if (free) tip = '热身 / 死斗 / 靶场：免费购买';
+    else if (g.round.ph === 'freeze') tip = '购买阶段';
+    else if (g.round.ph === 'live' && svNow < g.round.be) tip = `购买时间剩余 0:${String(Math.max(0, left)).padStart(2, '0')}`;
+    else tip = '购买时间已结束';
+    if (!free && !inZone) tip += ' · 不在购买区';
     this.set('buy-time', tip);
-    for (const b of document.querySelectorAll('.buy-item')) {
-      const id = b.dataset.item;
-      const w = WEAPONS[id] || EQUIP[id];
-      let price = w.price;
-      if (id === 'vesthelm' && me.armor >= 100) price = 350;
-      const teamBad = w.team && w.team !== me.team && g.mode === 'bomb';
-      const owned = (me.inv[1] && me.inv[1].w === id) || (me.inv[2] && me.inv[2].w === id) || (id === 'kit' && me.kit) || (id === 'vest' && me.armor >= 100) || (id === 'vesthelm' && me.armor >= 100 && me.helmet);
-      const canRf = !free && rfs.includes(id) && g.canBuy();
-      b.disabled = !canRf && (teamBad || (!free && price > me.money) || (g.mode === 'dm' && WEAPONS[id] && WEAPONS[id].slot === 4));
-      b.classList.toggle('owned', !!owned);
-      b.classList.toggle('rf', canRf);
-      b.querySelector('span').textContent = free ? '免费' : '$' + price;
-    }
+    const canBuy = g.canBuy(), teamLock = g.mode !== 'dm' && g.mode !== 'range';
+    BUY_MENU.forEach((col, ci) => {
+      const vis = this.buyVis[ci];
+      vis.length = 0;
+      for (const id of col.items) {
+        const b = this.buyCards.get(id), w = WEAPONS[id] || EQUIP[id];
+        const hide = !!(w.team && w.team !== me.team && teamLock); // 对面阵营才能买的不摆出来
+        b.classList.toggle('hidden', hide);
+        if (hide) continue;
+        vis.push(id);
+        const price = id === 'vesthelm' && me.armor >= 100 ? 350 : w.price;
+        const nade = !!(WEAPONS[id] && w.slot === 4), cnt = nade ? me.inv[4].filter((x) => x === id).length : 0;
+        const owned = (me.inv[1] && me.inv[1].w === id) || (me.inv[2] && me.inv[2].w === id) || (id === 'kit' && me.kit) || (id === 'vest' && me.armor >= 100)
+          || (id === 'vesthelm' && me.armor >= 100 && me.helmet) || cnt > 0;
+        const canRf = !free && rfs.includes(id) && canBuy;
+        const poor = !free && price > me.money;
+        // 为什么现在买不了（钱不够另算）
+        let why = '';
+        if (nade && g.mode === 'dm') why = '死斗模式不能买投掷物';
+        else if (nade && cnt >= w.max) why = '这种已经带满了';
+        else if (nade && me.inv[4].length >= MAX_NADES) why = '投掷物带满了';
+        else if (!nade && owned && !(free && WEAPONS[id])) why = '已经有了';
+        b.classList.toggle('owned', !!owned);
+        b.classList.toggle('rf', canRf);
+        b.classList.toggle('poor', poor);
+        b.classList.toggle('no', poor || !!why);
+        b.classList.toggle('sel', this.buySel === id);
+        b.dataset.why = why;
+        b.firstChild.textContent = vis.length;
+        b.querySelector('.bm-price').textContent = free ? '免费' : '$' + price;
+        b.querySelector('.bm-tag').textContent = canRf ? (g.isTouch ? '可退款' : '右键退款') : cnt > 1 ? '×' + cnt : owned ? '已拥有' : '';
+      }
+      const colEl = this.buyCards.get(col.items[0]).parentNode.parentNode;
+      colEl.classList.toggle('hidden', !vis.length);
+      colEl.style.setProperty('--n', Math.max(1, Math.ceil(vis.length / 5))); // 一列最多五张，多了往右再排一列
+    });
+    $('buy-grid').style.setProperty('--rows', Math.min(5, Math.max(1, ...this.buyVis.map((v) => v.length)))); // 用不满五行就少排几行
+    if (this.buySel && this.buyCards.get(this.buySel).classList.contains('hidden')) this.buySel = null;
+    // 队友和他们的钱
+    mates.sort((a, b) => (b.id === g.myId) - (a.id === g.myId) || (b.money ?? 0) - (a.money ?? 0));
+    $('bm-team').innerHTML = `<h4>${esc(TEAM_NAME[me.team] || '队伍')}</h4>` + mates.map((p) => `<div class="bm-mate${p.id === g.myId ? ' me' : ''}${p.alive ? '' : ' dead'}">
+      <span>${esc(p.name)}</span><b>${free ? '' : '$' + (p.id === g.myId ? me.money : p.money ?? 0)}</b></div>`).join('');
+    this.buyInfo();
   }
 
   // ---------------- 记分板 ----------------

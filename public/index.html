@@ -90,10 +90,21 @@
 
 <!-- 买枪菜单 -->
 <div id="buymenu" class="overlay hidden">
-  <div class="panel wide">
-    <div class="panel-head"><h2>购买装备</h2><span id="buy-money">$0</span><span id="buy-time"></span><button class="btn small" data-close="buymenu">关闭 (B)</button></div>
-    <div id="buy-grid"></div>
-    <div class="buy-tip">点击购买 · 数字键 1-5 选择分类后按数字购买 · 购买区与购买时间限制同 CS2</div>
+  <div class="bm">
+    <div class="bm-head">
+      <div class="bm-title"><h2>购买菜单</h2><span id="buy-time"></span></div>
+      <div class="bm-wallet"><small>资金</small><span id="buy-money">$0</span></div>
+      <button class="bm-close" data-close="buymenu" aria-label="关闭"><span class="pc">关闭 <kbd>B</kbd></span><span class="tc">✕</span></button>
+    </div>
+    <div class="bm-main">
+      <div id="bm-team"></div>
+      <div id="buy-grid"></div>
+    </div>
+    <div id="buy-info" class="idle">
+      <div id="bi-main"></div>
+      <div id="bi-stats"></div>
+      <div class="bi-act"><button id="buy-rf" class="hidden">↩ 退款</button><span id="bi-hint"></span></div>
+    </div>
   </div>
 </div>
 
@@ -237,6 +248,8 @@
       <section class="home-panel home-news">
         <div class="home-h">最近更新</div>
         <ul>
+          <li>购买界面重做：电脑端照 CS2（五列卡片、武器侧面图、鼠标指着看数据、右键退款，分类数字键改成 1 装备 / 2 手枪 / 3 中级武器 / 4 步枪 / 5 投掷物）；手机端照手瓦（点第一下只是框住选中，再点一下才购买）</li>
+          <li>剥皮小刀、威龙之刃的持刀角度改了：手背对着自己，小臂从右下角伸过来</li>
           <li>新增三把刀（背包里解锁）：天御刀（反握的金色弯刃，检视时双手托刀）、影刃（反握的黑刃，刀身里一道紫色闪电）、威龙之刃（霓虹描边的折线刀）；三把都有自己的切刀、检视动作，挥刀带刀光</li>
           <li>刀的动作重做：挥刀时小臂始终从右下方伸上来；拿刀的手手指会动 —— 蝴蝶刀握住一片刀柄甩另一片（切刀半秒甩完）、M9 检视会抛刀、爪子刀只用食指勾着转</li>
           <li>加利尔换了全新的模型（灰色机匣、黑色长护木、钢管折叠托、长直弹匣），不再像 AK；AK 切枪、换弹匣时枪口会抬起来（照 CS）</li>
