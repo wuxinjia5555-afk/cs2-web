@@ -378,6 +378,12 @@ const lOver = (y, z, o = {}) => ({
   left: true, grip: [0, y, z], fingerDir: [1, -0.1, 0.14], palmDir: [0, -1, 0.1], hold: [0, 0.088, 0.016], elbow: [-0.5, -0.2, 0.06],
   pose: { curl: CURL.wrap, splay: SPLAY, thumb: THUMB.wrap }, ...o,
 });
+// 左手握住枪右边的拉机柄头 (x, y, z)：AK / 加利尔拉栓时是把枪往左侧过来、右侧面朝上，
+// 左手从左下方伸过来、手心压在右侧面上、四指搭过拉机柄往后拉（小臂从枪的上面绕回左边）
+const lRack = (x, y, z, o = {}) => ({
+  left: true, grip: [x, y, z], fingerDir: [-0.19, -0.94, -0.28], palmDir: [-0.99, -0.09, 0.1], hold: [0, 0.088, 0.016], elbow: [-0.01, 0.67, 0.17],
+  pose: { curl: CURL.wrap, splay: SPLAY, thumb: THUMB.wrap }, ...o,
+});
 // 左手手心朝上托着弹匣底（手枪换弹：从下面把弹匣推进握把）
 const lPush = (y, z, o = {}) => ({
   left: true, grip: [0, y, z], fingerDir: [0.55, 0.1, -0.83], palmDir: [0.25, 0.95, 0.15], hold: [0, 0.07, 0.02], elbow: [-0.25, -0.4, 0.25],
@@ -407,14 +413,14 @@ const rKnife = (y, z, o = {}) => ({
 
 const NADE_R = { grip: [0, 0, 0], thumbDir: [0, 1, -0.1], palmDir: [-0.82, 0, -0.57], hold: [0, 0.095, 0.046], elbow: [0.22, -0.34, 0.4],
   pose: { curl: CURL.can, splay: SPLAY, thumb: THUMB.wrap } };
-const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lOver(0.087, -0.113) };
+const RIFLE_POSE = { right: rGrip(-0.052, 0.058, -0.315), left: lCup(0.0334, -0.325, 0.026), leftAct: lRack(0.0476, 0.065, -0.113) };
 const SNIPER_POSE = { right: rGrip(-0.068, 0.118, -0.3), left: lCup(0.018, -0.25, 0.022), rightAct: rKnob(0.05, 0.018, 0.122) };
 const M4_POSE = { right: rGrip(-0.07, -0.004, -0.3), left: lCup(0.04, -0.352, 0.0325), leftAct: lOver(0.083, 0.01) };
 // 每把枪的握法（位置对着各自模型上的握把、护木）。
 // leftAct：左手去拉拉机柄 / 套筒时的姿势；leftMag：左手拿弹匣的姿势（不写就用平时托枪的手）；rightAct：右手拉栓的姿势
 const POSES = {
   ak47: RIFLE_POSE,
-  galil: RIFLE_POSE,
+  galil: { ...RIFLE_POSE, leftAct: lRack(0.035, 0.087, -0.113) }, // 拉机柄头往上弯，位置比 AK 的高、靠里
   m4a4: M4_POSE,
   m4a1s: M4_POSE,
   famas: { right: rGrip(-0.068, -0.094, -0.2), left: lCup(0.016, -0.26, 0.056), leftAct: lSide(-0.012, 0.092, -0.08) },

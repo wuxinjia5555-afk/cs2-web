@@ -121,7 +121,7 @@ export class ViewModel {
     this.clip = null;    // 正在放的一段动作：{ def, kind, t0, dur, last }
     this.off = null;     // 拿刀时空着的左手
     // 这一帧各条轨道的值
-    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
+    this.A = { g: [0, 0, 0, 0, 0, 0], mag: [0, 0, 0], lh: [0, 0, 0], magHide: false, lhHide: false, bolt: 0, boltUp: 0, pump: 0, pin: 0, lhMag: 0, lhBolt: 0, rhBolt: 0 };
     this.O = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, hand0: null, hand: null, handW: 0 };
   }
 
@@ -314,7 +314,7 @@ export class ViewModel {
     // ---- 正在放的动作（切枪 / 换弹 / 拉栓 / 拔拉环）：算出这一帧各条轨道的值 ----
     const A = this.A;
     A.g.fill(0); A.mag.fill(0); A.lh.fill(0);
-    A.magHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = 0;
+    A.magHide = A.lhHide = false; A.bolt = A.boltUp = A.pump = A.pin = A.lhMag = A.lhBolt = A.rhBolt = 0;
     const C = this.clip;
     if (C) {
       const u = (now - C.t0) / C.dur, d = C.def;
@@ -327,6 +327,7 @@ export class ViewModel {
         if (d.mag) sample(d.mag, u, A.mag);
         if (d.lh) sample(d.lh, u, A.lh);
         if (d.magOff) A.magHide = u > d.magOff[0] && u < d.magOff[1];
+        if (d.lhOff) for (const w of d.lhOff) if (u > w[0] && u < w[1]) A.lhHide = true;
         if (d.bolt) A.bolt = sample(d.bolt, u);
         if (d.boltUp) A.boltUp = sample(d.boltUp, u);
         if (d.pump) A.pump = sample(d.pump, u);
@@ -370,9 +371,9 @@ export class ViewModel {
       if (wB > 0) T1.addScaledVector(T2.subVectors(U.boltAt, U.lhG).add(v0(0, 0, boltZ)), wB);
       T1.x += A.lh[0]; T1.y += A.lh[1]; T1.z += A.lh[2] + (U.pump ? pumpZ * (1 - wM) : 0); // 霰弹枪：左手一直握着护木
       const useB = wB > 0.5, useM = !useB && wM > 0.5 && !!U.lhM;
-      put(U.lh, !useB && !useM, U.lhG);
-      put(U.lhM, useM, U.magAt);
-      put(U.lhB, useB, U.boltAt);
+      put(U.lh, !useB && !useM && !A.lhHide, U.lhG);
+      put(U.lhM, useM && !A.lhHide, U.magAt);
+      put(U.lhB, useB && !A.lhHide, U.boltAt);
     }
     if (U.rhB) {
       const wB = A.rhBolt;
