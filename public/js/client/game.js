@@ -74,6 +74,7 @@ export class Game {
       nextFire: 0, drawEnd: 0, reloadEnd: 0, reloadSlot: 0, punchP: 0, punchY: 0, spray: 0, fireAcc: 0, lastShot: -10,
       scope: 0, rescopeAt: 0, resume: 0, nadeHold: null, prevSlot: 2, planting: false, plantStart: 0, defusing: false,
       defuseStart: 0, defuseDur: 10, pendingClick: -1, switchBackAt: 0,
+      scopeClick: -9, holdScope: false, holdShot: 0, // 开镜键的缓冲；手机「按住开镜、松手开枪」的状态
     };
     this.players = new Map();
     for (const p of init.players || []) this.addPlayerInfo(p);
@@ -1462,15 +1463,34 @@ export class Game {
 
     if (isGun(w)) {
       const it = me.inv[me.slot];
-      if (inp.mDown[0]) W.pendingClick = now;
+      // 狙击枪：刚切出来还在拉栓、或者开完一枪正在拉栓的时候不能开镜
+      const canScope = !!w.scope && canAct && ready && !W.reloadEnd && !(w.type === 'sniper' && now - W.lastShot < (60 / w.rpm) * 0.76);
+      // 手机「按住开火键开镜、松手开枪」（设置里开）：只对狙击枪生效
+      const hold = this.isTouch && !!settings.sniperHold && w.type === 'sniper';
+      if (hold) {
+        if (inp.mDown[0]) { W.holdScope = true; W.holdShot = 0; }
+        // 按住：能开镜了就开镜（还在拉栓就等拉完）
+        if (W.holdScope && inp.mouse[0] && !W.scope && canScope) { W.scope = 1; W.rescopeAt = 0; audio.play('scope'); }
+        // 松手：已经开镜了就开枪（这一枪最多等 0.45 秒，等不到就收镜）
+        if (W.holdScope && !inp.mouse[0]) {
+          W.holdScope = false;
+          if (W.scope > 0) { W.holdShot = now; W.pendingClick = now; }
+        }
+        if (W.holdShot && now - W.holdShot > 0.45) { W.holdShot = 0; W.scope = 0; }
+      } else {
+        W.holdScope = false; W.holdShot = 0;
+        if (inp.mDown[0]) W.pendingClick = now;
+      }
       const auto = this.isTouch && settings.autoFire && this.aimEnemy && (w.type !== 'sniper' || W.scope > 0);
       // 刚按过开火（0.12 秒内）就开枪：甩狙时点得很快，按下松开都在两帧之间，也不能吞掉这一枪
-      const clicked = now - W.pendingClick < 0.12;
+      const clicked = now - W.pendingClick < (W.holdShot ? 0.45 : 0.12);
       const wantFire = (w.auto ? inp.mouse[0] || clicked : clicked) || auto;
       if (wantFire && canAct && ready && !W.reloadEnd && now >= W.nextFire) {
         if (it.clip > 0) {
           W.pendingClick = -1;
           this.fireOnce(w, it);
+          // 松手开的这一枪：开完不自动回到开镜（手已经松开了）
+          if (W.holdShot) { W.holdShot = 0; W.rescopeAt = 0; W.resume = 0; }
         } else if (inp.mDown[0] || w.auto) {
           audio.play('empty');
           W.nextFire = now + 0.25;
@@ -1478,7 +1498,10 @@ export class Game {
           if (it.res > 0) this.startReload();
         }
       }
-      if (inp.mDown[2] && w.scope && canAct && !W.reloadEnd) {
+      // 开镜键：拉栓的时候按了先记着（0.35 秒内），拉完马上开
+      if (inp.mDown[2] && w.scope) W.scopeClick = now;
+      if (now - W.scopeClick < 0.35 && (canScope || W.scope > 0)) {
+        W.scopeClick = -9;
         W.scope = (W.scope + 1) % (w.scope.length + 1);
         W.rescopeAt = 0;
         audio.play('scope');
@@ -1998,6 +2021,7 @@ export class Game {
         this.vm.update(dt, {
           now, speed: Math.hypot(this.sim.vx, this.sim.vz), onGround: this.sim.onGround, crouch: this.sim.crouched,
           mdx: this.mdx, mdy: this.mdy, scoped: this.w.scope > 0, silenced: !!this.curWeapon().silenced,
+          punchP: this.w.punchP, punchY: this.w.punchY,
         });
       } else if (this.specView) this.updateSpecVm(dt, this.specView);
       else this.svmId = null;

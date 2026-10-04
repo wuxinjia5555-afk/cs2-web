@@ -589,6 +589,7 @@ function bindSettings() {
   updateGyroStatus();
   chk('s-assist', 'aimAssist', settings);
   chk('s-autofire', 'autoFire', settings);
+  chk('s-sniperhold', 'sniperHold', settings);
   chk('s-leftfire', 'leftFire', settings, relayout);
   chk('s-vibrate', 'vibrate', settings);
   chk('s-gyro', 'gyro', settings, () => {

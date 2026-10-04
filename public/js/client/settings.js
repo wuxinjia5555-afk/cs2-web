@@ -44,6 +44,7 @@ export const DEFAULTS = {
   touchSens: 1.0,
   aimAssist: true,
   autoFire: false,
+  sniperHold: false, // 手机：狙击枪按住开火键开镜，松手开枪
   gyro: false,
   gyroSens: 1.0,
   btnScale: 1.0,

@@ -33,6 +33,15 @@ const LAYOUT = {
   // 爪子刀照 CS2 的拿法：刀面对着屏幕，刀环在拳头左边，弯刀从右边伸出来往上弯
   knife_karambit: { pos: [0.1, -0.112, -0.33], rot: [0.06, -0.08, 0.06], scale: 1.08, bob: 0.8 },
 };
+// 开枪时枪身的后坐（每类枪）：z 往后顶多少米、pitch 枪口上抬多少、up 往上窜多少；
+// yaw / roll / x 是每一枪随机的左右晃、侧倾、横移（每枪都不一样，才有「抖」的感觉）
+const RECOIL = {
+  rifle: { z: 0.065, pitch: 0.06, up: 0.006, yaw: 0.02, roll: 0.035, x: 0.004 },
+  smg: { z: 0.045, pitch: 0.045, up: 0.004, yaw: 0.016, roll: 0.03, x: 0.003 },
+  pistol: { z: 0.045, pitch: 0.17, up: 0.01, yaw: 0.02, roll: 0.04, x: 0.003 },
+  sniper: { z: 0.09, pitch: 0.17, up: 0.012, yaw: 0.02, roll: 0.05, x: 0.004 },
+  shotgun: { z: 0.1, pitch: 0.2, up: 0.014, yaw: 0.03, roll: 0.06, x: 0.005 },
+};
 // 刀在手里的摆法（相对手的位置）：爪子刀横着握，刀柄穿过拳头
 const GRIP = { karambit: { rot: [0, -Math.PI / 2, 0], pos: [0.02, -0.03, 0.03] } };
 
@@ -62,7 +71,8 @@ export class ViewModel {
     this.wid = null;
     this.t = 0;
     this.bobT = 0;
-    this.kick = 0;
+    this.rk = 0; this.rv = 0;             // 后坐：往后顶了多少、还在往后冲的速度（一根弹簧）
+    this.jit = [0, 0, 0]; this.jitK = 0;  // 每一枪随机的左右晃 / 侧倾
     this.swayX = 0;
     this.swayY = 0;
     this.drawStart = 0; this.drawDur = 0;
@@ -168,6 +178,7 @@ export class ViewModel {
     this.inspectT = -1;
     this.throwT = -1;
     this.boltK = 0;
+    this.rk = this.rv = this.jitK = 0;
     g.userData.pinGone = false;
     // 切出来的动作：时间太短（刚出生、切换观战对象）就只是抬上来
     this.clip = null;
@@ -189,7 +200,11 @@ export class ViewModel {
 
   onFire(now, strength = 1) {
     this.boltK = 1;
-    this.kick = Math.min(1.6, this.kick + strength);
+    // 后坐：瞬间往后一顿，再带着往后冲一小段（之后弹簧把它拉回来）；每一枪随机晃一个方向
+    this.rk = Math.min(1.6, this.rk + 0.55 * strength);
+    this.rv += 20 * strength;
+    this.jit[0] = Math.random() * 2 - 1; this.jit[1] = Math.random(); this.jit[2] = Math.random() * 2 - 1;
+    this.jitK = 1;
     this.flashT = now + 0.045;
     this.flash.material.rotation = Math.random() * Math.PI * 2;
     const s = 0.12 + Math.random() * 0.1;
@@ -218,7 +233,7 @@ export class ViewModel {
     if (c && this.cur && !this.cur.userData.pinGone) this.play(c, 'pin', now, c.dur);
   }
 
-  // st: {now, speed, onGround, crouch, mdx, mdy, scoped, hidden, silenced}
+  // st: {now, speed, onGround, crouch, mdx, mdy, scoped, hidden, silenced, punchP, punchY（后坐力让准星偏了多少，可以不给）}
   update(dt, st) {
     const g = this.cur;
     if (!g) return;
@@ -232,7 +247,12 @@ export class ViewModel {
     const by = -Math.abs(Math.cos(this.bobT)) * 0.012 * sp * bob;
     this.swayX += (clamp(-st.mdx * 0.00045, -0.05, 0.05) - this.swayX) * Math.min(1, dt * 9);
     this.swayY += (clamp(-st.mdy * 0.00045, -0.05, 0.05) - this.swayY) * Math.min(1, dt * 9);
-    this.kick *= Math.exp(-dt * 13);
+    // 后坐的弹簧：猛地往后一顿之后约 0.1 秒弹回原位，略微过头一点点
+    for (let n = Math.max(1, Math.ceil(dt / 0.006)), h = dt / n; n > 0; n--) {
+      this.rv += (-1150 * this.rk - 42 * this.rv) * h;
+      this.rk += this.rv * h;
+    }
+    this.jitK *= Math.exp(-dt * 15);
     this.landKick *= Math.exp(-dt * 9);
     const idle = Math.sin(this.t * 1.4) * 0.0025 * bob;
 
@@ -240,10 +260,15 @@ export class ViewModel {
     let px = lay.pos[0] + bx - this.swayX * 0.6 * bob, py = lay.pos[1] + by + idle - this.landKick * 0.03 - (st.crouch ? 0.008 : 0), pz = lay.pos[2];
     let rx = this.swayY * 0.8, ry = this.swayX, rz = bx * 2;
 
-    const kickZ = type === 'sniper' ? 0.07 : type === 'pistol' ? 0.035 : type === 'shotgun' ? 0.07 : 0.028;
-    const kickR = type === 'sniper' ? 0.18 : type === 'pistol' ? 0.16 : type === 'shotgun' ? 0.2 : 0.06;
-    pz += this.kick * kickZ;
-    rx += this.kick * kickR;
+    const R = RECOIL[type];
+    if (R) {
+      const j = this.jitK;
+      pz += this.rk * R.z; py += this.rk * R.up; rx += this.rk * R.pitch;
+      px += this.jit[0] * j * R.x; ry += this.jit[0] * j * R.yaw; rz += this.jit[2] * j * R.roll;
+      // 连射时枪口跟着后坐力往上抬、往两边偏（和准星实际偏的方向一致）
+      rx += clamp((st.punchP || 0) * 0.4, -0.03, 0.12);
+      ry += clamp((st.punchY || 0) * 0.4, -0.07, 0.07);
+    }
 
     // ---- 正在放的动作（切枪 / 换弹 / 拉栓 / 拔拉环）：算出这一帧各条轨道的值 ----
     const A = this.A;
