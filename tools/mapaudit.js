@@ -49,6 +49,18 @@ for (const id of ids.length ? ids : Object.keys(MAPS)) {
       assert(m.nav.lower.wayOut(61.5, 72.5, 0.4), '下水道没有可走出口');
       assert(validHull(m, { x: 50.3, y: 4.02, z: 14.3 }), '喷泉圆形外侧仍有方形空角碰撞');
       assert(!validHull(m, { x: 53, y: 4.02, z: 17 }), '喷泉盆底缺少碰撞');
+      assert(validHull(m, { x: 65.5, y: m.world.groundY(65.5, 36.5) + 0.02, z: 36.5 }), '沙袋凹槽没有站立空间');
+      assert(!validHull(m, { x: 64.8, y: 3.03, z: 33.5 }), '沙袋缺少实体碰撞');
+      assert(!validHull(m, { x: 58.5, y: 4.82, z: 69.5 }), '厨房吧台缺少实体碰撞');
+    }
+    if (id === 'mirage') {
+      assert(m.world.raycast(30, 4.9, 35, 0, 1, 0, 3), 'B 点棚架缺少屋顶');
+      assert(m.world.raycast(35.8, 4.7, 46.5, 0, 1, 0, 3), '超市没有屋顶');
+      const south = m.nav.nearestWalkable(64.5 * m.S, 98.5 * m.S), north = m.nav.nearestWalkable(76.5 * m.S, 85.5 * m.S);
+      assert(m.nav.findPath(south, north), '超市门之间不通');
+      assert(!validHull(m, { x: 60.5 * m.S, y: 3.22, z: 95 * m.S }), '收银台缺少实体碰撞');
+      const floorHeights = m.sites.B.cells.filter(c => Math.floor(c / m.W) > 61).map(c => m.nav.ys[c]);
+      assert(Math.max(...floorHeights) - Math.min(...floorHeights) < 0.01, 'B 点地面仍有雷达描边高台');
     }
     let kills = 0, rounds = 0, stalled = 0, alive = 0, longStalls = 0;
     const modes = id === 'range' ? ['range'] : ['bomb', 'dm'];

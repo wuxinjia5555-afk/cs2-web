@@ -325,7 +325,7 @@ class Builder {
         const put = (y0, y1, half, out, mat, uv) => {
           const mn = dx ? [Math.min(px, px + dx * out), y0, pz - half] : [px - half, y0, Math.min(pz, pz + dz * out)];
           const mx = dx ? [Math.max(px, px + dx * out), y1, pz + half] : [px + half, y1, Math.max(pz, pz + dz * out)];
-          this.deco.push({ min: mn, max: mx, mat, uv });
+          this.deco.push({ min: mn, max: mx, mat, uv, facade: true });
         };
         const door = rnd(c, r, 2) < (o.doors ?? 0.16);
         if (door) put(gy, gy + 2.25, 0.62, 0.05, 'housedoor', 'box');
@@ -955,6 +955,27 @@ export const MAPS = {
       b.denoise(40);
       // 两个包点、两边出生点本来就是平地
       b.flatten(100, 172, 142, 206); b.flatten(28, 58, 98, 96); b.flatten(60, 146, 90, 204); b.flatten(196, 76, 236, 126);
+      // 视频 B 点院子是平地；雷达高度描边误把中央通路变成了一圈小高台。
+      b.rect(28, 59, 85, 96, i => { if (b.type[i] === CELL.FLOOR) b.level[i] = 8; });
+      // B 点的雷达深色块是石柱/棚架，不是几摞巨型木箱。视频 180 秒附近能看清柱间通路。
+      b.rect(49, 61, 68, 82, (i, c, r) => {
+        if (b.type[i] === CELL.WALL && b.wh[i]) b.floor(c, r, c, r, 8, 'sand');
+      });
+      for (const [c, r] of [[50, 63], [64, 63], [50, 78], [64, 78]]) {
+        b.box(c * b.S, 3.2, r * b.S, (c + 3) * b.S, 6.65, (r + 3) * b.S, 'stone');
+      }
+      b.box(50 * b.S, 6.65, 63 * b.S, 67 * b.S, 6.83, 81 * b.S, 'awning_g', 'roof');
+      b.wall(54, 72, 58, 74, 'crate', 4.55); b.wall(61, 75, 62, 77, 'plywood', 4.4);
+      // A 院子同样不应由雷达抗锯齿形成小斜坡；保留宫殿高台，入口用连续坡接回中路/警家。
+      b.rect(121, 178, 158, 204, i => { if (b.type[i] === CELL.FLOOR) b.level[i] = 12; });
+      const entrySlope = (c0, r0, c1, r1, axis, l0, l1) => b.rect(c0, r0, c1, r1, (i, c, r) => {
+        if (b.type[i] !== CELL.FLOOR) return;
+        const n = axis === 'x' ? c1 - c0 + 1 : r1 - r0 + 1, k = axis === 'x' ? c - c0 : r - r0;
+        const a = l0 + (l1 - l0) * k / n, d = l0 + (l1 - l0) * (k + 1) / n;
+        b.level[i] = (a + d) / 2; b.exp.set(i, axis === 'x' ? [a, d, a, d] : [a, a, d, d]);
+      });
+      entrySlope(121, 172, 139, 177, 'z', 8, 12);
+      entrySlope(112, 196, 120, 205, 'x', 8, 12);
       // 室内：宫殿（Palace）、B 公寓，铺地砖、盖屋顶
       b.floorMat(176, 182, 224, 206, 'tiles'); b.roof(176, 182, 224, 206, 3.4);
       b.floorMat(100, 42, 158, 68, 'tiles'); b.roof(114, 42, 158, 58, 3.4); b.roof(100, 42, 113, 58, 3.4); b.roof(126, 59, 158, 68, 3.4);
@@ -976,6 +997,18 @@ export const MAPS = {
       b.ladder(93, 110, 94, 110, 8, 14, 0, -1);
       b.floor(93, 111, 94, 111, 14, 'woodfloor');
       b.roof(86, 111, 97, 121, 2.6);
+      // 跑图 145–180 秒：超市是有屋顶的室内，北面门/窗口通 B，南门接警家路线。
+      b.floor(59, 87, 82, 96, 8, 'tiles');
+      b.wall(58, 86, 83, 86, 'marketwall'); b.wall(58, 97, 83, 97, 'marketwall');
+      b.wall(58, 87, 58, 96, 'marketwall'); b.wall(83, 87, 83, 96, 'marketwall');
+      b.floor(75, 86, 78, 86, 8, 'tiles'); b.door(75, 86, 78, 86, 2.65, 'marketwall');
+      b.floor(61, 86, 64, 86, 8, 'tiles');
+      b.box(61 * b.S, 3.2, 86 * b.S, 65 * b.S, 4.1, 87 * b.S, 'stone', 'low');
+      b.door(61, 86, 64, 86, 2.65, 'marketwall'); b.noWalk(61, 86, 64, 86);
+      b.floor(63, 97, 66, 97, 8, 'tiles'); b.door(63, 97, 66, 97, 2.65, 'marketwall');
+      b.roof(58, 87, 83, 97, 3.0, 'concrete');
+      b.box(59 * b.S, 3.2, 94 * b.S, 62 * b.S, 4.35, 96.5 * b.S, 'cupboard', 'low');
+      b.box(59 * b.S, 4.35, 94 * b.S, 62 * b.S, 4.45, 96.5 * b.S, 'stone', 'low');
       // A 二楼（宫殿）阳台底下的梯子：从 A 点这边爬上阳台
       b.ladder(158, 186, 158, 188, 12, 16, -1, 0);
       b.floorMat(126, 184, 147, 206, 'site_d');   // A 点
@@ -1071,7 +1104,11 @@ export const MAPS = {
       b.floor(43, 42, 62, 47, 6);                       // 中间横着的一段
       b.slope(56, 28, 62, 41, 'z', 10, 6);              // 上半段
       b.objs('o', [[43, 57], [43, 56], [44, 57], [62, 43]]);                // 酒桶
-      b.objs('h', [[50, 45], [51, 45], [52, 45], [57, 35], [58, 35]]);      // 石板 / 半墙
+      b.objs('h', [[50, 45], [51, 45], [52, 45]]);                         // 石板
+      // 视频 51 秒：红色店面的沙袋死点，凹进去而不是横在主路中间。
+      b.slope(63, 32, 65, 37, 'z', 10 - 4 * 4 / 14, 10 - 4 * 10 / 14);
+      b.box(64.0, 3.0, 33.0, 65.8, 4.28, 34.05, 'stone', 'collision');
+      b.noWalk(64, 33, 65, 34);
       b.wall(61, 38, 62, 39, 'plywood', Y(7.2) + 1.2);                      // 木板 / 车位
       b.wall(43, 42, 44, 43, 'stone', Y(6) + 1.3);                          // 双架位（矮石屋）
 
@@ -1092,9 +1129,12 @@ export const MAPS = {
       b.stairs(64, 69, 66, 77, 'z', 12, 3, 'woodfloor', 'stone');
       b.floor(64, 78, 66, 78, 3, 'woodfloor'); b.door(64, 78, 66, 78, 2.6, 'stone');
       b.roof(43, 67, 66, 77, 3.0);
-      b.wall(53, 67, 55, 67, 'darkwood', Y(12) + 2.1);   // 书架
+      b.wall(53, 67, 55, 67, 'cupboard', Y(12) + 2.1);   // 厨房柜子
       b.wall(56, 75, 59, 76, 'darkwood', Y(12) + 1.0);   // 厨房的台子
       b.objs('h', [[52, 71], [52, 72]]);
+      // 视频 110 秒：厨房吧台。两边留通道，台面和柜体共同参与碰撞。
+      b.box(57.7, Y(12), 69, 59.8, Y(12) + 1.03, 70.05, 'cupboard', 'low');
+      b.box(57.6, Y(12) + 1.03, 68.9, 59.9, Y(12) + 1.12, 70.15, 'stone', 'low');
 
       // ---- A 二楼（公寓）：旋转楼梯上来是一条走廊；VIP 的窗户对着侧道；北边开门出去是俯瞰 A 点的阳台；锅炉房的楼梯下到 A1 ----
       b.stairs(67, 82, 74, 84, 'x', 3, 14, 'woodfloor', 'stone');           // 旋转楼梯

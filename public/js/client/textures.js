@@ -13,7 +13,7 @@ export const TEX_SCALE = {
   door: 1.6, iron: 1, stone: 2, darkwood: 2,
   cobble: 2.4, stucco_y: 5, stucco_o: 5, stucco_p: 5, stucco_w: 5, stucco_r: 5, stucco_g: 5, woodfloor: 2, grass: 3, rooftile: 2, plywood: 2, tarp: 2,
   kerb: 2, paint_w: 2, paint_b: 3, awning: 1.2, car_t: 2, car_w: 2, glass_d: 2, pavers: 2, rooftile_t: 2, container_l: 2.5,
-  metalbox: 1.5, metalbox14: 1.5,
+  metalbox: 1.5, metalbox14: 1.5, redtiles: 2, tunnelstone: 3, marketwall: 4,
 };
 
 const cache = new Map();
@@ -245,6 +245,20 @@ function sign(ctx, s, text, base = '#e6dfc5', ink = '#343b43') {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, s / 2, s / 2, s * 0.86);
 }
 const PAINTERS = {
+  awning_g(ctx, s, rnd) { ctx.fillStyle='#66896d';ctx.fillRect(0,0,s,s);ctx.strokeStyle='#4b6652';ctx.lineWidth=4;for(let x=0;x<s;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,s);ctx.stroke();}grain(ctx,s,rnd,0.12); },
+  jute(ctx, s, rnd) { ctx.fillStyle='#aa9970';ctx.fillRect(0,0,s,s);ctx.strokeStyle='#84764b66';ctx.lineWidth=1;for(let x=0;x<s;x+=5){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,s);ctx.moveTo(0,x);ctx.lineTo(s,x);ctx.stroke();}grain(ctx,s,rnd,0.15); },
+  redtiles(ctx, s, rnd) { ctx.fillStyle = '#945a48'; ctx.fillRect(0, 0, s, s); for (let y = 0; y < s; y += 32) for (let x = -(y % 64 ? 32 : 0); x < s; x += 64) { ctx.fillStyle = rgb(136 + rnd() * 35, 75 + rnd() * 20, 56 + rnd() * 18); ctx.fillRect(x + 2, y + 2, 60, 28); } grain(ctx, s, rnd, 0.12); },
+  tunnelstone(ctx, s, rnd) { PAINTERS.stone(ctx, s, rnd); ctx.fillStyle = '#b8895944'; ctx.fillRect(0, 0, s, s); },
+  marketwall(ctx, s, rnd) { stucco(ctx, s, rnd, [170, 193, 165]); },
+  wine_sign(ctx, s) { sign(ctx, s, 'VINO', '#704338', '#dccfb5'); },
+  pharmacy_sign(ctx, s) { sign(ctx, s, 'FARMACIA', '#bbcca3', '#436542'); },
+  shop_grille(ctx, s, rnd) {
+    PAINTERS.garage(ctx, s, rnd); ctx.strokeStyle = '#a5ada8'; ctx.lineWidth = 2;
+    for (let x = -s; x < s * 2; x += 24) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + s, s); ctx.moveTo(x, s); ctx.lineTo(x + s, 0); ctx.stroke(); }
+    ctx.strokeStyle = '#4d554f'; ctx.lineWidth = 12; ctx.strokeRect(4, 4, s - 8, s - 8);
+  },
+  shop_shelves(ctx, s, rnd) { ctx.fillStyle = '#455147'; ctx.fillRect(0, 0, s, s); for (let y = 20; y < s; y += 60) { for (let x = 10; x < s - 8; x += 22) { ctx.fillStyle = ['#bdc3a3','#8caa9a','#c5a672','#8b9eab'][Math.floor(rnd()*4)]; ctx.fillRect(x,y,17,36); } ctx.fillStyle = '#9eafa1';ctx.fillRect(0,y+39,s,5); } },
+  framed_print(ctx, s, rnd) { PAINTERS.stucco_w(ctx,s,rnd);ctx.strokeStyle='#574939';ctx.lineWidth=18;ctx.strokeRect(9,9,s-18,s-18);ctx.fillStyle='#7f9687';ctx.fillRect(25,s/2,s-50,s/2-25);ctx.fillStyle='#b9ab8b';ctx.beginPath();ctx.moveTo(25,s/2);ctx.lineTo(s*.55,s*.25);ctx.lineTo(s-25,s*.7);ctx.fill(); },
   banana(ctx, s) { sign(ctx, s, 'BANANA', '#bcab82', '#5c4934'); ctx.fillStyle = '#d3b445'; ctx.beginPath(); ctx.ellipse(s / 2, s * 0.76, s * 0.26, s * 0.05, -0.2, 0, Math.PI * 2); ctx.fill(); },
   route_b(ctx, s) { sign(ctx, s, 'B ↑', '#c6b99c', '#b55433'); },
   paint_y(ctx, s) { ctx.fillStyle = '#d2ac48'; ctx.fillRect(0, 0, s, s); },

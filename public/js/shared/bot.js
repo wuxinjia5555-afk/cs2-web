@@ -1,7 +1,8 @@
 // 机器人 AI：购买、选路线、寻路、索敌（视野+听觉）、瞄准（反应时间/误差/压枪）、下包、拆包、守点
-import { P } from './constants.js';
+import { P, TIMES } from './constants.js';
 import { WEAPONS } from './weapons.js';
 import { angleDiff, anglesFromDir, clamp, dirFromAngles, pick } from './util.js';
+import { choosePost, bestDefuser, routeDistance, retreatPost, escapeRadius } from './bottactics.js';
 
 // 人机名字：照 CS:GO / CS2 里人机的起名风格（BOT Albert、BOT Vitaliy 这种）
 export const BOT_NAMES = ['Albert', 'Allen', 'Bert', 'Bob', 'Cecil', 'Clarence', 'Elliot', 'Elmer', 'Ernie', 'Eugene', 'Fergus', 'Ferris',
@@ -9,7 +10,7 @@ export const BOT_NAMES = ['Albert', 'Allen', 'Bert', 'Bob', 'Cecil', 'Clarence',
   'Quinn', 'Ringo', 'Rex', 'Sam', 'Steve', 'Toby', 'Ulric', 'Vitaliy', 'Vladimir', 'Wade', 'Xander', 'Yanni', 'Yuri', 'Zach'];
 
 // 机器人难度（6 档）：react 反应时间、turn 转向速度、aimErr 初始瞄准偏差、errDecay 偏差收敛速度、head 瞄头概率、
-// burst 每次连发几枪、comp 压枪程度、range 交战距离、fovCos 视野（越大越窄）、strafe 会不会左右晃、pause 两次连发的间隔
+// burst 每次连发几枪、comp 压枪程度、range 旧版距离参数（不限制索敌）、fovCos 视野（越大越窄）、strafe 会不会左右晃、pause 两次连发的间隔
 export const BOT_DIFF = [
   { name: '新手', react: 1.1, turn: 2.6, aimErr: 0.2, errDecay: 0.7, head: 0.02, burst: [1, 2], comp: 0.05, range: 28, fovCos: 0.6, strafe: false, pause: 0.9 },
   { name: '简单', react: 0.85, turn: 3.6, aimErr: 0.15, errDecay: 1.0, head: 0.05, burst: [1, 3], comp: 0.15, range: 36, fovCos: 0.45, strafe: false, pause: 0.65 },
@@ -42,11 +43,13 @@ export class BotBrain {
     this.alertT = -99; this.alertPos = null;
     this.guardCell = -1; this.roamCell = -1; this.via = -1;
     this.nadeT = 0;
+    this.holdPost = null; this.moveGoal = null; this.retreatGoal = null;
+    this.tactic = null; this.nextTactics = 0; this.nextKnifeAt = 0;
   }
 
   onSpawn() { this.reset(); this.wantYaw = this.p.yaw; }
   onDeath() { this.stopActions(); }
-  onBombPlanted() { this.goalKey = null; this.path = null; this.guardCell = -1; }
+  onBombPlanted() { this.goalKey = null; this.path = null; this.guardCell = -1; this.holdPost = null; this.nextTactics = 0; }
   onHurt(a) {
     if (a && a !== this.p && this.room.isEnemy(this.p, a)) {
       this.alertT = this.room.time;
@@ -130,10 +133,13 @@ export class BotBrain {
       if (blind) this.visible = false;
       else this.perceive();
     }
-    this.weaponMgmt();
     if (this.enemy && !this.enemy.alive) { this.enemy = null; this.visible = false; }
-    if (this.visible && this.enemy) this.combat(dt);
-    else this.objective();
+    if (t >= this.nextTactics) { this.nextTactics = t + 0.6; this.updateTactics(); }
+    if (this.tactic === 'save' || this.tactic === 'escape') {
+      this.retreat(); this.weaponMgmt();
+      if (this.visible && this.enemy) this.combat(dt, true);
+    } else if (this.visible && this.enemy) { this.weaponMgmt(); this.combat(dt); }
+    else { this.objective(); this.weaponMgmt(); }
     if (blind) {
       this.wantYaw += (r.rng() - 0.5) * 0.4;
       cmd.fwd = -0.6;
@@ -147,8 +153,11 @@ export class BotBrain {
     for (const e of r.players.values()) {
       if (!e.alive || !r.isEnemy(p, e)) continue;
       const d = Math.hypot(e.x - p.x, e.z - p.z);
-      if (d > this.d.range) continue;
-      const heard = (r.time - e.lastShotT < 0.8 && d < 35) || d < 6;
+      // 枪械射线最远 200 米。难度只影响反应和准度，不再把远处可见目标删掉。
+      if (d > 200) continue;
+      const footsteps = r.opts.rules?.steps !== false && Math.hypot(e.vx, e.vz) > 2 && !e.walk && !e.crouched && d < 12;
+      const heard = (r.time - e.lastShotT < 0.8 && d < 35) || footsteps;
+      if (heard) { this.alertT = r.time; this.alertPos = { x: e.x, y: e.y, z: e.z }; }
       if (!r.canSee(p, e, heard ? -2 : this.d.fovCos)) continue;
       if (d < bd) { bd = d; best = e; }
     }
@@ -177,9 +186,15 @@ export class BotBrain {
     const r = this.room, p = this.p;
     if (p.planting || p.defusing) return;
     const has = (s) => p.inv[s] && p.inv[s].clip + p.inv[s].res > 0;
+    const ready = has(1) ? 1 : has(2) ? 2 : 3;
+    if (p.reloadEnd && !this.visible) return;
+    const loaded = ready !== 3 && p.inv[ready].clip > 0 && (p.inv[ready].res === 0 || p.inv[ready].clip >= WEAPONS[p.inv[ready].w].mag * 0.4);
+    if (loaded && this.safeToKnife()) {
+      if (p.slot !== 3) r.onSlot(p, { s: 3 });
+      return;
+    }
     if (p.slot === 3 || p.slot === 4 || p.slot === 5) {
-      if (has(1)) r.onSlot(p, { s: 1 });
-      else if (has(2)) r.onSlot(p, { s: 2 });
+      if (ready !== p.slot) { r.onSlot(p, { s: ready }); this.nextKnifeAt = r.time + 2; }
       return;
     }
     const it = p.inv[p.slot];
@@ -192,13 +207,32 @@ export class BotBrain {
       return;
     }
     if (!this.visible && !p.reloadEnd && it.res > 0 && it.clip < WEAPONS[it.w].mag * 0.4 && r.time - this.lastSeenT > 2) r.onReload(p);
-    if (!this.visible && p.slot === 2 && has(1) && r.time - this.lastSeenT > 1.5) r.onSlot(p, { s: 1 });
+    if (!this.visible && !p.reloadEnd && p.slot === 2 && has(1) && r.time - this.lastSeenT > 1.5) r.onSlot(p, { s: 1 });
   }
 
-  combat(dt) {
+  safeToKnife() {
+    const r = this.room, p = this.p, t = r.time, path = this.path;
+    if (r.opts.mode !== 'bomb' || r.phase !== 'live' || this.visible || p.reloadEnd || t < this.nextKnifeAt || (p.slot !== 3 && p.drawEnd > t)) return false;
+    if (t - this.lastSeenT < 4 || t - this.alertT < 3 || !this.moveGoal || !path?.length) return false;
+    if (Math.hypot(this.moveGoal.x - p.x, this.moveGoal.z - p.z) < 16) return false;
+    const waypoint = path[Math.min(this.pathIdx, path.length - 1)];
+    // 拐角前提前持枪，给拔枪和搜点留时间。
+    if (Math.hypot(waypoint.x - p.x, waypoint.z - p.z) < (p.slot === 3 ? 7 : 11)) return false;
+    for (const site of Object.values(r.map.sites)) if (Math.hypot(site.cx - p.x, site.cz - p.z) < 14 && this.tactic !== 'escape') return false;
+    for (const e of r.intel[p.team]?.values() || []) if (t - e.t < 4 && Math.hypot(e.x - p.x, e.z - p.z) < 35) return false;
+    return true;
+  }
+
+  combat(dt, retreating = false) {
     const r = this.room, p = this.p, e = this.enemy, cmd = this.cmd, t = r.time;
     if (p.planting) r.onPlant(p, false);
-    if (p.defusing && p.defuseEnd - t > 1.0) r.onDefuse(p, false);
+    // 最后一名队友、或松手就来不及再拆时，继续拆包；其他情况仍可自卫。
+    if (p.defusing) {
+      const remaining = r.bomb?.explodeAt - t, needed = p.kit ? TIMES.defuseKit : TIMES.defuse;
+      const allies = [...r.players.values()].filter(q => q.alive && q.team === 'CT').length;
+      if (p.defuseEnd - t <= 1 || remaining < needed + 1 || allies <= 1) { this.stop(); return; }
+      r.onDefuse(p, false);
+    }
     const eyeY = p.y + (p.crouched ? P.crouchEye : P.standEye);
     const hh = e.crouched ? (this.aimHead ? 1.22 : 0.78) : this.aimHead ? 1.66 : 1.16;
     const tx = e.x + e.vx * 0.06, ty = e.y + hh, tz = e.z + e.vz * 0.06;
@@ -238,6 +272,7 @@ export class BotBrain {
       this.nadeT = t + 5;
       this.throwNade('he', e);
     }
+    if (retreating) { cmd.crouch = false; return; }
     if (w.type === 'knife') {
       this.moveToward(e.x, e.z);
     } else if (!shooting && this.d.strafe && dist > 4) {
@@ -262,6 +297,49 @@ export class BotBrain {
   }
 
   // ---------------- 战术目标 ----------------
+  updateTactics() {
+    const r = this.room, p = this.p, b = r.bomb, R = r.opts.rules;
+    if (r.opts.mode !== 'bomb' || r.phase !== 'live') { this.tactic = null; this.retreatGoal = null; return; }
+    let tactic = null;
+    if (b?.st === 'planted') {
+      const left = b.explodeAt - r.time;
+      if (p.team === 'CT') {
+        if (!bestDefuser(r)) tactic = 'save';
+      } else if (b.defuser == null) {
+        if (this.tactic === 'escape') return;
+        const radius = escapeRadius(p), dist = Math.hypot(p.x - b.x, p.z - b.z);
+        // 下包后先守，爆炸前才撤；按实际撤离路线决定什么时候走。
+        if (dist < radius && left < 13) {
+          const refuge = this.retreatGoal || retreatPost(this, b);
+          if (refuge && left < refuge.route / 5.5 + 1.5) { this.retreatGoal = refuge; tactic = 'escape'; }
+        }
+      }
+    } else if (p.team === 'T' && b && r.phaseEnd - r.time < 15 && p.inv[1] && (!R || R.respawn === 'none')) {
+      const carrier = b.st === 'carried' ? r.players.get(b.carrier) : null;
+      let travel = Infinity;
+      if (carrier?.alive && carrier.planting && carrier.plantEnd + 0.15 < r.phaseEnd) { this.tactic = null; this.retreatGoal = null; return; }
+      for (const site of Object.values(r.map.sites)) {
+        let dist;
+        if (carrier?.alive) dist = routeDistance(r, carrier, site.cx, site.cz);
+        else if (b.st === 'dropped') dist = routeDistance(r, p, b.x, b.z) + routeDistance(r, { ...b, y: b.y }, site.cx, site.cz);
+        else continue;
+        travel = Math.min(travel, dist / 6.0 + TIMES.plant + 0.5);
+      }
+      if (travel >= r.phaseEnd - r.time) tactic = 'save';
+    }
+    if (tactic) {
+      if (this.tactic !== tactic || !this.retreatGoal) this.retreatGoal = retreatPost(this, b?.st === 'planted' ? b : null);
+      this.stopActions();
+    } else this.retreatGoal = null;
+    this.tactic = tactic;
+  }
+
+  retreat() {
+    const goal = this.retreatGoal;
+    if (!goal) { this.lookAround(); return; }
+    if (this.goTo('retreat', goal.cell)) this.hold(goal);
+  }
+
   objective() {
     const r = this.room, p = this.p, t = r.time;
     if (t - this.alertT < 1.5 && this.alertPos) this.wantYaw = anglesFromDir(this.alertPos.x - p.x, 0, this.alertPos.z - p.z)[0];
@@ -282,10 +360,13 @@ export class BotBrain {
       if (b && b.st === 'dropped') { this.goToPos('bomb', b.x, b.z); return; }
       if (b && b.st === 'planted') { this.guard(b); return; }
       if (this.huntIntel(25)) return;
+      if (this.holdPost) { this.defend(this.siteName, 'CT'); return; }
       if (this.via >= 0) { if (this.goTo('via', this.via)) this.via = -1; return; }
-      if (this.siteCell != null && this.goTo('site', this.siteCell)) this.hold();
+      if (this.siteCell != null && this.goTo('site', this.siteCell)) this.defend(this.siteName, 'CT');
     } else {
       if (b && b.st === 'planted') {
+        const defuser = bestDefuser(r);
+        if (defuser && defuser !== p) { this.guard(b, 'T'); return; }
         const d = Math.hypot(p.x - b.x, p.z - b.z);
         if (d < 1.3 && Math.abs(p.y - b.y) < 1.5) {
           this.stop();
@@ -297,8 +378,9 @@ export class BotBrain {
         this.goToPos('defuse', b.x, b.z);
         return;
       }
-      if (this.huntIntel(45)) return;
-      if (this.siteCell != null && this.goTo('site', this.siteCell)) this.hold();
+      // 守方先控制入口，只有近处的新情报才离开站位支援。
+      if (this.huntIntel(16)) return;
+      this.defend(this.siteName, 'T');
     }
   }
 
@@ -320,11 +402,15 @@ export class BotBrain {
     return true;
   }
 
-  hold() {
+  hold(post = this.holdPost) {
     this.stop();
-    const t = this.room.time;
-    this.wantYaw = (this.holdYaw ?? this.p.yaw) + Math.sin(t * 0.6 + this.p.id) * 0.7;
-    this.wantPitch = 0;
+    this.moveGoal = null;
+    if (post?.watch) {
+      const p = this.p, watch = post.watch;
+      [this.wantYaw, this.wantPitch] = anglesFromDir(watch.x - p.x, (watch.y || 0) + 1.3 - p.y - P.standEye, watch.z - p.z);
+    } else { this.wantYaw = this.holdYaw ?? this.p.yaw; this.wantPitch = 0; }
+    if (this.room.curWeapon(this.p).type === 'sniper' && !this.p.reloadEnd) this.p.scoped = true;
+    if (this.alertPos && this.room.time - this.alertT < 1.5) this.wantYaw = anglesFromDir(this.alertPos.x - this.p.x, 0, this.alertPos.z - this.p.z)[0];
   }
 
   lookAround() {
@@ -332,22 +418,18 @@ export class BotBrain {
     this.wantYaw += Math.sin(this.room.time * 0.8 + this.p.id) * 0.01;
   }
 
-  guard(b) {
-    const r = this.room, nav = r.nav;
-    if (this.guardCell < 0) {
-      for (let k = 0; k < 30; k++) {
-        const c = nav.randomCell(r.rng);
-        const m = nav.center(c, this.tmpC);
-        const d = Math.hypot(m.x - b.x, m.z - b.z);
-        if (d > 3 && d < 10) { this.guardCell = c; break; }
-      }
-      if (this.guardCell < 0) this.guardCell = nav.nearestWalkable(b.x, b.z);
-    }
-    if (this.guardCell >= 0 && this.goTo('guard', this.guardCell)) {
-      this.stop();
-      const p = this.p;
-      this.wantYaw = anglesFromDir(b.x - p.x, 0, b.z - p.z)[0] + Math.PI + Math.sin(r.time * 0.5 + p.id) * 0.9;
-      this.wantPitch = 0;
+  defend(siteName, incomingTeam) {
+    if (!this.holdPost) this.holdPost = choosePost(this, siteName, incomingTeam);
+    if (this.holdPost && this.goTo('hold', this.holdPost.cell)) this.hold();
+    else if (!this.holdPost && this.siteCell != null && this.goTo('site', this.siteCell)) this.hold();
+  }
+
+  guard(b, incomingTeam = 'CT') {
+    this.defend(b.site || this.siteName, incomingTeam);
+    // 看见拆包信息时优先检查炸弹，不能继续背对正在拆包的人。
+    if (this.p.team === 'T' && b.defuser != null) {
+      if (!this.visible) this.goToPos('stop-defuse', b.x, b.z);
+      this.wantYaw = anglesFromDir(b.x - this.p.x, 0, b.z - this.p.z)[0];
     }
   }
 
@@ -368,12 +450,18 @@ export class BotBrain {
   goToPos(key, x, z) {
     const r = this.room, p = this.p, nav = r.nav, t = r.time;
     const dx = x - p.x, dz = z - p.z;
-    if (dx * dx + dz * dz < 1.0) { this.path = null; return true; }
+    this.moveGoal = { x, z };
+    if (dx * dx + dz * dz < 1.0) { this.path = null; this.moveGoal = null; return true; }
+    p.scoped = false;
     // 人在楼板下面那一层（比如掉进了地下通道）：周围没有和脚下一样高的可走格子，先照着那一层的路走出去
     const s0 = nav.nearestWalkable(p.x, p.z, p.y, true);
     const lower = s0 < 0 && nav.lower ? nav.lower : null;
     const gk = lower ? 'wayout' : key + '|' + Math.round(x) + ',' + Math.round(z);
     if (this.goalKey !== gk || !this.path || t > this.repathAt) {
+      if (this.goalKey !== gk) {
+        this.lastPos = { x: p.x, z: p.z }; this.stuckCheckT = t + 0.6; this.stuckCount = 0;
+        this.centerUntil = 0; this.evadeUntil = 0;
+      }
       this.goalKey = gk;
       this.repathAt = t + 4 + r.rng() * 2;
       let cells = null, on = nav;

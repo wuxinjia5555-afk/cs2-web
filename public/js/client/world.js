@@ -218,8 +218,9 @@ function addRound(B, o) {
     for (let j = 0; j < segments; j++) {
       const vertex = (r, n) => {
         const angle = n / segments * Math.PI * 2, sn = Math.sin(angle), cs = Math.cos(angle);
-        const norm = Math.hypot(r.nr, r.ny);
-        return [o.x + cs * r.r, r.y, o.z + sn * r.r, cs * r.nr / norm, r.ny / norm, sn * r.nr / norm, n / segments, (r.y - o.y) / (o.height || o.radius * 2), 0.86];
+        const scale = o.scale || [1, 1, 1];
+        const nx = cs * r.nr / scale[0], ny = r.ny / scale[1], nz = sn * r.nr / scale[2], norm = Math.hypot(nx, ny, nz);
+        return [o.x + cs * r.r * scale[0], o.y + (r.y - o.y) * scale[1], o.z + sn * r.r * scale[2], nx / norm, ny / norm, nz / norm, n / segments, (r.y - o.y) / (o.height || o.radius * 2), 0.86];
       };
       poly(B, [vertex(a, j + 1), vertex(a, j), vertex(b, j), vertex(b, j + 1)]);
     }

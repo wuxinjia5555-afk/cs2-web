@@ -14,19 +14,23 @@ export const MAP_VIEWS = {
   mirage: {
     mid: ['中路 / VIP', 76, null, 59, Math.PI / 2, 0],
     window: ['VIP 狙击窗', 47, null, 58.5, -Math.PI / 2, 0],
-    a: ['A 点 / Palace', 65, null, 103, Math.PI, 0],
+    a: ['A 点 / Palace', 65, null, 103, -0.75, 0],
     palace: ['宫殿内部', 101.35, null, 101.35, Math.PI / 2, 0],
-    b: ['B 点 / 公寓 / 超市', 32, null, 46, Math.PI, 0],
+    b: ['B 点 / 公寓', 36, null, 36, 1.4, 0],
+    market: ['超市内部 / 收银台', 35.8, null, 46.5, 1.8, 0],
     apps: ['B 公寓', 67.8, null, 28.2, Math.PI / 2, 0],
     underpass: ['地下通道', 55.8, 2.03, 47, Math.PI, 0],
   },
   inferno: {
     spawn: ['匪口', 34, null, 75, -Math.PI / 2, 0],
-    banana: ['香蕉道', 47, null, 54, 0, 0],
+    banana: ['香蕉道 / 石板', 47, null, 54, 0, 0],
     upper: ['香蕉道上半段', 59, null, 39, 0, 0],
+    sandbags: ['香蕉道 / 沙袋凹槽', 59.5, null, 32.5, -Math.PI / 2, 0],
     b: ['B 点 / 喷泉 / 棺材', 59, null, 25, 0.4, 0],
     second: ['侧道 / 匪二楼', 45, null, 82, -Math.PI / 2, 0],
     apps: ['匪二楼', 55, null, 70, -Math.PI / 2, 0],
+    kitchen: ['匪二楼 / 厨房', 55, null, 73, 0, 0],
+    t: ['T 家 / 拱廊', 14, null, 74, Math.PI / 2, 0],
     a: ['A 点 / 墓地 / 大坑', 83, null, 56, Math.PI, 0],
     arch: ['拱门 / 书房', 79, null, 39, Math.PI, 0],
   },
@@ -69,6 +73,10 @@ function diskCollider(b, x, y, z, radius, height) {
 }
 function face(b, x, y, z, width, height, normal, mat) {
   const east = normal === 'e' || normal === 'w', d = 0.055;
+  // 手工核对的门窗优先，避免通用外墙的随机百叶窗叠到卷帘网门上。
+  const min = [east ? x - 0.16 : x - width / 2, y - 0.15, east ? z - width / 2 : z - 0.16];
+  const max = [east ? x + 0.16 : x + width / 2, y + height, east ? z + width / 2 : z + 0.16];
+  b.deco = b.deco.filter(o => !o.facade || !min.every((v, k) => v < o.max[k] && max[k] > o.min[k]));
   b.decor(east ? x - d : x - width / 2, y, east ? z - width / 2 : z - d,
     east ? x + d : x + width / 2, y + height, east ? z + width / 2 : z + d, mat, 'box');
 }
@@ -129,6 +137,102 @@ function stringLights(b, x0, z0, x1, z1, y) {
     const yy = y - Math.sin((t0 + t1) * Math.PI / 2) * 0.28;
     b.decor(Math.min(xa, xb) - 0.015, yy, Math.min(za, zb) - 0.015, Math.max(xa, xb) + 0.015, yy + 0.025, Math.max(za, zb) + 0.015, 'iron');
     ball(b, (xa + xb) / 2, yy - 0.09, (za + zb) / 2, 0.065, 'lampglass');
+  }
+}
+// 跑图中可辨认的近景道具；造型与贴图均为本项目程序生成。
+function bench(b, x, y, z, width = 1.7) {
+  b.decor(x, y + 0.48, z, x + width, y + 0.57, z + 0.4, 'darkwood');
+  b.decor(x, y + 0.57, z + 0.36, x + width, y + 1.0, z + 0.43, 'darkwood');
+  for (const dx of [0.12, width - 0.2]) b.decor(x + dx, y, z + 0.03, x + dx + 0.08, y + 0.48, z + 0.35, 'iron');
+}
+function pipe(b, x, y, z, height) { round(b, x, y, z, 0.045, height, 'iron'); }
+function shelf(b, x, y, z, width, normal) {
+  face(b, x, y, z, width, 2.1, normal, 'shop_shelves');
+  for (const dy of [0.45, 1.0, 1.55, 2.1]) face(b, x, y + dy, z, width, 0.07, normal, 'metal');
+}
+function videoDetails(b, id) {
+  if (id === 'inferno') {
+    // 38–65 秒：香蕉道灰石墙裙、红色酒馆、网门和沙袋凹槽。
+    b.wallMat(55, 27, 56, 41, 'stucco_r'); b.wallMat(63, 28, 66, 41, 'stucco_r');
+    b.wallMat(43, 41, 54, 42, 'stucco_p');
+    face(b, 62.96, 2.65, 39.5, 2.5, 2.5, 'w', 'shop_grille');
+    face(b, 62.91, 5.3, 39.5, 2.9, 0.5, 'w', 'wine_sign');
+    face(b, 65.98, 3.2, 35.8, 2.5, 2.4, 'w', 'shop_grille');
+    for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) {
+      b.deco.push({ shape: 'ball', x: 64.3 + col * 0.6, y: 3.16 + row * 0.31, z: 33.53,
+        radius: 1, scale: [0.32, 0.19, 0.52], mat: 'jute' });
+    }
+    face(b, 56.03, 3.3, 35, 1.25, 2.45, 'e', 'housedoor');
+    for (const z of [30, 37, 40]) { window(b, 56.03, 6.2, z, 'e', 'shutter'); pipe(b, 62.94, 3.1, z, 4.2); }
+    trim(b, 56, 27.92, 63, 28.05, 4.15, 'stone');
+    for (const z of [42.5, 57.5]) planter(b, 43.05, 2.8, z, 0.8);
+    // 71–118 秒：匪口的黄墙、台阶旁花槽、T 家红砖拱廊和侧道药店。
+    b.wallMat(30, 56, 42, 58, 'stucco_y'); b.wallMat(29, 79, 42, 86, 'stucco_y');
+    b.floorMat(5, 60, 10, 80, 'redtiles');
+    for (const z of [63, 67, 71, 75, 79]) arch(b, 10.7, 0, z, 2.7, 3.0, 'e');
+    bench(b, 5.2, 0, 69); planter(b, 29.8, 1.65, 78.5, 1.7);
+    face(b, 49, 1.2, 78.97, 2.8, 2.4, 's', 'shop_grille');
+    face(b, 49, 3.75, 78.94, 3.1, 0.5, 's', 'pharmacy_sign');
+    face(b, 59, 1.2, 85.98, 2.7, 2.35, 'n', 'garage');
+    // 110–151 秒：厨房的木梁、红色高凳、走廊暖灯与锅炉房框画。
+    for (const x of [53, 57, 60]) trim(b, x, 68, x + 0.16, 77, 7.5, 'darkwood');
+    face(b, 54.5, 4.9, 68.05, 3.3, 1.5, 's', 'cupboard');
+    for (const x of [58.0, 59.3]) {
+      round(b, x, 4.8, 70.8, 0.035, 0.68, 'iron'); round(b, x, 5.48, 70.8, 0.24, 0.08, 'paint_o');
+    }
+    lamp(b, 60.02, 6.3, 72, 'e'); face(b, 75.96, 4.4, 63.4, 1.2, 0.75, 'w', 'framed_print');
+    face(b, 75.96, 4.4, 65.1, 1.2, 0.75, 'w', 'framed_print');
+    // 12、25、199 秒：教堂/包点有红砖地带，喷泉外圈和 A 区墙裙。
+    b.floorMat(44, 8, 62, 27, 'redtiles'); b.floorMat(80, 58, 92, 69, 'redtiles');
+    for (const z of [12, 17, 23]) arch(b, 46.7, 4, z, 3.9, 3.05, 'e');
+    bench(b, 64.3, 3, 22.8, 2.0);
+    for (const z of [59, 68, 74]) face(b, 97.96, 3.2, z, 1.3, 2.1, 'w', 'housedoor');
+    for (const z of [61, 65]) round(b, 81.0, 5.15, z, 0.38, 0.7, 'cask');
+  } else if (id === 'dust2') {
+    // 6–18 秒：T 家浅色街面、灰色垃圾桶与后花园坡道，树在场外。
+    b.floorMat(28, 94, 56, 108, 'sand');
+    face(b, 39, 6.0, 97.04, 3.0, 2.6, 's', 'garage');
+    for (const x of [29, 35, 40]) window(b, x, 9.3, 97.03, 's', 'shutter_w');
+    palm(b, 27, 5.6, 85.5, 7.2);
+    // 30–42 秒：洞内暖色粗石、分段梁柱和铺石地面。
+    b.floorMat(8, 37, 48, 67, 'pavers'); b.wallMat(7, 35, 36, 67, 'tunnelstone');
+    for (const z of [40, 46, 52, 60]) arch(b, 20.5, 4, z, 4.5, 2.9, 's', 'tunnelstone');
+    // 82 秒：B 后台棚架，横梁/木板平台贴着后台的墙。
+    for (const x of [9.15, 14.8]) trim(b, x - 0.05, 9.2, x + 0.05, 12.6, 7.15, 'darkwood');
+    trim(b, 9, 11.7, 15, 12.6, 6.8, 'plywood');
+    // 164、206、226 秒：门楼石框、小道转角墙裙与忍者位的木箱。
+    arch(b, 75.05, 2.4, 72, 3.5, 3.2, 'e', 'tunnelstone');
+    arch(b, 79, 2.4, 62.03, 3.5, 3.2, 's', 'tunnelstone');
+    b.wallMat(68, 31, 78, 42, 'stucco_o');
+    for (const z of [32, 40]) face(b, 75.96, 2.4, z, 2.0, 1.1, 'w', 'stone');
+    face(b, 96.0, 4.0, 4.05, 3.0, 2.3, 's', 'housedoor_b');
+    trim(b, 84.05, 4, 84.18, 20, 5.2, 'stone');
+  } else if (id === 'mirage') {
+    const S = b.S;
+    // 5、85、115 秒：警家和 VIP 外墙蓝/粉两色，窗内是暖白墙而非木屋。
+    b.wallMat(60, 151, 92, 204, 'paint_b'); b.wallMat(82, 103, 98, 124, 'stucco_p');
+    b.floorMat(89, 111, 96, 119, 'tiles');
+    for (const c of [90, 94]) window(b, c * S, 5.6, 120 * S, 'n', 'shutter_w');
+    // 75–95 秒：宫殿走廊柱框和暖色墙裙；出口下面有连续支架。
+    for (const c of [184, 198, 214]) arch(b, c * S, 6.4, 195 * S, 3.1, 2.65, 'e');
+    for (const c of [176, 223]) trim(b, c * S, 182 * S, c * S + 0.1, 206 * S, 6.7, 'stone');
+    // 65 秒：A 点三箱上的圆形罐/黄色弹药筒，附着既有掩体、不新堵通路。
+    for (const r of [187, 190, 193]) for (const y of [5.5, 6.2, 6.9]) {
+      round(b, 132.8 * S, y, r * S, 0.28, 0.65, 'metal');
+      ball(b, 133.4 * S, y + 0.28, r * S, 0.22, 'paint_y');
+      b.box(132.8 * S - 0.28, y, r * S - 0.28, 132.8 * S + 0.28, y + 0.65, r * S + 0.28, 'metal', 'collision');
+      b.box(133.4 * S - 0.22, y + 0.06, r * S - 0.22, 133.4 * S + 0.22, y + 0.5, r * S + 0.22, 'metal', 'collision');
+    }
+    // 145–180 秒：超市的绿色室内、货架、灯管和收银台，位置沿现有墙边。
+    for (const c of [51.5, 65.5]) arch(b, c * S, 3.2, 72 * S, 6.1, 2.9, 'e');
+    for (const r of [64.5, 79.5]) arch(b, 58.5 * S, 3.2, r * S, 5.6, 2.9, 's');
+    b.wallMat(55, 90, 83, 110, 'marketwall');
+    shelf(b, 69 * S, 3.2, 87 * S + 0.06, 3.2, 's'); shelf(b, 83 * S - 0.06, 3.2, 93 * S, 3.0, 'w');
+    trim(b, 67 * S, 93 * S, 73 * S, 93 * S + 0.3, 6.1, 'lampglass');
+    face(b, 59 * S + 0.02, 4.45, 95 * S, 0.6, 0.3, 'e', 'metalbox');
+    // 125–135 秒：中路沙袋上方的棕榈，与桥头/连接的石拱。
+    palm(b, 147 * S, 3.2, 100 * S, 6.5);
+    arch(b, 116 * S, 3.2, 137 * S, 3.2, 2.8, 's');
   }
 }
 export function dressMap(b, id) {
@@ -204,8 +308,6 @@ export function dressMap(b, id) {
       trim(b, 56, 27.87, 63, 28, 4.15, 'stone');
       for (const z of [49, 54]) stringLights(b, 43, z, 50, z + 0.6, 6.0);
       for (const z of [32, 38]) stringLights(b, 56, z, 63, z + 0.4, 6.6);
-      face(b, 55.97, 4.4, 31, 1.2, 1.8, 'e', 'banana');
-      face(b, 56.05, 3.9, 29.7, 1.2, 1.2, 'e', 'route_b');
       // 教堂后面的钟楼轮廓，位于不可走墙区，保持玩家上空的投掷空间。
       b.decor(66, 8.5, 17, 72, 13, 20, 'stone');
       for (const x of [67.5, 70.5]) face(b, x, 10.2, 20.02, 1, 1.6, 's', 'churchwindow');
@@ -225,7 +327,6 @@ export function dressMap(b, id) {
       // 铁艺阳台、锅炉房门框、厨房柜门，站在侧道就能认出二楼。
       railing(b, 79, 79, 89, 79, 5.6);
       face(b, 56.5, 4.8, 74.98, 2.8, 0.85, 'n', 'cupboard');
-      face(b, 53.5, 4.8, 67.98, 2.6, 1.8, 's', 'books');
       face(b, 60.02, 6.1, 89.5, 1.6, 1.0, 'e', 'cupboard');
       arch(b, 73.8, 2.96, 55.07, 1.75, 2.4, 's');
       // A 拱门、书房和墓地的外观；大坑墙面与顶棚下的壁灯。
@@ -279,4 +380,5 @@ export function dressMap(b, id) {
       break;
     }
   }
+  videoDetails(b, id);
 }
