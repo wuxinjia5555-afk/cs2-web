@@ -192,6 +192,50 @@ function addTerrain(buckets, map) {
   }
 }
 
+// 曲面装饰并入静态网格：花盆 / 树冠 / 灯杆共享材质批次。
+function addFrond(B, o) {
+  const nx = Math.cos(o.angle), nz = Math.sin(o.angle), px = -nz, pz = nx;
+  const vertex = (k, side) => {
+    const t = k / 6, w = Math.sin(t * Math.PI) * 0.24;
+    return [o.x + nx * t * o.length + px * w * side, o.y + Math.sin(t * Math.PI) * 0.28 - t * t * 0.65, o.z + nz * t * o.length + pz * w * side, 0, 1, 0, (side + 1) / 2, t, 0.88];
+  };
+  for (let k = 0; k < 6; k++) {
+    const pts = [vertex(k, -1), vertex(k, 1), vertex(k + 1, 1), vertex(k + 1, -1)];
+    poly(B, pts); poly(B, pts.slice().reverse().map((p) => [...p.slice(0, 3), 0, -1, 0, ...p.slice(6)]));
+  }
+}
+function addRound(B, o) {
+  const segments = 10, rings = o.shape === 'ball' ? 6 : 1;
+  const ring = (k) => {
+    if (o.shape === 'ball') {
+      const a = -Math.PI / 2 + k / rings * Math.PI;
+      return { y: o.y + Math.sin(a) * o.radius, r: Math.cos(a) * o.radius, ny: Math.sin(a), nr: Math.cos(a) };
+    }
+    return { y: o.y + k * o.height, r: k ? o.top : o.radius, ny: (o.radius - o.top) / o.height, nr: 1 };
+  };
+  for (let k = 0; k < rings; k++) {
+    const a = ring(k), b = ring(k + 1);
+    for (let j = 0; j < segments; j++) {
+      const vertex = (r, n) => {
+        const angle = n / segments * Math.PI * 2, sn = Math.sin(angle), cs = Math.cos(angle);
+        const norm = Math.hypot(r.nr, r.ny);
+        return [o.x + cs * r.r, r.y, o.z + sn * r.r, cs * r.nr / norm, r.ny / norm, sn * r.nr / norm, n / segments, (r.y - o.y) / (o.height || o.radius * 2), 0.86];
+      };
+      poly(B, [vertex(a, j + 1), vertex(a, j), vertex(b, j), vertex(b, j + 1)]);
+    }
+  }
+  if (o.shape !== 'ball') {
+    for (const [y, radius, ny] of [[o.y, o.radius, -1], [o.y + o.height, o.top, 1]]) {
+      const pts = [];
+      for (let k = 0; k < segments; k++) {
+        const angle = (ny > 0 ? -k : k) / segments * Math.PI * 2;
+        pts.push([o.x + Math.cos(angle) * radius, y, o.z + Math.sin(angle) * radius, 0, ny, 0, 0.5 + Math.cos(angle) * 0.5, 0.5 + Math.sin(angle) * 0.5, 0.95]);
+      }
+      poly(B, pts);
+    }
+  }
+}
+
 export function buildMapMeshes(map) {
   const group = new THREE.Group();
   const buckets = new Map();
@@ -199,6 +243,7 @@ export function buildMapMeshes(map) {
   if (map.hf) addTerrain(buckets, map);
   // 只画不挡人的装饰（梯子）
   for (const bx of map.decos || []) {
+    if (bx.shape) { (bx.shape === 'frond' ? addFrond : addRound)(bucket(buckets, bx.mat, 'w'), bx); continue; }
     if (bx.uv === 'box') addBox(bucket(buckets, bx.mat, 'b'), bx.min, bx.max, { boxUV: true, sideCol: 0.96 });
     else addBox(bucket(buckets, bx.mat, 'w'), bx.min, bx.max, { scale: TEX_SCALE[bx.mat] || 2 });
   }
@@ -239,6 +284,8 @@ export function buildMapMeshes(map) {
         addBox(bucket(buckets, bx.mat, 'b'), [bx.min[0] + i, mid, bx.min[2] + i], [bx.max[0] - i, bx.max[1], bx.max[2] - i], { boxUV: true, skipBottom: true, ao: true, aoBase: mid - 0.3, aoMin: 0.8 });
         break;
       }
+      case 'collision':
+        break; // 曲面掩体的保守碰撞，外观由合并的曲面网格绘制
       case 'barrel':
         barrels.push(bx);
         break;

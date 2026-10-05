@@ -1,12 +1,21 @@
-<!doctype html><meta charset="utf-8"><title>frame</title>
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>frame</title>
 <!-- 开发用：把游戏装在一个固定大小的框里看（比如手机横屏 844×390）。控制台里 size(宽, 高) 改大小，W() / D() 是里面那个页面的 window / document，
      W().__game 是正在进行的那一局。换网址：document.getElementById('f').src = '/?touch=1' -->
 <style>html,body{margin:0;background:#222;overflow:hidden}iframe{border:0;transform-origin:0 0;position:absolute;left:0;top:0}</style>
-<iframe id="f" width="1280" height="720" src="/"></iframe>
+<iframe id="f" width="1280" height="720" allow="fullscreen 'none'"></iframe>
 <script>
 const f = document.getElementById('f');
+const q = new URLSearchParams(location.search);
+const dimension = (key, fallback) => { const n = Number(q.get(key)); return n >= 240 && n <= 2560 ? Math.round(n) : fallback; };
+f.width = dimension('w', 1280); f.height = dimension('h', 720);
+if (q.has('map')) {
+  const mapQuery = new URLSearchParams({ map: q.get('map'), quality: 'mobile' });
+  if (q.has('view')) mapQuery.set('view', q.get('view'));
+  f.src = '/dev/mapview.html?' + mapQuery;
+} else f.src = q.has('touch') ? '/?touch=1' : '/';
 window.size = (w, h) => { f.width = w; f.height = h; view(); };
-window.view = (s = innerWidth / f.width, x = 0, y = 0) => { f.style.transform = `scale(${s}) translate(${-x}px, ${-y}px)`; };
+window.view = (s = Math.min(innerWidth / f.width, innerHeight / f.height), x = 0, y = 0) => { f.style.transform = `scale(${s}) translate(${-x}px, ${-y}px)`; };
 window.W = () => f.contentWindow; window.D = () => f.contentDocument;
+addEventListener('resize', () => view());
 view();
 </script>

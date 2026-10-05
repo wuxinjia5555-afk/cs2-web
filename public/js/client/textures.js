@@ -238,7 +238,28 @@ function devGrid(ctx, size, base, line, fine) {
   }
 }
 
+function sign(ctx, s, text, base = '#e6dfc5', ink = '#343b43') {
+  ctx.fillStyle = base; ctx.fillRect(0, 0, s, s);
+  ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.strokeRect(9, 9, s - 18, s - 18);
+  ctx.fillStyle = ink; ctx.font = 'bold ' + Math.round(s * (text.length > 6 ? 0.15 : 0.24)) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, s / 2, s / 2, s * 0.86);
+}
 const PAINTERS = {
+  banana(ctx, s) { sign(ctx, s, 'BANANA', '#bcab82', '#5c4934'); ctx.fillStyle = '#d3b445'; ctx.beginPath(); ctx.ellipse(s / 2, s * 0.76, s * 0.26, s * 0.05, -0.2, 0, Math.PI * 2); ctx.fill(); },
+  route_b(ctx, s) { sign(ctx, s, 'B ↑', '#c6b99c', '#b55433'); },
+  paint_y(ctx, s) { ctx.fillStyle = '#d2ac48'; ctx.fillRect(0, 0, s, s); },
+  paint_o(ctx, s) { ctx.fillStyle = '#bd6943'; ctx.fillRect(0, 0, s, s); },
+  lampglass(ctx, s) { ctx.fillStyle = '#e3ce91'; ctx.fillRect(0, 0, s, s); },
+  terracotta(ctx, s, rnd) { stucco(ctx, s, rnd, [159, 86, 56]); },
+  foliage(ctx, s, rnd) { stucco(ctx, s, rnd, [74, 103, 54]); },
+  bark(ctx, s, rnd) { ctx.fillStyle = '#8c7153'; ctx.fillRect(0, 0, s, s); ctx.strokeStyle = '#5c4935'; for (let y = 8; y < s; y += 18) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(s, y + 7); ctx.stroke(); } grain(ctx, s, rnd, 0.25); },
+  football(ctx, s) { ctx.fillStyle = '#ddd8cc'; ctx.fillRect(0, 0, s, s); ctx.fillStyle = '#303236'; for (let y = 0; y < s; y += s / 3) for (let x = 0; x < s; x += s / 4) { ctx.beginPath(); for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; ctx.lineTo(x + Math.cos(a) * s / 12, y + Math.sin(a) * s / 12); } ctx.fill(); } },
+  ticket(ctx, s) { sign(ctx, s, 'TICKETS', '#ded7bd', '#375f75'); },
+  market(ctx, s) { sign(ctx, s, 'MARKET', '#ece3bf', '#375f61'); },
+  memorial(ctx, s) { sign(ctx, s, '✦', '#c1baa5', '#777461'); },
+  churchwindow(ctx, s, rnd) { ctx.fillStyle = '#393a3d'; ctx.fillRect(0, 0, s, s); for (let y = 16; y < s - 15; y += 32) for (let x = 16; x < s - 15; x += 32) { ctx.fillStyle = rnd() > 0.5 ? '#788889' : '#9f865d'; ctx.fillRect(x, y, 27, 27); } },
+  cupboard(ctx, s, rnd) { PAINTERS.darkwood(ctx, s, rnd); ctx.strokeStyle = '#463d2f'; ctx.lineWidth = 6; ctx.strokeRect(8, 8, s / 2 - 12, s - 16); ctx.strokeRect(s / 2 + 4, 8, s / 2 - 12, s - 16); ctx.fillStyle = '#bca77a'; ctx.fillRect(s / 2 - 16, s / 2, 5, 18); ctx.fillRect(s / 2 + 12, s / 2, 5, 18); },
+  books(ctx, s, rnd) { PAINTERS.darkwood(ctx, s, rnd); for (let y = 12; y < s; y += 60) { for (let x = 12; x < s - 10; x += 14) { ctx.fillStyle = ['#69584d', '#465e65', '#ae966b', '#80604d'][Math.floor(rnd() * 4)]; ctx.fillRect(x, y, 11, 47 - rnd() * 12); } ctx.fillStyle = '#493a2b'; ctx.fillRect(0, y + 47, s, 6); } },
   sand(ctx, s, rnd) {
     ctx.fillStyle = rgb(200, 176, 132);
     ctx.fillRect(0, 0, s, s);
@@ -734,7 +755,8 @@ const PAINTERS = {
 
 export function getTexture(name) {
   if (cache.has(name)) return cache.get(name);
-  const painter = PAINTERS[name] || PAINTERS.concrete;
+  const label = name.match(/^(distance|lane)_(\d+)$/);
+  const painter = PAINTERS[name] || (label ? (ctx, s) => sign(ctx, s, label[1] === 'distance' ? label[2] + ' m' : label[2], '#25303a', '#eedbad') : PAINTERS.concrete);
   const size = name === 'crate' ? 512 : 256;
   const c = canvas(size);
   const ctx = c.getContext('2d', { willReadFrequently: true });

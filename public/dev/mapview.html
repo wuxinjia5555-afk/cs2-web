@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>map view</title>
-<style>html,body{margin:0;background:#111;color:#ccc;font:12px monospace;overflow:hidden}canvas{display:block}</style>
+<style>html,body{margin:0;background:#111;color:#eee;font:12px system-ui;overflow:hidden}canvas{display:block}header{position:absolute;z-index:2;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#14202ddd;padding:9px 12px;border:1px solid #ffffff24;border-radius:8px}select,button,a{font:inherit;color:#eee;background:#223548;border:1px solid #62758a;border-radius:4px;padding:6px;text-decoration:none}#stats{margin-left:auto;color:#b6c5d6}@media(max-height:540px){header{top:4px;padding:4px 8px;font-size:11px}#stats{font-size:10px}}</style>
 <script>
   (function () {
     var local = '/lib/three/three.module.js', cdn = 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js', ok = false;
@@ -11,27 +11,41 @@
     document.currentScript.after(s);
   })();
 </script>
-</head><body><canvas id="c"></canvas>
+</head><body><header><strong id="name"></strong><select id="map" aria-label="地图"></select><select id="view" aria-label="点位"></select><button id="top">俯视</button><a id="quality">手机画质</a><span id="stats"></span></header><canvas id="c"></canvas>
 <script type="module">
 // 开发用：把地图摆出来看（不进游戏）。__views([[x, y, z, yaw, pitch, fov], ...]) 从上到下叠着画几个视角；y 给 null = 站在地上的眼睛高度
 import * as THREE from 'three';
-import { getMap } from '/js/shared/maps.js';
+import { getMap, MAPS } from '/js/shared/maps.js';
+import { MAP_VIEWS } from '/js/shared/mapdetails.js';
 import { buildMapMeshes, setupEnvironment } from '/js/client/world.js';
 const q = new URLSearchParams(location.search);
 const map = getMap(q.get('map') || 'dust2');
+const mobile = q.get('quality') === 'mobile';
+const views = MAP_VIEWS[map.id] || {};
+const mapSelect = document.getElementById('map'), viewSelect = document.getElementById('view');
+document.getElementById('name').textContent = map.name;
+for (const [id, def] of Object.entries(MAPS)) mapSelect.add(new Option(def.name, id, false, id === map.id));
+for (const [id, v] of Object.entries(views)) viewSelect.add(new Option(v[0], id, false, id === q.get('view')));
+const navigate = (key, value) => { const url = new URL(location.href); url.searchParams.set(key, value); if (key === 'map') url.searchParams.delete('view'); location.href = url; };
+mapSelect.onchange = () => navigate('map', mapSelect.value);
+viewSelect.onchange = () => navigate('view', viewSelect.value);
+document.getElementById('quality').href = '?map=' + map.id + '&view=' + (q.get('view') || viewSelect.value) + (mobile ? '' : '&quality=mobile');
+document.getElementById('quality').textContent = mobile ? '电脑画质' : '手机画质';
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = !mobile; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const env = setupEnvironment(scene, map, true);
+const env = setupEnvironment(scene, map, !mobile);
 scene.add(buildMapMeshes(map));
 const cam = new THREE.PerspectiveCamera(74, 16 / 9, 0.03, 700);
 cam.rotation.order = 'YXZ';
 const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
-let last = [[40, null, 100, 0, 0, 74]];
+const requested = q.get('view'), view = views[requested] || Object.values(views)[0];
+let last = requested === 'top' ? [[map.W * map.S / 2, 200, map.H * map.S / 2, Math.max(map.W, map.H) * map.S * 0.55, 0, 'top']] : [view ? [...view.slice(1), 74] : [map.W * map.S / 2, 200, map.H * map.S / 2, map.W * map.S * 0.55, 0, 'top']];
+document.getElementById('top').onclick = () => navigate('view', 'top');
 function size() {
   const w = Math.floor(innerWidth), h = Math.floor(innerHeight);
-  renderer.setPixelRatio(1.5);
+  renderer.setPixelRatio(mobile ? 1 : Math.min(devicePixelRatio, 1.5));
   renderer.setSize(w, h);
   return [w, h];
 }
@@ -57,6 +71,7 @@ window.__views = (list) => {
       renderer.render(scene, cam);
     }
   });
+  document.getElementById('stats').textContent = `${w}×${h} · ${renderer.info.render.calls} 绘制 · ${Math.round(renderer.info.render.triangles / 1000)}k 三角面 · ${mobile ? '手机画质' : '电脑画质'}`;
   return list.map((v) => [v[0], +(v[1] == null ? map.world.groundY(v[0], v[2]) + 1.63 : v[1]).toFixed(2), v[2]]);
 };
 window.__map = map; window.__THREE = THREE; window.__scene = scene;

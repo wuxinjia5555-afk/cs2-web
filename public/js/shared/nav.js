@@ -218,6 +218,7 @@ export class Nav {
       if (prev >= 0 && prev !== ci && !this.canStep(prev, ci)) return false;
       prev = ci;
       const yc = this.ys[ci];
+      if (this.clearAt && !this.clearAt(x, z, yc)) return false;
       for (let q = 0; q < 4; q++) {
         const i = this.cellOf(x + CORNERS[q][0], z + CORNERS[q][1]);
         if (i < 0 || !this.walk[i] || Math.abs(this.ys[i] - yc) > this.maxRise) return false;

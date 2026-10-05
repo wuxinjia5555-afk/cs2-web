@@ -396,7 +396,8 @@ export class BotBrain {
     while (this.pathIdx < path.length - 1) {
       const w = path[this.pathIdx];
       const dx = w.x - p.x, dz = w.z - p.z;
-      if (dx * dx + dz * dz < 0.36) this.pathIdx++;
+      // 靠近路点再转向，给窄门和拐角留出完整身位。
+      if (dx * dx + dz * dz < 0.1225) this.pathIdx++;
       else break;
     }
     const w = path[Math.min(this.pathIdx, path.length - 1)];

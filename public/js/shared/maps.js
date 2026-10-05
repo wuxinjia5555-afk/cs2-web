@@ -1,5 +1,6 @@
 // 地图：用"挖掘式"构建器描述（默认全是墙，再挖出地面/坡道/掩体），生成地面（高度场）、碰撞盒、出生点、包点和寻路网格
 import { World } from './physics.js';
+import { dressMap } from './mapdetails.js';
 import { Nav } from './nav.js';
 import { Terrain, buildHeights } from './terrain.js';
 import { LEVEL_H, P } from './constants.js';
@@ -384,6 +385,7 @@ export function buildMap(id) {
   if (!def) throw new Error('未知地图 ' + id);
   const B = new Builder(def);
   def.build(B);
+  dressMap(B, id);
   const { W, H, S } = B, n = W * H;
   const LH = def.levelH || LEVEL_H;
   const wallH = def.wallH || 6;
@@ -652,6 +654,21 @@ export function buildMap(id) {
     const o = i * 4;
     return side === 0 ? [y4[o + 1], y4[o + 3]] : side === 1 ? [y4[o], y4[o + 2]] : side === 2 ? [y4[o + 2], y4[o + 3]] : [y4[o], y4[o + 1]];
   };
+  // 实体柱子、门梁、车辆也要参与寻路，不能只看格子是否是地面。
+  const clearanceHits = [], margin = P.radius + 0.05;
+  const clearAt = (x, z, y) => !world.query(x - margin, y + 0.04, z - margin, x + margin, y + P.standH, z + margin, clearanceHits);
+  const clearEdge = (i, j, upper) => {
+    const ys = upper ? navY : gy, yi = ys[i], yj = ys[j];
+    const x0 = (i % W + 0.5) * S, z0 = (((i / W) | 0) + 0.5) * S;
+    const x1 = (j % W + 0.5) * S, z1 = (((j / W) | 0) + 0.5) * S;
+    for (let k = 0; k <= 4; k++) {
+      const t = k / 4;
+      // 下落前整个身位得先跨过边缘：楼板下面的门梁不能被当成上层出口。
+      const y = yi - yj > STEP ? yi : yi + (yj - yi) * t;
+      if (!clearAt(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, y)) return false;
+    }
+    return true;
+  };
   const movesOf = (upper) => {
     const mv = new Uint8Array(n);
     for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
@@ -660,7 +677,7 @@ export function buildMap(id) {
       const tryDir = (j, side, bit) => {
         if (!ground[j]) return;
         const a = edgeH(i, side, upper), b = edgeH(j, side ^ 1, upper);
-        if (Math.max(b[0] - a[0], b[1] - a[1]) <= STEP) mv[i] |= bit;
+        if (Math.max(b[0] - a[0], b[1] - a[1]) <= STEP && clearEdge(i, j, upper)) mv[i] |= bit;
       };
       if (c + 1 < W) tryDir(i + 1, 0, 1);
       if (c > 0) tryDir(i - 1, 1, 2);
@@ -685,10 +702,11 @@ export function buildMap(id) {
     walk.set(keep);
   };
   const walk = new Uint8Array(n);
-  for (let i = 0; i < n; i++) walk[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) ? 1 : 0;
+  for (let i = 0; i < n; i++) walk[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) && clearAt((i % W + 0.5) * S, (((i / W) | 0) + 0.5) * S, navY[i]) ? 1 : 0;
   thin(walk, navY);
   // 屋顶下的格子也可走；门梁不影响
   const nav = new Nav(W, H, S, walk, navY, movesOf(true), maxRise);
+  nav.clearAt = clearAt;
   // 大格子地图（一米一格）：人只比格子窄一点点，贴着墙走容易蹭到墙角。贴墙的格子记下来，寻路时稍微贵一点
   if (S >= 0.8) {
     const pen = (nav.pen = new Uint8Array(n));
@@ -700,6 +718,21 @@ export function buildMap(id) {
   // 只留「从出生点走得到、也走得回来」的格子：走不到的角落、只能下不能上的坑都不给机器人走，也不会被选成目标
   const seed = spawns.T[0] || spawns.CT[0];
   if (seed) nav.keepMain(nav.nearestWalkable(seed.x, seed.z));
+  // 包点目标与出生位置都必须有完整的站立空间。
+  for (const site of Object.values(sites)) site.cells = site.cells.filter((i) => nav.walk[i]);
+  for (const team of ['T', 'CT']) {
+    const original = spawns[team], wanted = original.length, anchor = original[0];
+    spawns[team] = original.filter((s) => clearAt(s.x, s.z, s.y));
+    if (spawns[team].length < wanted && anchor) {
+      const candidates = nav.walkList.map((i) => ({ ...nav.center(i, {}), yaw: anchor.yaw })).filter((s) =>
+        !bridged[nav.cellOf(s.x, s.z)] && buy[team].some((zone) => inRect(zone, s.x, s.z)) && Math.abs(s.y - anchor.y) < 0.5);
+      candidates.sort((a, b) => Math.hypot(a.x - anchor.x, a.z - anchor.z) - Math.hypot(b.x - anchor.x, b.z - anchor.z));
+      for (const s of candidates) {
+        if (spawns[team].length >= wanted) break;
+        if (spawns[team].every((p) => Math.hypot(p.x - s.x, p.z - s.z) >= 1.5)) spawns[team].push({ ...s, y: s.y + 0.02 });
+      }
+    }
+  }
   // 死斗出生点也只用走得出来的地方（免得出生在下不来的屋顶上）
   const okSpawns = dmSpawns.filter((s) => nav.walk[nav.cellOf(s.x, s.z)]);
   if (okSpawns.length >= 12) { dmSpawns.length = 0; dmSpawns.push(...okSpawns); }
@@ -707,9 +740,10 @@ export function buildMap(id) {
   // 这一层单独做一张寻路网格（高度用最底下那层地面），并算好每个格子往「回到主区域」方向的下一步
   if (B.bridges.length) {
     const walk2 = new Uint8Array(n);
-    for (let i = 0; i < n; i++) walk2[i] = B.type[i] === CELL.FLOOR ? 1 : 0;
+    for (let i = 0; i < n; i++) walk2[i] = B.type[i] === CELL.FLOOR && !B.blocked.has(i) && clearAt((i % W + 0.5) * S, (((i / W) | 0) + 0.5) * S, gy[i]) ? 1 : 0;
     thin(walk2, gy);
     nav.lower = new Nav(W, H, S, walk2, gy, movesOf(false), maxRise);
+    nav.lower.clearAt = clearAt;
     nav.lower.setExits((i) => !!nav.walk[i] && !bridged[i]);
   }
 
@@ -746,6 +780,10 @@ export const MAPS = {
       // 把某一块里的地面统一成一个高度（箱子、墙不动）
       const level = (c0, r0, c1, r1, lv) => b.rect(c0, r0, c1, r1, (i) => { if (b.type[i] === CELL.FLOOR) b.level[i] = lv; });
 
+      // B 点的院子是平地，后台单独升高；去掉雷达描边留下的沙丘和小坑。
+      level(8, 8, 29, 15, 5); level(8, 16, 29, 34, 3);
+      b.slope(9, 16, 28, 19, 'z', 5, 3, 'sand');
+      b.wall(16, 20, 17, 22, 'crate', Y(3) + 2.3);
       // ---- T 出生点：高台，清掉雷达图上的杂点 ----
       b.floor(17, 87, 20, 87, 7);
 
@@ -1014,12 +1052,7 @@ export const MAPS = {
       // ---- B 点（正北）：喷泉广场。西边是红墙拱廊（死点），东边是教堂，东南角是香蕉道口 ----
       b.floor(44, 8, 62, 27, 10);
       const fy = Y(10);
-      // 喷泉：一圈矮石沿、水面、中间一根柱子
-      b.box(50.4, fy, 14.4, 55.6, fy + 0.55, 15.0, 'stone', 'low'); b.box(50.4, fy, 19.0, 55.6, fy + 0.55, 19.6, 'stone', 'low');
-      b.box(50.4, fy, 15.0, 51.0, fy + 0.55, 19.0, 'stone', 'low'); b.box(55.0, fy, 15.0, 55.6, fy + 0.55, 19.0, 'stone', 'low');
-      b.box(52.5, fy, 16.5, 53.5, fy + 1.8, 17.5, 'stone', 'low');
-      b.decor(51.0, fy + 0.02, 15.0, 55.0, fy + 0.4, 19.0, 'water');
-      b.decor(52.2, fy + 1.8, 16.2, 53.8, fy + 2.0, 17.8, 'stone');
+      // 圆形喷泉的网格与细分碰撞一起在 dressMap 中生成。
       b.noWalk(50, 14, 55, 19);
       // 西边的拱廊
       b.box(44, fy + 3.3, 8, 47, fy + 3.7, 28, 'darkwood', 'roof');
@@ -1034,6 +1067,7 @@ export const MAPS = {
 
       // ---- 香蕉道：从中路西头往北上坡 → 往东一段 → 再往北上坡进 B 点 ----
       b.slope(43, 48, 49, 58, 'z', 6, 4);               // 下半段（酒桶在最底下）
+      b.floor(55, 41, 55, 43, 6);                       // 香蕉道内转角多留一格，防止身位蹭住
       b.floor(43, 42, 62, 47, 6);                       // 中间横着的一段
       b.slope(56, 28, 62, 41, 'z', 10, 6);              // 上半段
       b.objs('o', [[43, 57], [43, 56], [44, 57], [62, 43]]);                // 酒桶
